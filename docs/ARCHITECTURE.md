@@ -107,3 +107,14 @@ Three MCP servers, each with a narrow purpose (see AGENTS.md section 2b): **Know
 
 Calendar scheduling flow (demo feature): recommendation with workout sessions is released -> `schedule.requested` (only for opted-in users) -> Scheduler reads free/busy through Calendar MCP (minimal scope) -> `schedule.proposed` -> deterministic schedule rules check (recovery days, sleep window, max load) -> user confirms in chat -> `schedule.confirmed` -> Scheduler creates events -> `calendar.event.created`. Nothing is written to a calendar without explicit confirmation. Calendar calls are async consumers, rate-limited per user and per provider; tokens live in the secret store. Load tests use a mock Calendar MCP server; the live demo uses a real consenting demo account.
 MCP is never used between agents, for the Safety Guardian, or on T0/T1 paths.
+
+## 12. Engineering principles adopted
+Informed by studying the design docs of REA ([morluto/rea](https://github.com/morluto/rea), MIT), an open-source MCP toolkit for agents. REA is a local single-user tool, so it informs engineering discipline and tool design, not scale.
+1. **Typed claim provenance.** Every claim in a recommendation is `computed`, `cited`, `inferred` or `unknown`. Unknown is never treated as safe; the Guardian fails closed on it.
+2. **Layered code.** Pure domain (rules, calculators) -> contracts -> shared application workflows -> thin adapters (Kafka consumers, FastAPI, MCP). The same workflow serves every adapter.
+3. **Cohort cache keys cover every result-affecting input** (user constraints, rules version, model version, prompt version, KG version) with explicit invalidation and freshness checks. Any mismatch is a miss.
+4. **Measure end-to-end tokens** per recommendation per tier, including schemas, retries and extra calls; report cold vs warm; label estimates.
+5. **Explicit redaction.** Sensitive values use a typed wrapper that redacts in traces and logs; secrecy is never guessed from field names.
+6. **MCP servers are stateless Streamable HTTP services** (a stdio process per client does not scale), with JSON Schemas validated against real clients and contract tests.
+7. **Tests:** real workflows first, then boundary integration, then goldens; mutation testing on Guardian rules; lifecycle regressions (deadline expiry, cancellation during cleanup, retry of failed cleanup); unverified coverage is reported explicitly.
+8. **Side-effect capabilities fail closed** and need explicit confirmation (calendar writes).

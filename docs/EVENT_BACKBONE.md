@@ -94,3 +94,6 @@ Rules:
 - **Fail closed.** A check that errors or cannot run blocks the event; it never passes through.
 - **Release is exclusive.** Only the Guardian/Release path may publish `recommendation.released` (topic ACLs + producer identity on each event).
 - The final gate stays authoritative because composition risk (e.g. nutrition + activity + medication) only appears on the merged bundle.
+
+## 11. Failure contract (structured, retry-aware)
+Every `*.failed` event and DLQ record uses one schema: `code`, `category` (`invalid_input`, `integrity_mismatch`, `timeout`, `cancelled`, `resource_constraint`, `unavailable`, `execution_failure`, `safety_blocked`), `message`, `retryable` (bool), `remediation.action`, `details`. Retry topics only receive `retryable=true`; everything else goes straight to the DLQ with its remediation hint. Partial facts are preserved on failure (what was computed before it failed), never discarded.
