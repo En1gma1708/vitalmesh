@@ -101,3 +101,9 @@ Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/
 | Optional | AWS (small remaining credits) | load generators and/or smoke deploy; proves portability |
 
 Service mapping: Kafka -> MSK; Kubernetes AKS -> EKS; Postgres -> Aurora/RDS; Redis -> ElastiCache; secrets Key Vault -> Secrets Manager; blob -> S3. Kafka traffic never crosses clouds; only load generators may. Every benchmark is labelled local / Azure / AWS and measured vs extrapolated.
+
+## 11. MCP layer (optional, stretch)
+Three MCP servers, each with a narrow purpose (see AGENTS.md section 2b): **Knowledge** (read-only tools shared by specialists), **Ops** (read-only operator debugging), **Calendar** (user-side scheduling).
+
+Calendar scheduling flow (demo feature): recommendation with workout sessions is released -> `schedule.requested` (only for opted-in users) -> Scheduler reads free/busy through Calendar MCP (minimal scope) -> `schedule.proposed` -> deterministic schedule rules check (recovery days, sleep window, max load) -> user confirms in chat -> `schedule.confirmed` -> Scheduler creates events -> `calendar.event.created`. Nothing is written to a calendar without explicit confirmation. Calendar calls are async consumers, rate-limited per user and per provider; tokens live in the secret store. Load tests use a mock Calendar MCP server; the live demo uses a real consenting demo account.
+MCP is never used between agents, for the Safety Guardian, or on T0/T1 paths.

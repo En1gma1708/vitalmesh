@@ -43,6 +43,10 @@ Example from the brief, in our domain: `nutrition.advice.completed` is consumed 
 | `review.requested` / `review.decided` | Briefer / Human console | Human console / Release |
 | `recommendation.released` | Release (code) | Engagement, Delivery (SSE), Audit, Eval sampler |
 | `nudge.planned` -> `notification.sent` | Engagement -> Delivery | Audit, Engagement |
+| `schedule.requested` (user opted in, plan has sessions) | Concierge / Release | Scheduler |
+| `schedule.proposed` (slots from free/busy) | Scheduler | Delivery (asks user), Guardian (schedule rules: recovery days, sleep window) |
+| `schedule.confirmed` / `schedule.declined` | Concierge (user action) | Scheduler, Audit |
+| `calendar.event.created` / `calendar.event.failed` | Scheduler | Delivery, Audit |
 | `*.failed` / `*.dlq` | any | Ops tooling, replay |
 
 Topics are per pipeline stage (event `type` header for routing), keyed by `user_id`, to keep partition count manageable and per-user ordering intact.

@@ -26,6 +26,16 @@ Mapping to the research-assistant analogy: research -> Evidence; analysis -> Spe
 | 8 | **Checker (Critic)** | Independently reviews high-risk outputs for reasoning errors/unsupported claims; may trigger ONE bounded retry | (4) independence | evidence lookup (read-only) | Verdict | strong, different prompt/model |
 | 9 | **Escalation Briefer** | Builds a concise case file for the human clinician (what, why flagged, evidence, options) | (1) summarisation of messy state | state read | ReviewCase | mid |
 | 10 | **Engagement Agent** (our "notification agent") | Decides *whether, when, how* to nudge (timing, fatigue, channel, tone); delivery itself is code | (1) trade-off per user history, avoid alert fatigue | notification history, quiet hours, channel prefs | NudgePlan | small |
+| 11 | **Scheduler Agent** (optional, demo feature) | Fits recommended workouts into the user's real calendar: reads free/busy, proposes slots, creates events only after the user confirms | (1)(2) judgement over messy availability plus its own tools (calendar via MCP) | Calendar MCP: free/busy read, event create (after confirmation) | SchedulePlan | small |
+
+## 2b. MCP layer (optional, stretch)
+MCP (Model Context Protocol) is used only where a shared tool server or an external integration is the point. Never for agent-to-agent messaging (Kafka), the Safety Guardian, or T0/T1 hot paths.
+| Server | Exposes | Used by | Phase |
+|---|---|---|---|
+| **Knowledge MCP** | KG lookups, wellness calculators, guideline search (stateless, read-only) | Specialists, Evidence; also pluggable into Claude Desktop for the demo | ~P2 |
+| **Ops MCP** (read-only) | run lookup by correlation_id, Langfuse trace link, consumer lag, "why was this blocked?" | operators | ~P5 |
+| **Calendar MCP** (user-side) | free/busy read; event create gated by user confirmation | Scheduler Agent | P5 |
+Rules: tool outputs are untrusted data; least-privilege scopes (free/busy only for reads); allowlisted servers with pinned tool descriptions; destructive/write tools need explicit user confirmation; OAuth tokens in the secret store, never in traces or events.
 
 ## 3. Background (async, off the request path)
 | Agent | Why |
@@ -53,6 +63,7 @@ User text -> Concierge -> Triage -> (T0/T1: code paths, no agents)
                                       -> Checker (if risk>=threshold; <=1 retry)
                                       -> risk high? Briefer -> Human review -> resume
                                       -> Engagement (when/how to deliver) -> delivery (code)
+                                      -> [opt] Scheduler: free/busy via Calendar MCP -> propose slots -> user confirms -> create events
 Memory Curator: async consumer, writes profile facts read by Context Assembler.
 ```
 Handoffs are real tool calls with typed (Pydantic) payloads. Each agent: objective, schema, tool list, max steps/time, token budget.
