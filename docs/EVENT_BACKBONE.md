@@ -23,7 +23,7 @@ Example from the brief, in our domain: `nutrition.advice.completed` is consumed 
 - **Human-in-the-loop:** event-based (`review.requested` / `review.decided`), so no worker is held waiting; durable by construction.
 
 ## 3. Event envelope (every message)
-`event_id` (idempotency key), `correlation_id` (one recommendation run), `causation_id` (event that caused this), `user_id` (partition key), `type`, `schema_version`, `occurred_at`, `trace_id`, `tier`, `deadline_at`, payload. Schemas in Schema Registry (Protobuf), backward-compatible only; CI blocks breaking changes.
+`event_id` (idempotency key), `correlation_id` (one recommendation run), `causation_id` (event that caused this), `user_id` (partition key), `household_id` (tenancy), `source` + `external_id` (provider dedupe: the idempotency key is (source, external_id) when present, else `event_id`), `type`, `schema_version`, `occurred_at`, `trace_id`, `tier`, `deadline_at`, payload. Schemas in Schema Registry (Protobuf), backward-compatible only; CI blocks breaking changes.
 
 ## 4. Event catalogue (past-tense facts)
 | Event | Published by | Consumed by (independently) |
@@ -97,3 +97,14 @@ Rules:
 
 ## 11. Failure contract (structured, retry-aware)
 Every `*.failed` event and DLQ record uses one schema: `code`, `category` (`invalid_input`, `integrity_mismatch`, `timeout`, `cancelled`, `resource_constraint`, `unavailable`, `execution_failure`, `safety_blocked`), `message`, `retryable` (bool), `remediation.action`, `details`. Retry topics only receive `retryable=true`; everything else goes straight to the DLQ with its remediation hint. Partial facts are preserved on failure (what was computed before it failed), never discarded.
+
+## 12. Event schema conventions (Phase 0 draft, Protobuf)
+Derived from the observed data models of two real open-source apps (wger and Mealie); both used published API schemas as ground truth.
+- **Explicit units:** every amount carries a unit; never assume grams or metres.
+- **`metric_type` registry:** one extensible `Measurement` message with a registered `metric_type`, not one message per metric; free-form extras live in a typed, validated `extra_data` map.
+- **Sessions have start and end timestamps,** not a single time.
+- **Subjective feedback is its own event** (`feedback.recorded`, e.g. how a workout felt); it feeds the Engagement and Coach roles.
+- **Payload families under `user.event.received`:** `measurement.recorded`, `meal.logged`, `workout.session.completed`, `sleep.session.recorded`, `feedback.recorded`, `mealplan.entry.changed`.
+- **Sleep, heart rate and vitals** have no open-app reference; derive them from public wearable API documentation, not from the apps above.
+- **Windowed reads:** read APIs take a date window plus pagination; consumers never request unbounded history.
+- **Bounded evidence payloads:** payloads have an explicit size budget and report `unavailable: <reason>` instead of truncating silently (same rule as the failure contract in section 11).

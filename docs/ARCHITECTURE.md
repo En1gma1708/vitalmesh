@@ -87,12 +87,6 @@ Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/
 - Constraint: zero spend (free tiers and student credits only); cloud-portable design, see section 10.
 - D3 Primary LLM: Claude for specialists/checker, small model for triage; provider via LiteLLM. (open)
 
-## References
-- Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
-- Anthropic, How we built our multi-agent research system — https://www.anthropic.com/engineering/multi-agent-research-system
-- LangGraph docs (persistence, interrupts, Send API) — https://langchain-ai.github.io/langgraph/
-- Langfuse docs — https://langfuse.com/docs
-
 ## 10. Cloud plan
 | Stage | Where | Purpose |
 |---|---|---|
@@ -118,3 +112,18 @@ Informed by studying the design docs of REA ([morluto/rea](https://github.com/mo
 6. **MCP servers are stateless Streamable HTTP services** (a stdio process per client does not scale), with JSON Schemas validated against real clients and contract tests.
 7. **Tests:** real workflows first, then boundary integration, then goldens; mutation testing on Guardian rules; lifecycle regressions (deadline expiry, cancellation during cleanup, retry of failed cleanup); unverified coverage is reported explicitly.
 8. **Side-effect capabilities fail closed** and need explicit confirmation (calendar writes).
+
+## 13. Meal planning on the tiers
+Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its published OpenAPI schemas were the ground truth).
+- **T0 deterministic planner:** PlanRules {day (weekday or unset), entry_type, query_filter} fill a week's slots; a random-pick endpoint chooses within the filter. No LLM on this path. Guardian checks every suggested entry against the user's constraints.
+- **MealPlanEntry:** date, entry_type in {breakfast, lunch, dinner, side, snack, drink, dessert}, title, text, recipe_id (nullable), recipe_scale. Free-text entries (no recipe) are first-class.
+- **Agents' role:** the Nutrition specialist explains choices and handles exceptions the rules cannot; it does not generate the numbers.
+- **Reads are windowed and paginated** (start_date, end_date, page, per_page); read models follow the same shape.
+- **Tenancy:** every record carries household_id and user_id.
+- **Calendar:** the Scheduler can publish a tokenized read-only iCal feed (no OAuth write scope held by us), with Calendar MCP write as the opt-in upgrade.
+
+## References
+- Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents
+- Anthropic, How we built our multi-agent research system — https://www.anthropic.com/engineering/multi-agent-research-system
+- LangGraph docs (persistence, interrupts, Send API) — https://langchain-ai.github.io/langgraph/
+- Langfuse docs — https://langfuse.com/docs

@@ -16,9 +16,9 @@ Mapping to the research-assistant analogy: research -> Evidence; analysis -> Spe
 
 | # | Agent | Role | Why it is an agent (test) | Tools | Output | Model class |
 |---|-------|------|---------------------------|-------|--------|-------------|
-| 1 | **Concierge** | User-facing entry for free-text questions; extracts intent, hands off to Triage | (1) free text is open input | profile read, handoff | structured Intent | small |
+| 1 | **Concierge** | User-facing entry for free-text questions and coaching (motivational-interviewing style, goal setting, progress tracking); extracts intent, hands off to Triage | (1) free text is open input | profile read, handoff | structured Intent | small |
 | 2 | **Triage/Budget** | Picks tier (T0-T3), which specialists, effort budget | (1) ambiguous cases; rules handle the clear ones first | tier policy, budget service | Plan (pydantic) | small |
-| 3 | **Nutrition Specialist** | Diet guidance from intake, goals, conditions | (2)(3) own tools (food DB, calculators) | USDA lookup, calorie/macro calculators, KG | NutritionAdvice | mid |
+| 3 | **Nutrition Specialist** | Diet guidance from intake, goals, conditions; owns the rule-driven meal planner (deterministic T0/T1 path; the LLM only explains choices and handles exceptions) | (2)(3) own tools (food DB, calculators) | USDA lookup, calorie/macro calculators, KG | NutritionAdvice | mid |
 | 4 | **Movement & Recovery Specialist** | Activity + sleep guidance (merged: they are one recovery loop; splitting would duplicate context and cost) | (2)(3) | HR-zone/sleep-debt calculators, KG | MovementAdvice | mid |
 | 5 | **Condition & Medication Specialist** | Manages chronic-condition context and medication-aware advice; owns the KG | (2) deepest tool use, highest risk | KG queries, guideline RAG | ConditionAdvice + risk flags | strong |
 | 6 | **Evidence Agent** | Finds guideline support, attaches citations to every claim; rejects unsupported ones | (2) retrieval loop with query rewriting | hybrid search (pgvector+BM25) | Claim->Citation map | mid |
@@ -88,3 +88,12 @@ Handoffs are real tool calls with typed (Pydantic) payloads. Each agent: objecti
 1. Merge Movement & Recovery vs split — decide by eval (does splitting improve quality enough to justify cost)?
 2. (Decided) Concierge is in v1. Domain is general wellness: the Condition & Medication Specialist treats declared conditions/medications as safety constraints, not disease management.
 3. Different model family for Checker (stronger independence) — affordable on quota?
+
+## 9. Related work and what we borrowed
+Google's Personal Health Agent uses three roles: data science, domain expert, health coach. Mapping:
+| Their role | Our equivalent | Difference |
+|---|---|---|
+| Data science agent (numerical analysis of wearable time series) | Deterministic analytics and calculators (T0), no LLM-produced numbers | numbers come from code, so they are testable |
+| Domain expert agent (grounded in authoritative sources) | Evidence agent + specialists + knowledge graph | citations required per claim; contraindications are graph queries |
+| Health coach agent (multi-turn goal setting) | Concierge with a coaching style | same idea; ours hands off to tiered compute |
+Our additions: Kafka choreography, tiered compute, Guardian at every boundary, human review.

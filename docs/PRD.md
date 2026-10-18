@@ -43,6 +43,10 @@ Key flows: onboarding profile -> wearable/log events stream -> recommendation re
 | F9 | Real-time delivery of recommendations (SSE/WebSocket) |
 | F10 | Full tracing of every agent run (Langfuse) |
 | F11 | Eval harness with golden cases + safety red-team set |
+| F12 | Concierge (v1): conversational agent for free-text questions, goal setting and coaching (motivational-interviewing style), handing off to Triage |
+| F13 | Rule-driven meal planning (T0/T1): weekly plans from deterministic rules and filters (day, entry type, query filter); agents only explain or handle exceptions; free-text entries allowed |
+| F14 | Scheduler (optional demo feature): propose workout slots from calendar free/busy or a tokenized iCal feed; write to a calendar only after explicit user confirmation |
+| F15 | MCP servers (optional): Knowledge (read-only tools), Ops (read-only debugging), Calendar (user-side) |
 
 ## 6. Non-functional requirements (targets, to be *measured*, not claimed)
 - Scale: 1M registered, 100k concurrent, sustained 20k events/s ingest (load-tested with synthetic users).
@@ -60,5 +64,12 @@ Key flows: onboarding profile -> wearable/log events stream -> recommendation re
 ## 8. Success metrics / demo
 Live demo: (1) simulator pushes events for N thousand synthetic users; (2) dashboard shows tier distribution, LLM calls avoided, lag, p95; (3) one user flows through full T3 graph with trace; (4) an unsafe recommendation is blocked by the guardian; (5) HITL approval resumes the graph.
 
+Optional demo moment: the user asks the Concierge for a week plan, the rule-driven planner fills meals deterministically, the Scheduler proposes workout slots from calendar availability, and nothing is written to the calendar until the user confirms.
+
 ## 9. Risks
 LLM quota/cost (mitigate: tiers, cache, mock LLM for load tests); claiming 1M without proof (mitigate: honest load-test methodology, capacity math in ARCHITECTURE.md); Cloud cost (mitigate: local-first dev, scripted short load-test windows, teardown scripts, budget alerts; free tiers and student credits only).
+
+## 10. Related work
+- **Google Personal Health Agent / Fitbit Gemini coach** (research.google blog "The anatomy of a personal health agent"; arXiv 2508.20148): an orchestrator routes queries to three sub-agents (data science, domain expert, health coach). It established the quality layer (multi-agent beats single agent in their expert evaluations, per secondary reports; not verified here).
+- **What VitalMesh adds:** a scale layer (tiered compute so most events never need an LLM, Kafka choreography between agents), a safety layer (deterministic Guardian at every boundary, knowledge-graph contraindications, human review) and explicit measurement discipline (claims carry provenance; numbers are never LLM-produced).
+- **What we borrow:** the three roles map to deterministic analytics + calculators (data science), Evidence agent + specialists (domain expert) and the Concierge with a coaching style (health coach).
