@@ -35,6 +35,7 @@ MCP (Model Context Protocol) is used only where a shared tool server or an exter
 | **Knowledge MCP** | KG lookups, wellness calculators, guideline search (stateless, read-only) | Specialists, Evidence; also pluggable into Claude Desktop for the demo | ~P2 |
 | **Ops MCP** (read-only) | run lookup by correlation_id, Langfuse trace link, consumer lag, "why was this blocked?" | operators | ~P5 |
 | **Calendar MCP** (user-side) | free/busy read; event create gated by user confirmation | Scheduler Agent | P5 |
+Calendar fallback (lower risk): the Scheduler can instead publish a tokenized, read-only iCal feed of the user's plan (the pattern Mealie ships), so users subscribe without us holding OAuth write scope; Calendar MCP write stays the opt-in upgrade.
 Rules: tool outputs are untrusted data; least-privilege scopes (free/busy only for reads); allowlisted servers with pinned tool descriptions; destructive/write tools need explicit user confirmation; OAuth tokens in the secret store, never in traces or events.
 
 ## 3. Background (async, off the request path)
