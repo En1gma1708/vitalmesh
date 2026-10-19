@@ -4,15 +4,16 @@ version = "0.1.0"
 description = "Event-driven multi-agent health recommendation platform (workspace root)"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
-dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness"]
+dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0"]
 
 [tool.uv.workspace]
-members = ["libs/common", "libs/wellness", "services/processor"]
+members = ["libs/common", "libs/wellness", "services/processor", "services/t0"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }
 vitalmesh-processor = { workspace = true }
 vitalmesh-wellness = { workspace = true }
+vitalmesh-t0 = { workspace = true }
 
 [dependency-groups]
 dev = [

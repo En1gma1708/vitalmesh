@@ -7,6 +7,7 @@ members = [
     "vitalmesh",
     "vitalmesh-common",
     "vitalmesh-processor",
+    "vitalmesh-t0",
     "vitalmesh-wellness",
 ]
 
@@ -720,6 +721,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "vitalmesh-common" },
     { name = "vitalmesh-processor" },
+    { name = "vitalmesh-t0" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -737,6 +739,7 @@ dev = [
 requires-dist = [
     { name = "vitalmesh-common", editable = "libs/common" },
     { name = "vitalmesh-processor", editable = "services/processor" },
+    { name = "vitalmesh-t0", editable = "services/t0" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
@@ -779,6 +782,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vitalmesh-common", editable = "libs/common" }]
+
+[[package]]
+name = "vitalmesh-t0"
+version = "0.1.0"
+source = { editable = "services/t0" }
+dependencies = [
+    { name = "redis" },
+    { name = "vitalmesh-common" },
+    { name = "vitalmesh-wellness" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-wellness", editable = "libs/wellness" },
+]
 
 [[package]]
 name = "vitalmesh-wellness"
