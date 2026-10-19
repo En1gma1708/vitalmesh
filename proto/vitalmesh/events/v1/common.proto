@@ -30,3 +30,13 @@ enum EntryType {
   ENTRY_TYPE_DRINK = 6;
   ENTRY_TYPE_DESSERT = 7;
 }
+
+// How a claim in a recommendation is backed (docs/ARCHITECTURE.md section 12). UNKNOWN is
+// representable on purpose so the Guardian can block it; it is never treated as safe.
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;  // treated as invalid by consumers
+  PROVENANCE_COMPUTED = 1;
+  PROVENANCE_CITED = 2;
+  PROVENANCE_INFERRED = 3;
+  PROVENANCE_UNKNOWN = 4;
+}

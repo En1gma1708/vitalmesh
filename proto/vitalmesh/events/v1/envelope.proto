@@ -33,6 +33,9 @@ message Envelope {
     FeedbackRecorded feedback = 24;
     MealPlanEntryChanged mealplan_entry = 25;
     HealthStateUpdated health_state = 26;
+    LabResultRecorded lab_result = 27;
+    RecommendationReleased recommendation_released = 28;
+    RecommendationBlocked recommendation_blocked = 29;
   }
 }
 

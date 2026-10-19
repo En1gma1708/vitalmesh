@@ -104,7 +104,9 @@ Derived from the observed data models of two real open-source apps (wger and Mea
 - **`metric_type` registry:** one extensible `Measurement` message with a registered `metric_type`, not one message per metric; free-form extras live in a typed, validated `extra_data` map.
 - **Sessions have start and end timestamps,** not a single time.
 - **Subjective feedback is its own event** (`feedback.recorded`, e.g. how a workout felt); it feeds the Engagement and Coach roles.
-- **Payload families under `user.event.received`:** `measurement.recorded`, `meal.logged`, `workout.session.completed`, `sleep.session.recorded`, `feedback.recorded`, `mealplan.entry.changed`.
+- **Payload families under `user.event.received`:** `measurement.recorded`, `meal.logged`, `workout.session.completed`, `sleep.session.recorded`, `feedback.recorded`, `mealplan.entry.changed`, `lab.result.recorded`.
+- **Lab results:** a result is either a number with an explicit unit or a text value (never both); the lab's reference text is kept verbatim and parsed into low/high only when it is a simple interval or one-sided limit; anything else is unclassified, never guessed.
+- **Recommendations:** `recommendation.released` (topic `recommendations.released`, only the Guardian-checked path publishes) and `recommendation.blocked` (topic `safety.blocked`) carry claims with provenance, the engine version and the rules version.
 - **Sleep, heart rate and vitals** have no open-app reference; derive them from public wearable API documentation, not from the apps above.
 - **Windowed reads:** read APIs take a date window plus pagination; consumers never request unbounded history.
 - **Bounded evidence payloads:** payloads have an explicit size budget and report `unavailable: <reason>` instead of truncating silently (same rule as the failure contract in section 11).

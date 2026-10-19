@@ -95,3 +95,60 @@ message HealthStateUpdated {
   map<string, Quantity> latest_metrics = 2;  // metric_type -> latest value
   string state_version = 3;
 }
+
+// ---- Lab results (decisions D42, D45) ----
+
+// The lab's own reference text is always kept verbatim. Low and high are set only when the
+// text parsed cleanly into a simple interval or one-sided limit; categorical bands (lipids,
+// HbA1c) stay in raw_text with parsed = false and the result is then "unclassified", never
+// guessed.
+message ReferenceRange {
+  string raw_text = 1;
+  bool parsed = 2;
+  optional double low = 3;
+  optional double high = 4;
+}
+
+message LabResultRecorded {
+  string marker_code = 1;  // LOINC code when known, else empty
+  string marker_name = 2;  // as printed by the lab
+  oneof result {
+    Quantity numeric = 3;  // value always carries its unit
+    string text = 4;       // qualitative result, e.g. "Normocytic"
+  }
+  ReferenceRange reference = 5;
+  google.protobuf.Timestamp collected_at = 6;
+  bool derived = 7;  // "Method: Calculated": not an independent measurement
+}
+
+// ---- Recommendations (published by the T0 path and, later, the Guardian/Release path) ----
+
+message RecommendationClaim {
+  string text = 1;
+  Provenance provenance = 2;
+  optional string source = 3;  // calculator+version, citation id, or inference basis
+  optional string metric = 4;  // registered metric name when the claim carries a number
+  optional Quantity quantity = 5;
+}
+
+// Published on recommendations.released; only the Guardian-checked path may produce it.
+message RecommendationReleased {
+  string recommendation_id = 1;
+  repeated RecommendationClaim claims = 2;
+  string engine_version = 3;
+  string rules_version = 4;
+  google.protobuf.Timestamp generated_at = 5;
+}
+
+message GuardianViolation {
+  string rule = 1;
+  string message = 2;
+  optional string claim_text = 3;
+}
+
+// Published on safety.blocked when the Guardian does not clear a recommendation.
+message RecommendationBlocked {
+  string recommendation_id = 1;
+  repeated GuardianViolation violations = 2;
+  string rules_version = 3;
+}

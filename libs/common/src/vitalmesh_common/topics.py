@@ -13,6 +13,10 @@ from enum import StrEnum
 
 USER_EVENTS = "user.events"
 USER_STATE = "user.state"
+RECOMMENDATIONS_RELEASED = (
+    "recommendations.released"  # only the Guardian-checked path publishes here
+)
+SAFETY_BLOCKED = "safety.blocked"
 
 RETRY_INFIX = ".retry."  # one retry topic per backoff tier: <topic>.retry.<n>, n = 1..max_retries
 DLQ_SUFFIX = ".dlq"
@@ -52,6 +56,16 @@ TOPICS: dict[str, TopicSpec] = {
         name=USER_STATE,
         partitions={Profile.LOCAL: 6, Profile.PRODUCTION: 96},
         retention_ms=7 * _DAY_MS,
+    ),
+    RECOMMENDATIONS_RELEASED: TopicSpec(
+        name=RECOMMENDATIONS_RELEASED,
+        partitions={Profile.LOCAL: 6, Profile.PRODUCTION: 96},
+        retention_ms=7 * _DAY_MS,
+    ),
+    SAFETY_BLOCKED: TopicSpec(
+        name=SAFETY_BLOCKED,
+        partitions={Profile.LOCAL: 6, Profile.PRODUCTION: 48},
+        retention_ms=30 * _DAY_MS,
     ),
 }
 

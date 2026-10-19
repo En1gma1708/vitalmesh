@@ -27,6 +27,9 @@ PAYLOAD_FIELDS: dict[str, str] = {
     "feedback.recorded": "feedback",
     "mealplan.entry.changed": "mealplan_entry",
     "health.state.updated": "health_state",
+    "lab.result.recorded": "lab_result",
+    "recommendation.released": "recommendation_released",
+    "recommendation.blocked": "recommendation_blocked",
 }
 
 _TIER_TO_PROTO = {
