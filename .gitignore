@@ -18,3 +18,6 @@ dist/
 libs/common/src/vitalmesh/
 .env.*
 !.env.example
+
+# Real personal documents (e.g. a blood report used as a layout reference): never commit
+private/
