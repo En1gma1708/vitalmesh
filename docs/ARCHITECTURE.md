@@ -96,11 +96,11 @@ Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/
 |---|---|---|
 | Dev + first load tests | Local Docker | free, fast iteration |
 | Real deployment + main load tests | **Azure (student credits)** | primary cloud; real Apache Kafka on VMs/AKS |
-| Optional | AWS (small remaining credits) | load generators and/or smoke deploy; proves portability |
+| Planned (small remaining credits) | AWS | load generators and/or smoke deploy; proves portability |
 
 Service mapping: Kafka -> MSK; Kubernetes AKS -> EKS; Postgres -> Aurora/RDS; Redis -> ElastiCache; secrets Key Vault -> Secrets Manager; blob -> S3. Kafka traffic never crosses clouds; only load generators may. Every benchmark is labelled local / Azure / AWS and measured vs extrapolated.
 
-## 11. MCP layer (optional, stretch)
+## 11. MCP layer
 Three MCP servers, each with a narrow purpose (see AGENTS.md section 2b): **Knowledge** (read-only tools shared by specialists), **Ops** (read-only operator debugging), **Calendar** (user-side scheduling).
 
 Calendar scheduling flow (demo feature): recommendation with workout sessions is released -> `schedule.requested` (only for opted-in users) -> Scheduler reads free/busy through Calendar MCP (minimal scope) -> `schedule.proposed` -> deterministic schedule rules check (recovery days, sleep window, max load) -> user confirms in chat -> `schedule.confirmed` -> Scheduler creates events -> `calendar.event.created`. Nothing is written to a calendar without explicit confirmation. Calendar calls are async consumers, rate-limited per user and per provider; tokens live in the secret store. Load tests use a mock Calendar MCP server; the live demo uses a real consenting demo account.
