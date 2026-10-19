@@ -16,3 +16,5 @@ dist/
 .coverage
 # generated protobuf code (run scripts/gen_proto.py)
 libs/common/src/vitalmesh/
+.env.*
+!.env.example

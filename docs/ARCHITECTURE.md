@@ -40,7 +40,7 @@ Pattern mix: routing + orchestrator-workers + parallelisation + evaluator-optimi
 ```
 START -> ContextAgent (load state + KG neighbourhood)
       -> TriageAgent (supervisor: picks specialists, effort budget)
-      -> [Nutrition | Activity | Sleep | Condition/Medication]   (parallel fan-out, Send API)
+      -> [Nutrition | Movement & Recovery | Condition & Medication]   (parallel fan-out, independent consumers)
       -> EvidenceAgent (RAG, attaches citations)
       -> Synthesizer (merge, resolve conflicts, plain-language)
       -> SafetyGuardian (DETERMINISTIC: rules + KG contraindications)
@@ -55,7 +55,7 @@ Rules for agents (per Anthropic multi-agent lessons): each subagent gets explici
 |-------|------|-------|
 | Context | deterministic loader | state store, KG query |
 | Triage/Budget | small LLM + rules | budget service, tier policy |
-| Nutrition / Activity / Sleep / Condition | LLM specialists | calculators (TDEE, zones), KG, guideline RAG |
+| Nutrition / Movement & Recovery / Condition & Medication | LLM specialists | calculators (TDEE, zones, sleep debt), KG, guideline RAG |
 | Evidence | RAG agent | pgvector + BM25 hybrid search |
 | Synthesizer | LLM | none |
 | Safety Guardian | **pure code** | KG contraindication queries, rule engine |
@@ -82,10 +82,14 @@ Synthetic data only. Design hooks: JWT auth, per-user encryption keys (KMS), PII
 ## 8. Tech choices
 Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/Groq/Cerebras), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector, Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
 
-## 9. Decisions log (to confirm)
-- D1 Tiered compute is the core novelty. (proposed)
-- Constraint: zero spend (free tiers and student credits only); cloud-portable design, see section 10.
-- D3 Primary LLM: Claude for specialists/checker, small model for triage; provider via LiteLLM. (open)
+## 9. Settled decisions
+- Tiered compute is the core novelty (T0 deterministic, T1 cohort cache, T2 single agent, T3 multi-agent).
+- Kafka is the only inter-agent transport; the Aggregator is built Kafka-native after a spike (open).
+- Redis is a store only (cache, idempotency, rate limits), never a bus; Neo4j Community is the knowledge-graph source of truth with a precompiled hot-path lookup.
+- Protobuf with a Schema Registry (backward compatibility); real Apache Kafka in KRaft mode.
+- Azure for Students is the primary cloud; the design is cloud-portable with an AWS mapping; zero personal spend.
+- LLMs through a provider router (Groq, Cerebras, Gemini Flash free tiers) with a mock for scale tests; first LLM call arrives in Phase 2.
+- Safety checks at every agent boundary plus an authoritative final Guardian.
 
 ## 10. Cloud plan
 | Stage | Where | Purpose |
@@ -121,6 +125,15 @@ Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its 
 - **Reads are windowed and paginated** (start_date, end_date, page, per_page); read models follow the same shape.
 - **Tenancy:** every record carries household_id and user_id.
 - **Calendar:** the Scheduler can publish a tokenized read-only iCal feed (no OAuth write scope held by us), with Calendar MCP write as the opt-in upgrade.
+
+## 14. Delivery semantics as implemented (Phase 0)
+Verified by unit tests and by integration tests against a real Kafka, Schema Registry and Redis.
+- **At-least-once, no loss:** auto-commit is off; the offset commits only after processing returned, and a retry or DLQ publish is flushed before that. A failed flush propagates, so the record is redelivered.
+- **Retry tiers:** one retry topic per backoff tier (`<topic>.retry.<n>`), each with a constant delay, so a long delay can never block a short one; a pure routing function decides retry, DLQ or expiry. DLQ records keep the original bytes for replay.
+- **Idempotency is three-state** (acquire, commit, release): a failed attempt releases its key so the retry runs instead of being dropped as a duplicate; a crashed worker's in-flight lock expires. Redis runs with `noeviction` so a key can never be silently evicted.
+- **Retry-safe handlers:** state updates are idempotent and order-independent; emitted events carry deterministic ids derived from the input event.
+- **A registry outage is not a DLQ case:** it stalls consumption (visible as lag) and the records are redelivered when it returns; only genuinely undecodable bytes are dead-lettered.
+- **Handler effects must be idempotent:** if committing the idempotency key fails after a successful handler, the lock expires and the handler may run again.
 
 ## References
 - Anthropic, Building Effective Agents — https://www.anthropic.com/engineering/building-effective-agents

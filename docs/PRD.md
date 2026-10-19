@@ -1,6 +1,6 @@
 # PRD — VitalMesh: Event-Driven Multi-Agent Health Recommendation Platform
 
-Status: DRAFT v0.1 (planning)
+Status: DRAFT v0.1. Requirements are stable; implementation status is in the README (Phase 0 done: event contracts, delivery semantics, local stack).
 
 ## 1. Problem
 Health recommendation apps are either (a) static rule engines that ignore a user's live signals, or (b) a chatbot that calls an LLM per request. (b) is unsafe (hallucinated medical claims) and cannot scale: 1M users x LLM-per-event is economically and operationally impossible.

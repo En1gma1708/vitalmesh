@@ -55,8 +55,8 @@ Topics are per pipeline stage (event `type` header for routing), keyed by `user_
 Specialists run in parallel because they consume the same `run.planned`/`context.assembled`. The **Aggregator** (code, stateful stream join keyed by `correlation_id`) knows from `run.planned` which parts to expect and emits `advice.bundle.ready` when all arrive **or when `deadline_at` passes** (partial bundle, flagged degraded). A slow or dead specialist therefore never stalls the run indefinitely.
 
 ## 6. Reliability rules
-- At-least-once + idempotent handlers (dedupe on `event_id` in Redis/Postgres). Consume-transform-produce uses transactional producers where the step is not naturally idempotent.
-- Retry topics with backoff, then DLQ; poison messages never block a partition. Replay tool for DLQ.
+- At-least-once + idempotent handlers: dedupe on `(source, external_id)` when present, else `event_id`, with a three-state store (acquire, commit, release) so a failed attempt never poisons its key. Handlers are written to be retry-safe (idempotent state updates, deterministic output ids); transactional producers are reserved for steps that cannot be made idempotent.
+- One retry topic per backoff tier (`<topic>.retry.<n>`, constant delay each, so no head-of-line blocking), then the DLQ; poison messages never block a partition. DLQ records keep the original bytes for replay (replay tool: later phase).
 - Per-agent consumer groups, KEDA scaling on that group's lag; LLM rate limits enforced per agent with a token bucket, so one provider quota can't starve others.
 - Deadlines on every run; expiry produces a degraded-but-safe result (fall back to T1/T0 recommendation).
 - Safety Guardian sits on the only path to `recommendation.released`; nothing else can publish that event (ACLs on the topic).
@@ -73,10 +73,10 @@ Specialists run in parallel because they consume the same `run.planned`/`context
 ## 8. Why this serves the 1M-user goal
 Backpressure is natural (lag), bursts are absorbed by the log, each stage scales independently, one agent's outage degrades gracefully instead of failing requests, and the T0/T1 tiers skip the agent hops entirely.
 
-## 9. Open decisions
-- D4: Aggregator via Kafka Streams-style state vs Redis-backed worker (Python-friendly; leaning Redis + deadline timer topic).
-- D5: Protobuf (matches your gRPC/Protobuf experience) vs Avro.
-- D6: Demo shows an unchanged producer gaining a new consumer (e.g. a "Hydration Coach" agent) live — strongest proof of the decoupling claim.
+## 9. Decisions and open items
+- **Decided:** Protobuf with a Schema Registry (backward compatibility); one `Envelope` message with a `oneof` payload per topic.
+- **Open:** the Aggregator (fan-in join with a deadline): Kafka-native in Python (Quix Streams) after a spike, with a Redis-state fallback.
+- **Demo idea:** show an unchanged producer gaining a new consumer (for example a "Hydration Coach" agent) live, the strongest proof of the decoupling claim.
 
 ## 10. Safety at every boundary (defense in depth)
 One final gate is not enough: unsafe output would burn tokens through Evidence/Synthesizer first, and individually safe parts can be unsafe combined. So:
@@ -108,3 +108,11 @@ Derived from the observed data models of two real open-source apps (wger and Mea
 - **Sleep, heart rate and vitals** have no open-app reference; derive them from public wearable API documentation, not from the apps above.
 - **Windowed reads:** read APIs take a date window plus pagination; consumers never request unbounded history.
 - **Bounded evidence payloads:** payloads have an explicit size budget and report `unavailable: <reason>` instead of truncating silently (same rule as the failure contract in section 11).
+
+## 13. Delivery semantics (implemented and tested in Phase 0)
+- Offsets commit only after processing returned, and a retry or DLQ publish is flushed before the commit, so a crash anywhere re-delivers the record.
+- A record whose retry delay has not elapsed waits in its tier's consumer (`x-not-before-ms` header); each tier is consumed separately.
+- Expired events (`deadline_at` passed) go straight to the DLQ; they are never retried.
+- An event whose idempotency key is in flight elsewhere is retried (bounded); a duplicate that already completed is skipped.
+- A Schema Registry outage propagates instead of dead-lettering: consumption stalls (visible as lag) and resumes when the registry returns.
+- Consumers use a 10 s session timeout so a hard-killed worker is replaced quickly (the 45 s default stalled restarts in testing).

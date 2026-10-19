@@ -72,7 +72,7 @@ Handoffs are real tool calls with typed (Pydantic) payloads. Each agent: objecti
 ## 6. Why this decomposition (and not fewer/more)
 - **Fewer** (one big agent): unbounded context, no parallelism, no independent verification, can't scale per-tier.
 - **More** (agent per nutrient/organ system): coordination cost and latency exceed benefit; Anthropic notes multi-agent systems use many times more tokens, so each added agent must earn its place. That is why Activity+Sleep are merged and the Guardian is code.
-- Roster is 10 runtime agents but only 3-5 run on any one request (effort scaling by Triage).
+- The roster is 11 runtime agents (one optional) but only 3-5 run on any one request (effort scaling by Triage).
 
 ## 7. Failure modes each design choice addresses
 | Risk | Mitigation |
