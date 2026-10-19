@@ -45,10 +45,10 @@ Key flows: onboarding profile -> wearable/log events stream -> recommendation re
 | F11 | Eval harness with golden cases + safety red-team set |
 | F12 | Concierge (v1): conversational agent for free-text questions, goal setting and coaching (motivational-interviewing style), handing off to Triage |
 | F13 | Rule-driven meal planning (T0/T1): weekly plans from deterministic rules and filters (day, entry type, query filter); agents only explain or handle exceptions; free-text entries allowed |
-| F14 | Scheduler (demo feature): propose workout slots from calendar free/busy or a tokenized iCal feed; write to a calendar only after explicit user confirmation |
+| F14 | Scheduler (optional demo feature): propose workout slots from calendar free/busy or a tokenized iCal feed; write to a calendar only after explicit user confirmation |
 | F16 | Lab results: structured entry and blood-report PDF upload (digital and scanned); every extracted value is checked against the source text and confirmed by the user; range classification and unit conversion are deterministic; wellness guidance only, critical values route to a clinician |
 | F17 | Health app charts (weight, sleep, activity, calories vs target, lab markers, goal rings) in a health-only user view; engineering metrics live in a separate console |
-| F15 | MCP servers: Knowledge (read-only tools), Ops (read-only debugging), Calendar (user-side) |
+| F15 | MCP servers (optional): Knowledge (read-only tools), Ops (read-only debugging), Calendar (user-side) |
 
 ## 6. Non-functional requirements (targets, to be *measured*, not claimed)
 - Scale: 1M registered, 100k concurrent, sustained 20k events/s ingest (load-tested with synthetic users).
@@ -66,7 +66,7 @@ Key flows: onboarding profile -> wearable/log events stream -> recommendation re
 ## 8. Success metrics / demo
 Live demo: (1) simulator pushes events for N thousand synthetic users; (2) dashboard shows tier distribution, LLM calls avoided, lag, p95; (3) one user flows through full T3 graph with trace; (4) an unsafe recommendation is blocked by the guardian; (5) HITL approval resumes the graph.
 
-Demo moment: the user asks the Concierge for a week plan, the rule-driven planner fills meals deterministically, the Scheduler proposes workout slots from calendar availability, and nothing is written to the calendar until the user confirms.
+Optional demo moment: the user asks the Concierge for a week plan, the rule-driven planner fills meals deterministically, the Scheduler proposes workout slots from calendar availability, and nothing is written to the calendar until the user confirms.
 
 ## 9. Risks
 LLM quota/cost (mitigate: tiers, cache, mock LLM for load tests); claiming 1M without proof (mitigate: honest load-test methodology, capacity math in ARCHITECTURE.md); Cloud cost (mitigate: local-first dev, scripted short load-test windows, teardown scripts, budget alerts; free tiers and student credits only).

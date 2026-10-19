@@ -25,7 +25,7 @@ The integration tests reset the topics in the topic contract on the local stack;
 ## Layout
 `libs/common` shared contracts and Kafka adapters · `services/processor` state processor · `proto` event schemas · `infra` local stack · `scripts` code generation
 
-**Highlights:** agents communicate only through Kafka events; a Safety Guardian (pure code) checks every boundary; rule-driven meal planning on the deterministic tier; a calendar Scheduler that never writes without user confirmation; lab results and blood-report PDF upload with user confirmation of every extracted value.
+**Highlights:** agents communicate only through Kafka events; a Safety Guardian (pure code) checks every boundary; rule-driven meal planning on the deterministic tier; an optional calendar Scheduler that never writes without user confirmation; lab results and blood-report PDF upload with user confirmation of every extracted value.
 
 **Related work:** Google's Personal Health Agent (see [PRD](docs/PRD.md#10-related-work)). VitalMesh adds the scale and safety layers.
 

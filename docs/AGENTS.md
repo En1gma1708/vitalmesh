@@ -26,9 +26,9 @@ Mapping to the research-assistant analogy: research -> Evidence; analysis -> Spe
 | 8 | **Checker (Critic)** | Independently reviews high-risk outputs for reasoning errors/unsupported claims; may trigger ONE bounded retry | (4) independence | evidence lookup (read-only) | Verdict | strong, different prompt/model |
 | 9 | **Escalation Briefer** | Builds a concise case file for the human clinician (what, why flagged, evidence, options) | (1) summarisation of messy state | state read | ReviewCase | mid |
 | 10 | **Engagement Agent** (our "notification agent") | Decides *whether, when, how* to nudge (timing, fatigue, channel, tone); delivery itself is code | (1) trade-off per user history, avoid alert fatigue | notification history, quiet hours, channel prefs | NudgePlan | small |
-| 11 | **Scheduler Agent** (demo feature) | Fits recommended workouts into the user's real calendar: reads free/busy, proposes slots, creates events only after the user confirms | (1)(2) judgement over messy availability plus its own tools (calendar via MCP) | Calendar MCP: free/busy read, event create (after confirmation) | SchedulePlan | small |
+| 11 | **Scheduler Agent** (optional, demo feature) | Fits recommended workouts into the user's real calendar: reads free/busy, proposes slots, creates events only after the user confirms | (1)(2) judgement over messy availability plus its own tools (calendar via MCP) | Calendar MCP: free/busy read, event create (after confirmation) | SchedulePlan | small |
 
-## 2b. MCP layer
+## 2b. MCP layer (optional, stretch)
 MCP (Model Context Protocol) is used only where a shared tool server or an external integration is the point. Never for agent-to-agent messaging (Kafka), the Safety Guardian, or T0/T1 hot paths.
 | Server | Exposes | Used by | Phase |
 |---|---|---|---|
@@ -72,7 +72,7 @@ Handoffs are real tool calls with typed (Pydantic) payloads. Each agent: objecti
 ## 6. Why this decomposition (and not fewer/more)
 - **Fewer** (one big agent): unbounded context, no parallelism, no independent verification, can't scale per-tier.
 - **More** (agent per nutrient/organ system): coordination cost and latency exceed benefit; Anthropic notes multi-agent systems use many times more tokens, so each added agent must earn its place. That is why Activity+Sleep are merged and the Guardian is code.
-- The roster is 11 runtime agents but only 3-5 run on any one request (effort scaling by Triage).
+- The roster is 11 runtime agents (one optional) but only 3-5 run on any one request (effort scaling by Triage).
 
 ## 7. Failure modes each design choice addresses
 | Risk | Mitigation |
