@@ -4,3 +4,15 @@ __pycache__/
 node_modules/
 *.tfstate*
 .terraform/
+
+# python / tooling
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.egg-info/
+dist/
+.coverage
+# generated protobuf code (run scripts/gen_proto.py)
+libs/common/src/vitalmesh/

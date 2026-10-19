@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vitalmesh.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vitalmesh/events/v1/common.proto";
+import "vitalmesh/events/v1/payloads.proto";
+
+// Every message on every topic (docs/EVENT_BACKBONE.md section 3). One schema per
+// topic subject; adding a payload type is a backward-compatible change.
+message Envelope {
+  string event_id = 1;        // idempotency key unless (source, external_id) is set
+  string correlation_id = 2;  // one recommendation run
+  optional string causation_id = 3;
+  string user_id = 4;         // Kafka partition key
+  string household_id = 5;    // tenancy
+  optional string source = 6;       // provider dedupe: set together with external_id
+  optional string external_id = 7;
+  string type = 8;            // must match the payload case (see codec)
+  uint32 schema_version = 9;
+  google.protobuf.Timestamp occurred_at = 10;
+  optional string trace_id = 11;
+  Tier tier = 12;
+  optional google.protobuf.Timestamp deadline_at = 13;
+  uint32 attempt = 14;        // delivery attempts so far
+  optional string rules_version = 15;  // Guardian rules version that checked this event
+
+  oneof payload {
+    MeasurementRecorded measurement = 20;
+    MealLogged meal = 21;
+    WorkoutSessionCompleted workout = 22;
+    SleepSessionRecorded sleep = 23;
+    FeedbackRecorded feedback = 24;
+    MealPlanEntryChanged mealplan_entry = 25;
+    HealthStateUpdated health_state = 26;
+  }
+}
+
+// What lands on a *.dlq topic: the failure contract plus the original bytes, kept
+// verbatim so a record can be replayed after the cause is fixed (EVENT_BACKBONE.md s11).
+message DlqRecord {
+  string code = 1;
+  string category = 2;
+  string message = 3;
+  bool retryable = 4;
+  string remediation_action = 5;
+  map<string, string> details = 6;
+  string source_topic = 7;
+  int32 source_partition = 8;
+  int64 source_offset = 9;
+  string route_reason = 10;
+  bytes original_value = 11;
+  google.protobuf.Timestamp failed_at = 12;
+}

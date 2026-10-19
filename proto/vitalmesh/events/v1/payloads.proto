@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package vitalmesh.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vitalmesh/events/v1/common.proto";
+
+// ---- Payload families carried under user.event.received (EVENT_BACKBONE.md s12) ----
+
+// One extensible message with a registered metric_type, not one message per metric
+// (wger's user-defined measurement categories, decision D17).
+message MeasurementRecorded {
+  string metric_type = 1;  // registry key, e.g. "body_weight", "resting_heart_rate"
+  Quantity value = 2;
+  google.protobuf.Timestamp measured_at = 3;
+  string notes = 4;
+  map<string, string> extra_data = 5;  // typed and validated in the domain layer
+}
+
+message FoodItem {
+  string food_ref = 1;  // catalogue id when known
+  string name = 2;
+  Quantity amount = 3;
+}
+
+message MealLogged {
+  google.protobuf.Timestamp eaten_at = 1;
+  EntryType entry_type = 2;
+  repeated FoodItem items = 3;
+}
+
+// Sessions have a start AND an end, not a single time (decision D17).
+message WorkoutSessionCompleted {
+  google.protobuf.Timestamp started_at = 1;
+  google.protobuf.Timestamp ended_at = 2;
+  string activity_type = 3;
+  string notes = 4;
+}
+
+// DRAFT: wger has no sleep entities; shape follows common wearable APIs and must be
+// re-checked against the Fitbit Web API documentation before Phase 1 (decision D17).
+message SleepSessionRecorded {
+  enum Stage {
+    STAGE_UNSPECIFIED = 0;
+    STAGE_AWAKE = 1;
+    STAGE_LIGHT = 2;
+    STAGE_DEEP = 3;
+    STAGE_REM = 4;
+  }
+  message Segment {
+    Stage stage = 1;
+    google.protobuf.Timestamp started_at = 2;
+    google.protobuf.Timestamp ended_at = 3;
+  }
+  google.protobuf.Timestamp started_at = 1;
+  google.protobuf.Timestamp ended_at = 2;
+  repeated Segment segments = 3;
+}
+
+// Subjective feedback is its own event (wger's workout "impression", decision D17);
+// it feeds the Engagement and Coach roles.
+message FeedbackRecorded {
+  enum Impression {
+    IMPRESSION_UNSPECIFIED = 0;
+    IMPRESSION_BAD = 1;
+    IMPRESSION_NEUTRAL = 2;
+    IMPRESSION_GOOD = 3;
+  }
+  string subject_event_id = 1;  // the event this feedback is about
+  Impression impression = 2;
+  string notes = 3;
+}
+
+// A meal-plan slot changed (Mealie's PlanEntry, decision D20). Free-text entries with
+// no recipe are first-class.
+message MealPlanEntryChanged {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_CREATED = 1;
+    KIND_UPDATED = 2;
+    KIND_DELETED = 3;
+  }
+  Kind kind = 1;
+  string plan_date = 2;  // ISO-8601 calendar date, YYYY-MM-DD
+  EntryType entry_type = 3;
+  string title = 4;
+  string text = 5;
+  optional string recipe_id = 6;
+  double recipe_scale = 7;
+}
+
+// ---- Emitted by the state processor on user.state ----
+message HealthStateUpdated {
+  google.protobuf.Timestamp as_of = 1;
+  map<string, Quantity> latest_metrics = 2;  // metric_type -> latest value
+  string state_version = 3;
+}

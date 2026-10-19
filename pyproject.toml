@@ -1,0 +1,50 @@
+[project]
+name = "vitalmesh"
+version = "0.1.0"
+description = "Event-driven multi-agent health recommendation platform (workspace root)"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+dependencies = ["vitalmesh-common", "vitalmesh-processor"]
+
+[tool.uv.workspace]
+members = ["libs/common", "services/processor"]
+
+[tool.uv.sources]
+vitalmesh-common = { workspace = true }
+vitalmesh-processor = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "grpcio-tools>=1.66",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["libs/common/src/vitalmesh"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ["libs/common/src/vitalmesh/"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["vitalmesh.events.*", "confluent_kafka.*", "google.protobuf.*"]
+ignore_errors = true
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["libs", "services"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs the docker compose stack (Kafka, Schema Registry, Redis); skipped when unreachable",
+]

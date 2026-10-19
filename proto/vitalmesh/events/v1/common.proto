@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package vitalmesh.events.v1;
+
+// An amount ALWAYS carries its unit; consumers never assume grams or metres
+// (docs/EVENT_BACKBONE.md section 12, decision D17). Units are validated against a
+// registry per metric_type in the domain layer, not here.
+message Quantity {
+  double value = 1;
+  string unit = 2;  // e.g. "kg", "kcal", "bpm", "min", "ml"
+}
+
+// Compute tier chosen by Triage (docs/ARCHITECTURE.md section 2).
+enum Tier {
+  TIER_UNSPECIFIED = 0;
+  TIER_T0 = 1;  // deterministic, no LLM
+  TIER_T1 = 2;  // cohort cache
+  TIER_T2 = 3;  // single small agent
+  TIER_T3 = 4;  // full multi-agent graph
+}
+
+// Meal slots, taken from the observed Mealie schema (decision D20).
+enum EntryType {
+  ENTRY_TYPE_UNSPECIFIED = 0;
+  ENTRY_TYPE_BREAKFAST = 1;
+  ENTRY_TYPE_LUNCH = 2;
+  ENTRY_TYPE_DINNER = 3;
+  ENTRY_TYPE_SIDE = 4;
+  ENTRY_TYPE_SNACK = 5;
+  ENTRY_TYPE_DRINK = 6;
+  ENTRY_TYPE_DESSERT = 7;
+}
