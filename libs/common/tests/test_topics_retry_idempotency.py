@@ -54,18 +54,30 @@ NON_RETRYABLE = Failure(
 
 # ------------------------------------------------------------------------ topics
 def test_retry_and_dlq_names_round_trip() -> None:
-    assert retry_topic(USER_EVENTS) == "user.events.retry"
+    assert retry_topic(USER_EVENTS, 1) == "user.events.retry.1"
     assert dlq_topic(USER_EVENTS) == "user.events.dlq"
-    for name in (USER_EVENTS, retry_topic(USER_EVENTS), dlq_topic(USER_EVENTS)):
+    for name in (USER_EVENTS, retry_topic(USER_EVENTS, 2), dlq_topic(USER_EVENTS)):
         assert base_topic(name) == USER_EVENTS
 
 
-def test_every_topic_gets_retry_and_dlq_companions() -> None:
-    specs = all_topic_specs()
-    assert len(specs) == 3 * len(TOPICS)
+def test_retry_tiers_are_one_based() -> None:
+    with pytest.raises(ValueError):
+        retry_topic(USER_EVENTS, 0)
+
+
+def test_a_topic_that_merely_contains_retry_is_not_mangled() -> None:
+    assert base_topic("user.retry.notes") == "user.retry.notes"
+    assert base_topic("user.events.retry.x") == "user.events.retry.x"  # tier must be numeric
+
+
+def test_every_topic_gets_one_retry_topic_per_tier_and_a_dlq() -> None:
+    tiers = RetryPolicy().max_retries
+    specs = all_topic_specs(tiers)
+    assert len(specs) == (tiers + 2) * len(TOPICS)  # main + N retry tiers + dlq
     names = {s.name for s in specs}
     for base in TOPICS:
-        assert {base, retry_topic(base), dlq_topic(base)} <= names
+        expected = {base, dlq_topic(base)} | {retry_topic(base, t) for t in range(1, tiers + 1)}
+        assert expected <= names
 
 
 def test_dlq_retains_longer_than_the_main_topic() -> None:
@@ -86,7 +98,7 @@ def test_user_events_partitioning_profiles() -> None:
 def test_retryable_failure_goes_to_retry_with_backoff() -> None:
     r = route_failure(USER_EVENTS, meta(attempt=0), RETRYABLE, now=NOW)
     assert isinstance(r, RetryRoute)
-    assert r.topic == "user.events.retry"
+    assert r.topic == "user.events.retry.1"
     assert r.next_attempt == 1
     assert r.not_before == NOW + timedelta(seconds=5)
 
@@ -95,8 +107,15 @@ def test_backoff_grows_with_each_attempt() -> None:
     policy = RetryPolicy()
     delays = []
     for attempt in range(policy.max_retries):
-        r = route_failure("user.events.retry", meta(attempt=attempt), RETRYABLE, policy, NOW)
+        r = route_failure(
+            retry_topic(USER_EVENTS, attempt) if attempt else USER_EVENTS,
+            meta(attempt=attempt),
+            RETRYABLE,
+            policy,
+            NOW,
+        )
         assert isinstance(r, RetryRoute)
+        assert r.topic == retry_topic(USER_EVENTS, attempt + 1)  # tier n+1 after n retries
         delays.append(r.not_before - NOW)
     assert delays == list(policy.backoff)
     assert delays == sorted(delays)
@@ -104,9 +123,15 @@ def test_backoff_grows_with_each_attempt() -> None:
 
 def test_retry_budget_exhaustion_goes_to_dlq() -> None:
     policy = RetryPolicy()
-    r = route_failure("user.events.retry", meta(attempt=policy.max_retries), RETRYABLE, policy, NOW)
+    r = route_failure(
+        retry_topic(USER_EVENTS, policy.max_retries),
+        meta(attempt=policy.max_retries),
+        RETRYABLE,
+        policy,
+        NOW,
+    )
     assert isinstance(r, DlqRoute)
-    assert r.topic == "user.events.dlq"  # origin topic, not "user.events.retry.dlq"
+    assert r.topic == "user.events.dlq"  # origin topic, not a retry-tier dlq
     assert "exhausted" in r.reason
 
 

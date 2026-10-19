@@ -65,6 +65,5 @@ def route_failure(
     if meta.attempt >= policy.max_retries:
         return DlqRoute(dlq_topic(origin), f"retry budget exhausted after {meta.attempt} retries")
     delay = policy.backoff[meta.attempt]
-    return RetryRoute(
-        topic=retry_topic(origin), not_before=now + delay, next_attempt=meta.attempt + 1
-    )
+    tier = meta.attempt + 1
+    return RetryRoute(topic=retry_topic(origin, tier), not_before=now + delay, next_attempt=tier)

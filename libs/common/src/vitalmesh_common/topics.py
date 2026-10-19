@@ -14,7 +14,7 @@ from enum import StrEnum
 USER_EVENTS = "user.events"
 USER_STATE = "user.state"
 
-RETRY_SUFFIX = ".retry"
+RETRY_INFIX = ".retry."  # one retry topic per backoff tier: <topic>.retry.<n>, n = 1..max_retries
 DLQ_SUFFIX = ".dlq"
 
 
@@ -56,8 +56,15 @@ TOPICS: dict[str, TopicSpec] = {
 }
 
 
-def retry_topic(name: str) -> str:
-    return f"{name}{RETRY_SUFFIX}"
+def retry_topic(name: str, tier: int) -> str:
+    """Retry topic for backoff tier ``tier`` (1-based).
+
+    One topic per tier keeps each topic's delay constant, so messages stay ordered by
+    ``not_before`` and a long delay can never block a short one (no head-of-line blocking).
+    """
+    if tier < 1:
+        raise ValueError("retry tier is 1-based")
+    return f"{name}{RETRY_INFIX}{tier}"
 
 
 def dlq_topic(name: str) -> str:
@@ -65,27 +72,30 @@ def dlq_topic(name: str) -> str:
 
 
 def base_topic(name: str) -> str:
-    """Strip a retry/DLQ suffix to get the originating topic."""
-    for suffix in (RETRY_SUFFIX, DLQ_SUFFIX):
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
+    """Strip a retry-tier or DLQ suffix to get the originating topic."""
+    if name.endswith(DLQ_SUFFIX):
+        return name[: -len(DLQ_SUFFIX)]
+    head, sep, tail = name.rpartition(RETRY_INFIX)
+    if sep and tail.isdigit():
+        return head
     return name
 
 
-def all_topic_specs() -> list[TopicSpec]:
-    """Every declared topic plus its retry and DLQ companions (same partitioning)."""
+def all_topic_specs(retry_tiers: int = 3) -> list[TopicSpec]:
+    """Every declared topic plus its retry-tier and DLQ companions (same partitioning)."""
     specs: list[TopicSpec] = []
     for spec in TOPICS.values():
         specs.append(spec)
-        specs.append(
-            TopicSpec(
-                name=retry_topic(spec.name),
-                partitions=spec.partitions,
-                retention_ms=spec.retention_ms,
-                key=spec.key,
-                replication=spec.replication,
+        for tier in range(1, retry_tiers + 1):
+            specs.append(
+                TopicSpec(
+                    name=retry_topic(spec.name, tier),
+                    partitions=spec.partitions,
+                    retention_ms=spec.retention_ms,
+                    key=spec.key,
+                    replication=spec.replication,
+                )
             )
-        )
         specs.append(
             TopicSpec(
                 name=dlq_topic(spec.name),
