@@ -10,6 +10,7 @@ Delivery guarantees (docs/EVENT_BACKBONE.md section 6):
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -28,14 +29,16 @@ from vitalmesh.events.v1 import envelope_pb2
 from vitalmesh_common import codec
 from vitalmesh_common.envelope import EventMeta
 from vitalmesh_common.failure import EnvelopeError
-from vitalmesh_common.processor import EventProcessor, Record
+from vitalmesh_common.processor import EventProcessor, Outcome, Record
 from vitalmesh_common.topics import Profile, TopicSpec, all_topic_specs
+
+log = logging.getLogger("vitalmesh.kafka")
 
 
 @dataclass(frozen=True)
 class KafkaSettings:
-    bootstrap_servers: str = "localhost:9092"
-    schema_registry_url: str = "http://localhost:8081"
+    bootstrap_servers: str = "127.0.0.1:9092"
+    schema_registry_url: str = "http://127.0.0.1:8081"
     profile: Profile = Profile.LOCAL
 
     @classmethod
@@ -170,6 +173,9 @@ def build_consumer(settings: KafkaSettings, group: str) -> Consumer:
             "auto.offset.reset": "earliest",
             "partition.assignment.strategy": "cooperative-sticky",
             "max.poll.interval.ms": 300_000,  # must exceed the longest retry-tier delay
+            # A hard-killed worker is replaced within ~10 s instead of the 45 s default.
+            "session.timeout.ms": 10_000,
+            "heartbeat.interval.ms": 3_000,
         }
     )
 
@@ -190,7 +196,13 @@ def run_consumer(
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
     """Poll, wait out any retry delay, process, then commit the offset. Closes on exit."""
-    consumer.subscribe(list(topics))
+    consumer.subscribe(
+        list(topics),
+        on_assign=lambda _c, parts: log.info(
+            "assigned %s", [(p.topic, p.partition) for p in parts]
+        ),
+        on_revoke=lambda _c, parts: log.info("revoked %s", [(p.topic, p.partition) for p in parts]),
+    )
     try:
         while not stop.is_set():
             msg = consumer.poll(poll_timeout)
@@ -211,7 +223,16 @@ def run_consumer(
                 )  # retry tiers have constant delay: no head-of-line blocking
             if stop.is_set():
                 break  # uncommitted: redelivered after restart
-            processor.process(rec)
+            outcome = processor.process(rec)
+            # Normal processing is debug-level: at the target rate it would drown the logs.
+            log.log(
+                logging.DEBUG if outcome is Outcome.PROCESSED else logging.INFO,
+                "%s %s[%d]@%d",
+                outcome.value,
+                rec.topic,
+                rec.partition,
+                rec.offset,
+            )
             consumer.commit(message=msg, asynchronous=False)
     finally:
         consumer.close()

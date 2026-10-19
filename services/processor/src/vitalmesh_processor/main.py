@@ -30,7 +30,7 @@ from vitalmesh_common.topics import USER_EVENTS, retry_topic
 from vitalmesh_processor.handler import make_handler
 from vitalmesh_processor.state import RedisStateStore
 
-GROUP = "state-processor"
+GROUP = os.environ.get("VITALMESH_CONSUMER_GROUP", "state-processor")
 log = logging.getLogger("vitalmesh.processor")
 
 
@@ -39,10 +39,15 @@ def input_topics(policy: RetryPolicy) -> list[str]:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.basicConfig(
+        level=os.environ.get("VITALMESH_LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    for noisy in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)  # schema-registry HTTP chatter
     settings = KafkaSettings.from_env()
     policy = RetryPolicy()
-    redis_url = os.environ.get("VITALMESH_REDIS_URL", "redis://localhost:6379/0")
+    redis_url = os.environ.get("VITALMESH_REDIS_URL", "redis://127.0.0.1:6379/0")
     client = redis.Redis.from_url(redis_url)
 
     created = ensure_topics(settings)

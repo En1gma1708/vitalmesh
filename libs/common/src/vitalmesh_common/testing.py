@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -49,3 +50,12 @@ class RecordingPublisher:
         self.log.append("flush")
         if self.fail_flush:
             raise RuntimeError("broker unavailable")
+
+
+def service_reachable(host: str, port: int, timeout: float = 1.0) -> bool:
+    """True when something accepts TCP connections there (used to skip integration tests)."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
