@@ -21,6 +21,9 @@ uv run python -m vitalmesh_processor        # run the state processor
 uv run python -m vitalmesh_t0               # run the T0 recommendation service
 uv run python scripts/seed_demo.py demo-1   # synthetic demo user
 uv run python -m vitalmesh_api              # API; open http://127.0.0.1:8000/app/demo-1
+uv run python scripts/demo_flow.py demo-1   # one event through Kafka, printed as a recommendation
+uv run python scripts/demo_guardian.py      # unsafe recommendations blocked by the Guardian (no stack needed)
+uv run python -m vitalmesh_evals --explainer template   # 51 golden eval cases, no model
 docker compose -f infra/docker-compose.yml down -v
 ```
 The integration tests reset the topics in the topic contract on the local stack; do not point them at anything you care about.
