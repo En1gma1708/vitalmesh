@@ -10,6 +10,7 @@ no calculator cannot exist.
 from __future__ import annotations
 
 import math
+from datetime import date
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -72,6 +73,32 @@ class UserConstraints(BaseModel):
     age_years: float
     conditions: frozenset[str] = frozenset()
     medications: frozenset[str] = frozenset()
+    diet: str = "omnivore"  # omnivore / vegetarian / vegan; anything else blocks a meal plan
+    allergens: frozenset[str] = frozenset()
+
+    @field_validator("allergens", "conditions", "medications")
+    @classmethod
+    def _folded(cls, v: frozenset[str]) -> frozenset[str]:
+        return frozenset(x.strip().lower() for x in v if x.strip())
+
+
+class MealEntry(BaseModel):
+    """One planned meal. Only identifiers and a portion: everything checkable (allergens, diet,
+    energy) is looked up in the recipe catalogue by the Guardian, never taken from the planner."""
+
+    model_config = ConfigDict(frozen=True)
+
+    day: date
+    meal: str = Field(min_length=1)
+    recipe_id: str = Field(min_length=1)
+    scale: float
+
+    @field_validator("scale")
+    @classmethod
+    def _finite(cls, v: float) -> float:
+        if not math.isfinite(v):
+            raise ValueError("scale must be finite")
+        return v
 
 
 class Recommendation(BaseModel):
@@ -80,3 +107,4 @@ class Recommendation(BaseModel):
     recommendation_id: str = Field(min_length=1)
     user: UserConstraints
     claims: tuple[Claim, ...]
+    meal_plan: tuple[MealEntry, ...] = ()

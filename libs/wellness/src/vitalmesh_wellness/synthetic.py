@@ -8,6 +8,8 @@ from vitalmesh_wellness.calculators import ActivityLevel, Sex
 from vitalmesh_wellness.engine import Goal, Profile
 
 _CONDITIONS = ("cardiac", "uncontrolled_hypertension")
+_DIETS = ("omnivore", "omnivore", "vegetarian", "vegan")
+_ALLERGENS = ("nuts", "dairy", "gluten", "egg", "fish", "shellfish", "soy", "sesame")
 
 
 def synthetic_user(seed: int, index: int) -> tuple[Profile, list[float]]:
@@ -27,4 +29,11 @@ def synthetic_user(seed: int, index: int) -> tuple[Profile, list[float]]:
         conditions=conditions,
     )
     sleep = [round(min(max(rng.gauss(7.0, 1.3), 3.0), 10.5), 1) for _ in range(14)]
+    # drawn last so the fields above keep their values for existing seeds
+    profile = profile.model_copy(
+        update={
+            "diet": rng.choice(_DIETS),
+            "allergens": frozenset(a for a in _ALLERGENS if rng.random() < 0.08),
+        }
+    )
     return profile, sleep

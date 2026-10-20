@@ -214,3 +214,37 @@ def test_labs_listing_is_health_only() -> None:
     assert out[0]["reference_range"] == "<50"
     for internal in ("flag", "marker", "canonical", "loinc"):
         assert internal not in str(out).lower()
+
+
+# -------------------------------------------------------------------------- meal plan
+def test_mealplan_is_health_only_cleared_and_deterministic() -> None:
+    client, _, uid = make()
+    r = client.get(f"/v1/users/{uid}/mealplan?start=2026-10-26&days=7")
+    assert r.status_code == 200
+    out = r.json()
+    assert len(out["days"]) == 7 and all(len(d["meals"]) == 4 for d in out["days"])
+    assert out["days"][0]["day"] == "2026-10-26"
+    assert r.json() == client.get(f"/v1/users/{uid}/mealplan?start=2026-10-26&days=7").json()
+    text = r.text.lower()
+    for internal in ("guardian", "recipe_id", "rules", "tier", "provenance"):
+        assert internal not in text, internal
+
+
+def test_mealplan_never_returns_a_blocked_plan() -> None:
+    def block(_rec: Any) -> list[Violation]:
+        return [Violation(rule="test", message="internal reason")]
+
+    client, _, uid = make(guardian=Guardian((block,)))
+    r = client.get(f"/v1/users/{uid}/mealplan?start=2026-10-26")
+    assert r.status_code == 409 and "internal reason" not in r.text
+
+
+@pytest.mark.parametrize("query", ["days=0", "days=15", "start=not-a-date"])
+def test_mealplan_rejects_bad_parameters(query: str) -> None:
+    client, _, uid = make()
+    assert client.get(f"/v1/users/{uid}/mealplan?{query}").status_code == 422
+
+
+def test_mealplan_unknown_user_is_404() -> None:
+    client, _, _ = make()
+    assert client.get("/v1/users/nobody/mealplan").status_code == 404

@@ -18,14 +18,23 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
 
 from vitalmesh_wellness.claims import Claim, Provenance, Quantity, Recommendation
+from vitalmesh_wellness.recipes import ALLERGENS, BY_ID, DIET_NAMES, PORTION_MAX, PORTION_MIN
 
-RULES_VERSION = "1"
+RULES_VERSION = "2"
 
 # Metric names the rules understand, with the only unit each may use.
 METRIC_ENERGY = "daily_energy_target"
 METRIC_HR_ZONE = "target_hr_zone"
 METRIC_SLEEP = "sleep_target"
-EXPECTED_UNIT = {METRIC_ENERGY: "kcal", METRIC_HR_ZONE: "zone", METRIC_SLEEP: "h"}
+METRIC_PLAN_ENERGY = "meal_plan_avg_day_energy"
+EXPECTED_UNIT = {
+    METRIC_ENERGY: "kcal",
+    METRIC_HR_ZONE: "zone",
+    METRIC_SLEEP: "h",
+    METRIC_PLAN_ENERGY: "kcal",
+}
+PLAN_TARGET_TOLERANCE = 0.15  # each planned day must land within 15% of the energy target
+PLAN_TOTAL_EPSILON_KCAL = 0.5
 
 ENERGY_FLOOR_KCAL = {"female": 1200.0, "male": 1500.0}
 ENERGY_CEILING_KCAL = 6000.0
@@ -146,6 +155,94 @@ def rule_sleep_bounds(rec: Recommendation) -> list[Violation]:
     ]
 
 
+def rule_meal_plan_safe(rec: Recommendation) -> list[Violation]:
+    """Every entry is re-checked against the catalogue, never against what the planner says."""
+    out: list[Violation] = []
+    user = rec.user
+    diet = DIET_NAMES.get(user.diet)
+    if rec.meal_plan and diet is None:
+        out.append(Violation(rule="meal_plan_safe", message=f"unknown diet {user.diet!r}"))
+    for a in sorted(user.allergens - ALLERGENS) if rec.meal_plan else ():
+        out.append(
+            Violation(rule="meal_plan_safe", message=f"cannot verify allergen {a!r}; blocked")
+        )
+    for e in rec.meal_plan:
+        recipe = BY_ID.get(e.recipe_id)
+        label = f"{e.day} {e.meal} {e.recipe_id}"
+        if recipe is None:
+            out.append(Violation(rule="meal_plan_safe", message=f"unknown recipe ({label})"))
+            continue
+        if e.meal != recipe.meal.value:
+            out.append(Violation(rule="meal_plan_safe", message=f"wrong meal slot ({label})"))
+        if diet is not None and recipe.diet > diet:
+            out.append(Violation(rule="meal_plan_safe", message=f"does not fit the diet ({label})"))
+        hit = recipe.allergens & user.allergens
+        if hit:
+            out.append(
+                Violation(
+                    rule="meal_plan_safe",
+                    message=f"contains an allergen the user avoids: {sorted(hit)} ({label})",
+                )
+            )
+        if not PORTION_MIN <= e.scale <= PORTION_MAX:
+            out.append(Violation(rule="meal_plan_safe", message=f"portion out of range ({label})"))
+    return out
+
+
+def rule_meal_plan_energy(rec: Recommendation) -> list[Violation]:
+    if not rec.meal_plan:
+        return []
+    out: list[Violation] = []
+    targets = _quantities(rec, METRIC_ENERGY)
+    claimed = _quantities(rec, METRIC_PLAN_ENERGY)
+    if len(targets) != 1 or len(claimed) != 1:
+        return [
+            Violation(
+                rule="meal_plan_energy",
+                message="a plan needs exactly one energy target and one plan-energy claim",
+            )
+        ]
+    target, plan_claim = targets[0][1].value, claimed[0][1].value
+    sex = rec.user.sex.lower()
+    if sex not in ENERGY_FLOOR_KCAL:
+        return [Violation(rule="meal_plan_energy", message=f"no energy floor for sex {sex!r}")]
+    floor = ENERGY_FLOOR_KCAL[sex]
+    totals: dict[object, float] = {}
+    for e in rec.meal_plan:
+        recipe = BY_ID.get(e.recipe_id)
+        if recipe is None:
+            continue  # reported by meal_plan_safe
+        totals[e.day] = totals.get(e.day, 0.0) + recipe.kcal * e.scale
+    for day, total in sorted(totals.items(), key=lambda kv: str(kv[0])):
+        if not floor <= total <= ENERGY_CEILING_KCAL:
+            out.append(
+                Violation(
+                    rule="meal_plan_energy",
+                    message=f"{day}: {total:.0f} kcal is outside [{floor:.0f}, "
+                    f"{ENERGY_CEILING_KCAL:.0f}]",
+                )
+            )
+        if abs(total - target) > PLAN_TARGET_TOLERANCE * target:
+            out.append(
+                Violation(
+                    rule="meal_plan_energy",
+                    message=f"{day}: {total:.0f} kcal is more than "
+                    f"{PLAN_TARGET_TOLERANCE:.0%} away from the target {target:.0f}",
+                )
+            )
+    if totals:
+        mean = sum(totals.values()) / len(totals)
+        if abs(mean - plan_claim) > PLAN_TOTAL_EPSILON_KCAL:
+            out.append(
+                Violation(
+                    rule="meal_plan_energy",
+                    message=f"claimed average {plan_claim:.0f} kcal differs from the plan's "
+                    f"{mean:.0f} kcal",
+                )
+            )
+    return out
+
+
 DEFAULT_RULES: tuple[Rule, ...] = (
     rule_has_claims,
     rule_no_unknown_provenance,
@@ -153,6 +250,8 @@ DEFAULT_RULES: tuple[Rule, ...] = (
     rule_energy_bounds,
     rule_intensity_cap,
     rule_sleep_bounds,
+    rule_meal_plan_safe,
+    rule_meal_plan_energy,
 )
 
 

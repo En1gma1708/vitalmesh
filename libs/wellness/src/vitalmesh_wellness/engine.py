@@ -10,6 +10,7 @@ and the Guardian enforces the same cap independently.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,8 +22,11 @@ from vitalmesh_wellness.guardian import (
     INTENSITY_LIMITING_CONDITIONS,
     METRIC_ENERGY,
     METRIC_HR_ZONE,
+    METRIC_PLAN_ENERGY,
     METRIC_SLEEP,
 )
+from vitalmesh_wellness.mealplan import plan_days
+from vitalmesh_wellness.recipes import BY_ID
 
 ENGINE_VERSION = "1"
 _SOURCE = f"vitalmesh_wellness.calculators@{calc.CALCULATOR_VERSION}/engine@{ENGINE_VERSION}"
@@ -54,6 +58,8 @@ class Profile(BaseModel):
     goal: Goal = Goal.MAINTAIN
     conditions: frozenset[str] = frozenset()
     medications: frozenset[str] = frozenset()
+    diet: str = "omnivore"
+    allergens: frozenset[str] = frozenset()
 
     def constraints(self) -> UserConstraints:
         return UserConstraints(
@@ -62,6 +68,8 @@ class Profile(BaseModel):
             age_years=self.age_years,
             conditions=self.conditions,
             medications=self.medications,
+            diet=self.diet,
+            allergens=self.allergens,
         )
 
 
@@ -112,3 +120,33 @@ def build_recommendation(
     return Recommendation(
         recommendation_id=recommendation_id, user=profile.constraints(), claims=claims
     )
+
+
+def build_meal_plan_recommendation(
+    profile: Profile,
+    recent_sleep_hours: Sequence[float],
+    recommendation_id: str,
+    start: date,
+    days: int = 7,
+) -> Recommendation:
+    """The usual recommendation plus a meal plan. Raises ``PlanError`` when no safe plan exists.
+
+    The plan's average energy is a ``computed`` claim; the Guardian recomputes every day's total
+    from the catalogue and rejects any mismatch.
+    """
+    base = build_recommendation(profile, recent_sleep_hours, recommendation_id)
+    target = next(
+        c.quantity.value for c in base.claims if c.quantity and c.quantity.metric == METRIC_ENERGY
+    )
+    entries = plan_days(base.user, start, days, target)
+    totals: dict[date, float] = {}
+    for e in entries:
+        totals[e.day] = totals.get(e.day, 0.0) + BY_ID[e.recipe_id].kcal * e.scale
+    mean = sum(totals.values()) / len(totals)
+    claim = _computed(
+        METRIC_PLAN_ENERGY,
+        round(mean, 1),
+        "kcal",
+        f"Your {days}-day plan averages about {mean:.0f} kcal per day.",
+    )
+    return base.model_copy(update={"claims": (*base.claims, claim), "meal_plan": entries})

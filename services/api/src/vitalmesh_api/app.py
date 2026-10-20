@@ -17,7 +17,7 @@ import math
 import re
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException
@@ -30,9 +30,13 @@ from vitalmesh_common.topics import USER_EVENTS
 from vitalmesh_processor.labstore import LabStore
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
+from vitalmesh_wellness.calculators import OutOfRange
 from vitalmesh_wellness.claims import Provenance
+from vitalmesh_wellness.engine import build_meal_plan_recommendation
 from vitalmesh_wellness.guardian import Guardian
 from vitalmesh_wellness.labs import LabError, interpret
+from vitalmesh_wellness.mealplan import PlanError
+from vitalmesh_wellness.recipes import BY_ID
 
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_FUTURE = timedelta(minutes=5)
@@ -122,6 +126,27 @@ class Item(BaseModel):
     value: float | None
     unit: str | None
     basis: str
+
+
+class MealOut(BaseModel):
+    meal: str
+    title: str
+    portion: float
+    kcal: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+
+
+class DayOut(BaseModel):
+    day: date
+    kcal: float
+    meals: list[MealOut]
+
+
+class MealPlanOut(BaseModel):
+    average_daily_kcal: float
+    days: list[DayOut]
 
 
 class RecommendationOut(BaseModel):
@@ -281,6 +306,51 @@ def create_app(
             )
             for r in labs.list(user_id)
         ]
+
+    @app.get("/v1/users/{user_id}/mealplan", response_model=MealPlanOut)
+    def get_mealplan(user_id: str, start: date | None = None, days: int = 7) -> MealPlanOut:
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        if not 1 <= days <= 14:
+            raise HTTPException(status_code=422, detail="days must be between 1 and 14")
+        record = profiles.get(user_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="no profile for this user")
+        first = start or clock().date()
+        try:
+            rec = build_meal_plan_recommendation(
+                record.profile, record.recent_sleep_hours, str(uuid.uuid4()), first, days
+            )
+        except PlanError as exc:
+            raise HTTPException(
+                status_code=409, detail="no meal plan is available for you right now"
+            ) from exc
+        except OutOfRange as exc:
+            raise HTTPException(status_code=422, detail="profile data is not usable") from exc
+        if not gate.evaluate(rec).cleared:  # the Guardian is the last step; reasons stay internal
+            raise HTTPException(
+                status_code=409, detail="no meal plan is available for you right now"
+            )
+        by_day: dict[date, list[MealOut]] = {}
+        for e in rec.meal_plan:
+            r = BY_ID[e.recipe_id]
+            by_day.setdefault(e.day, []).append(
+                MealOut(
+                    meal=e.meal,
+                    title=r.title,
+                    portion=e.scale,
+                    kcal=round(r.kcal * e.scale),
+                    protein_g=round(r.protein_g * e.scale, 1),
+                    carbs_g=round(r.carbs_g * e.scale, 1),
+                    fat_g=round(r.fat_g * e.scale, 1),
+                )
+            )
+        out_days = [
+            DayOut(day=d, kcal=sum(m.kcal for m in ms), meals=ms)
+            for d, ms in sorted(by_day.items())
+        ]
+        avg = sum(d.kcal for d in out_days) / len(out_days)
+        return MealPlanOut(average_daily_kcal=round(avg), days=out_days)
 
     @app.get("/v1/users/{user_id}/recommendation", response_model=RecommendationOut)
     def get_recommendation(user_id: str) -> RecommendationOut:
