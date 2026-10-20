@@ -1,7 +1,7 @@
 """Request and response types for the LLM router.
 
 Policy enforced at this boundary: every request declares ``data_class`` and only ``synthetic``
-or ``public`` data may leave the process (CLAUDE.md: no real personal data to external LLM
+or ``public`` data may leave the process (project rule: no real personal data to external LLM
 APIs). Output length is always bounded (``max_tokens``), and the model is chosen by alias so
 callers never hard-code a provider.
 """
