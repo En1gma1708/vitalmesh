@@ -8,7 +8,7 @@ Health recommendation apps are either (a) static rule engines that ignore a user
 ## 2. Goal
 A production-grade, **multi-agent** health recommendation system that:
 1. Produces personalised, evidence-grounded, safety-checked recommendations (nutrition, activity, sleep, chronic-condition/medication-aware).
-2. Is **event-driven on Kafka** and sustains **>= 1,000,000 registered users with >= 100,000 concurrent active** (10% peak concurrency) on a cloud deployment (Azure primary; cloud-portable with an AWS mapping, see ARCHITECTURE.md section 10).
+2. Is **event-driven on Kafka** and sustains **>= 1,000,000 registered users with >= 100,000 concurrent active** (10% peak concurrency) on a cloud deployment (Azure; see ARCHITECTURE.md section 10).
 3. Uses **graphs** twice: LangGraph agent graphs for orchestration, and a **medical knowledge graph** for deterministic contraindication reasoning.
 4. Is observable (Langfuse), evaluated (offline evals + LLM-judge), and demo-able.
 

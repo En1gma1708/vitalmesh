@@ -1,6 +1,6 @@
 # VitalMesh
 
-An event-driven, multi-agent health recommendation platform built on **Kafka + LangGraph + Langfuse**, designed for 1M+ users. Cloud-portable: runs locally in Docker, deployed and load-tested on Azure, with a paper mapping to AWS services and no AWS deployment (see [Architecture](docs/ARCHITECTURE.md)). Domain: general wellness.
+An event-driven, multi-agent health recommendation platform built on **Kafka + LangGraph + Langfuse**, designed for 1M+ users. Runs locally in Docker; deployment and load tests are planned on Azure (see [Architecture](docs/ARCHITECTURE.md)). Domain: general wellness.
 
 **Core idea — Tiered Agentic Compute:** most events are handled deterministically (rules, ML, knowledge-graph reasoning); a cohort cache serves similar users; LLM agents are reserved for cases that need them. A pure-code Safety Guardian checks every recommendation, and high-risk cases go to human review.
 

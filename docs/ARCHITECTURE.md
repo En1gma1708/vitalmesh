@@ -17,7 +17,7 @@ Clients (web/mobile/wearables)
 ALB -> API Gateway svc (FastAPI, stateless, autoscaled)  --SSE/WS-->  Delivery svc
    |  produce                                                  ^
    v                                                           |
-Kafka (Apache Kafka KRaft; AWS mapping: MSK)  topics: user.events -> user.state -> agent.triggers -> agent.results -> recs.out ; *.dlq
+Kafka (Apache Kafka KRaft)  topics: user.events -> user.state -> agent.triggers -> agent.results -> recs.out ; *.dlq
    |
    +--> State Processor (consumer group; updates per-user state in Redis/Postgres; emits triggers)
    +--> Triage/Budget Agent  --> tier T0/T1/T2/T3
@@ -27,7 +27,7 @@ Kafka (Apache Kafka KRaft; AWS mapping: MSK)  topics: user.events -> user.state 
           T3: LangGraph multi-agent graph (below)
    +--> Agent Workers (consumer group, KEDA-autoscaled on lag)
    +--> Safety Guardian (always last) --> recs.out / HITL queue
-Stores: Postgres+pgvector (profiles, via pgbouncer; AWS mapping: Aurora), Redis (cohort cache, idempotency, rate limits; AWS mapping: ElastiCache),
+Stores: Postgres+pgvector (profiles, via pgbouncer), Redis (cohort cache, idempotency, rate limits),
         Neo4j Community (medical knowledge graph; single node, hot path reads a precompiled Redis lookup), S3 (corpus, artifacts)
 Observability: Langfuse, Prometheus/Grafana, OpenTelemetry
 ```
@@ -87,7 +87,7 @@ Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on http
 - Kafka is the only inter-agent transport; the Aggregator is built Kafka-native after a spike (open).
 - Redis is a store only (cache, idempotency, rate limits), never a bus; Neo4j Community is the knowledge-graph source of truth with a precompiled hot-path lookup.
 - Protobuf with a Schema Registry (backward compatibility); real Apache Kafka in KRaft mode.
-- Azure for Students is the primary cloud; the design is cloud-portable (a paper mapping to AWS services exists; no AWS deployment is planned); zero personal spend.
+- Azure for Students is the primary cloud; Azure is the only cloud and local Docker the development environment; zero personal spend.
 - LLMs through a provider router (`libs/llm`: Groq, Gemini and OpenRouter free tiers, with a rate limiter, a response cache and a mock for scale tests). Only synthetic or public data is ever sent.
 - Safety checks at every agent boundary plus an authoritative final Guardian.
 
@@ -97,7 +97,7 @@ Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on http
 | Dev + first load tests | Local Docker | free, fast iteration |
 | Real deployment + main load tests | **Azure (student credits)** | primary cloud; real Apache Kafka on VMs/AKS |
 
-Service mapping, on paper only (nothing is deployed or tested on AWS): Kafka -> MSK; Kubernetes AKS -> EKS; Postgres -> Aurora/RDS; Redis -> ElastiCache; secrets Key Vault -> Secrets Manager; blob -> S3. Every benchmark is labelled local or Azure, and measured or extrapolated.
+Every benchmark is labelled local or Azure, and measured or extrapolated.
 
 ## 11. MCP layer (optional, stretch)
 Three MCP servers, each with a narrow purpose (see AGENTS.md section 2b): **Knowledge** (read-only tools shared by specialists), **Ops** (read-only operator debugging), **Calendar** (user-side scheduling).
