@@ -203,6 +203,7 @@ def run_consumer(
         ),
         on_revoke=lambda _c, parts: log.info("revoked %s", [(p.topic, p.partition) for p in parts]),
     )
+    last: Any = None
     try:
         while not stop.is_set():
             msg = consumer.poll(poll_timeout)
@@ -233,6 +234,15 @@ def run_consumer(
                 rec.partition,
                 rec.offset,
             )
-            consumer.commit(message=msg, asynchronous=False)
+            # Asynchronous: the commit is still issued only after process() returned (outputs
+            # acknowledged), so a lost commit means redelivery, which idempotency absorbs. A
+            # synchronous commit cost ~6.6 ms per message (D49).
+            consumer.commit(message=msg, asynchronous=True)
+            last = msg
     finally:
+        if last is not None:
+            try:
+                consumer.commit(message=last, asynchronous=False)  # flush the final position
+            except KafkaException as exc:
+                log.warning("final commit failed (records will be redelivered): %s", exc)
         consumer.close()

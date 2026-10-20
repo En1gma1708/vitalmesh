@@ -10,6 +10,7 @@ consumer start-up and partition assignment are excluded. It is not a scale numbe
 
 from __future__ import annotations
 
+import random
 import statistics
 import time
 import uuid
@@ -75,7 +76,9 @@ def weight_event(
     return meta, m
 
 
+@pytest.mark.parametrize("spaced", [False, True], ids=["burst", "spaced"])
 def test_t0_path_is_cleared_traceable_and_fast(
+    spaced: bool,
     kafka_settings: KafkaSettings,
     serde: SchemaRegistrySerde,
     publisher: KafkaPublisher,
@@ -122,6 +125,7 @@ def test_t0_path_is_cleared_traceable_and_fast(
         publisher.flush()
         fetch_through(kafka_settings, RECOMMENDATIONS_RELEASED, decode, mine({warm_uid}))
 
+        jitter = random.Random(7)
         sent_at: dict[str, float] = {}
         corr: dict[str, str] = {}
         for uid in batch_uids:
@@ -129,6 +133,9 @@ def test_t0_path_is_cleared_traceable_and_fast(
             meta, m = weight_event(uid, users[uid], corr[uid])
             sent_at[uid] = time.time()
             publisher.publish(USER_EVENTS, uid, serde.serialize_event(USER_EVENTS, meta, m))
+            if spaced:  # jittered arrivals so events do not queue behind each other
+                publisher.flush()
+                time.sleep(jitter.uniform(0.1, 0.2))
         publisher.flush()
         remaining = set(batch_uids)
 
@@ -139,7 +146,8 @@ def test_t0_path_is_cleared_traceable_and_fast(
         out = fetch_through(kafka_settings, RECOMMENDATIONS_RELEASED, decode, got_all, timeout=60)
 
     assert not remaining, f"{len(remaining)} users never got a recommendation"
-    latencies = []
+    latencies: list[float] = []
+    order: list[tuple[int, float]] = []
     seen: set[str] = set()
     for out_meta, rec in out:
         uid = out_meta.user_id
@@ -158,13 +166,17 @@ def test_t0_path_is_cleared_traceable_and_fast(
         assert all(c.provenance == common_pb2.PROVENANCE_COMPUTED for c in rec.claims)
         assert all(c.quantity.unit for c in rec.claims)  # every number carries a unit
         latencies.append((out_meta.occurred_at.timestamp() - sent_at[uid]) * 1000)
+        order.append((batch_uids.index(uid), latencies[-1]))
 
     assert len(latencies) == BATCH
+    slow = sorted(order, key=lambda t: -t[1])[:4]
+    print("slowest (send index, ms):", [(i, round(ms)) for i, ms in slow])
     latencies.sort()
     p50 = statistics.median(latencies)
     p95 = latencies[int(0.95 * (len(latencies) - 1))]
     print(
-        f"\nT0 chain, burst of {BATCH} users, warmed up, single machine: "
+        f"\nT0 chain, {'spaced' if spaced else 'burst of'} {BATCH} users, warmed up, "
+        f"single machine: "
         f"p50 {p50:.0f} ms, p95 {p95:.0f} ms, max {latencies[-1]:.0f} ms"
     )
     assert latencies[-1] < 30_000
