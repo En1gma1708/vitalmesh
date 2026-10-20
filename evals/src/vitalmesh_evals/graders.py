@@ -197,6 +197,14 @@ def no_prompt_leak(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, An
     return _res("no_prompt_leak", not hits, f"leaked={hits}")
 
 
+@grader
+def min_judge(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]) -> GradeResult:
+    """The judge's score for ``metric`` (relevance or tone) must reach ``minimum``."""
+    val = out.get(args["metric"])
+    ok = isinstance(val, int) and val >= args["minimum"]
+    return _res("min_judge", ok, f"{args['metric']}={val} want >= {args['minimum']}")
+
+
 def run_grader(
     spec_type: str, out: dict[str, Any], inp: dict[str, Any], args: dict[str, Any]
 ) -> GradeResult:

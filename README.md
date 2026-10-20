@@ -1,10 +1,10 @@
 # VitalMesh
 
-An event-driven, multi-agent health recommendation platform built on **Kafka + LangGraph + Langfuse**, designed for 1M+ users. Cloud-portable: runs locally in Docker, deployed and load-tested on Azure, with an AWS mapping (see [Architecture](docs/ARCHITECTURE.md)). Domain: general wellness.
+An event-driven, multi-agent health recommendation platform built on **Kafka + LangGraph + Langfuse**, designed for 1M+ users. Cloud-portable: runs locally in Docker, deployed and load-tested on Azure, with a paper mapping to AWS services and no AWS deployment (see [Architecture](docs/ARCHITECTURE.md)). Domain: general wellness.
 
 **Core idea — Tiered Agentic Compute:** most events are handled deterministically (rules, ML, knowledge-graph reasoning); a cohort cache serves similar users; LLM agents are reserved for cases that need them. A pure-code Safety Guardian checks every recommendation, and high-risk cases go to human review.
 
-**Status:** Phase 0 (foundation) and Phase 1 (deterministic core) are implemented and tested: event envelope and failure contracts, Protobuf schemas, an at-least-once processor with retry tiers and a dead-letter queue, wellness calculators, a safety Guardian with typed claim provenance that fails closed, a rule engine, a rule-driven meal planner whose allergen and diet checks the Guardian re-derives, lab results with unit conversion and range classification, an anomaly check, measurement history, a health-only chart page, a seed knowledge graph in Neo4j, a T0 service that turns state updates into Guardian-checked recommendations, and a FastAPI gateway (about 312 unit and 20 integration tests). Measured on one machine: the in-process T0 recommendation over HTTP has p95 of about 3.5 ms; the two-hop Kafka chain has p95 of 13-15 ms for spaced events and about 430 ms for a simultaneous burst of 50 through one consumer thread per stage. Phase 2 has started: an LLM router over free-tier providers and an eval harness with 51 golden cases (deterministic graders; a no-model baseline and an LLM explainer both pass 50 of 51) are in; agents (LangGraph), retrieval and cloud deployment follow.
+**Status:** Phase 0 (foundation) and Phase 1 (deterministic core) are implemented and tested: event envelope and failure contracts, Protobuf schemas, an at-least-once processor with retry tiers and a dead-letter queue, wellness calculators, a safety Guardian with typed claim provenance that fails closed, a rule engine, a rule-driven meal planner whose allergen and diet checks the Guardian re-derives, lab results with unit conversion and range classification, an anomaly check, measurement history, a health-only chart page, a seed knowledge graph in Neo4j, a T0 service that turns state updates into Guardian-checked recommendations, and a FastAPI gateway (about 312 unit and 20 integration tests). Measured on one machine: the in-process T0 recommendation over HTTP has p95 of about 3.5 ms; the two-hop Kafka chain has p95 of 13-15 ms for spaced events and about 430 ms for a simultaneous burst of 50 through one consumer thread per stage. Phase 2 has started: an LLM router over free-tier providers and an eval harness with 71 golden cases (deterministic graders, a 30-case prompt-injection suite, committed baselines and a calibrated relevance and tone judge) are in; agents (LangGraph), retrieval and cloud deployment follow.
 
 Design docs: [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Agents](docs/AGENTS.md), [Event backbone](docs/EVENT_BACKBONE.md).
 
@@ -23,7 +23,7 @@ uv run python scripts/seed_demo.py demo-1   # synthetic demo user
 uv run python -m vitalmesh_api              # API; open http://127.0.0.1:8000/app/demo-1
 uv run python scripts/demo_flow.py demo-1   # one event through Kafka, printed as a recommendation
 uv run python scripts/demo_guardian.py      # unsafe recommendations blocked by the Guardian (no stack needed)
-uv run python -m vitalmesh_evals --explainer template   # 51 golden eval cases, no model
+uv run python -m vitalmesh_evals --explainer template   # 71 golden eval cases, no model
 docker compose -f infra/docker-compose.yml down -v
 ```
 The integration tests reset the topics in the topic contract on the local stack; do not point them at anything you care about.

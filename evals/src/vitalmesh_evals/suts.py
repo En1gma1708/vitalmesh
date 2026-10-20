@@ -27,6 +27,7 @@ from vitalmesh_wellness.guardian import Guardian
 from vitalmesh_wellness.mealplan import PlanError
 
 from vitalmesh_evals.case import EvalCase
+from vitalmesh_evals.judge import Judge, JudgeError
 
 
 @dataclass
@@ -181,3 +182,31 @@ class ExplainSut:
 
     def run(self, case: EvalCase) -> SutOutput:
         return self._explainer.explain(case.input["facts"], case.input["question"])
+
+
+class JudgedExplainer:
+    """Wraps an explainer and adds the judge's relevance and tone scores to its output."""
+
+    def __init__(self, inner: Explainer, judge: Judge) -> None:
+        self._inner = inner
+        self._judge = judge
+
+    def explain(self, facts: list[dict[str, Any]], question: str) -> SutOutput:
+        out = self._inner.explain(facts, question)
+        if out.error is not None:
+            return out
+        try:
+            score = self._judge.score(question, facts, out.output["text"])
+        except JudgeError as exc:
+            out.error = f"judge_unavailable: {str(exc)[:80]}"
+            return out
+        out.output = {
+            **out.output,
+            "relevance": score.relevance,
+            "tone": score.tone,
+            "judge_reason": score.reason,
+        }
+        out.prompt_tokens += score.prompt_tokens
+        out.completion_tokens += score.completion_tokens
+        out.cached = out.cached and score.cached
+        return out

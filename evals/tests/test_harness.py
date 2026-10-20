@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 from vitalmesh_evals.case import EvalCase, g
 from vitalmesh_evals.cases import all_cases
 from vitalmesh_evals.graders import REGISTRY, numbers_in, run_grader
@@ -35,7 +36,7 @@ def grade(name: str, text: str, **args: Any) -> bool:
 # --------------------------------------------------------------------- case integrity
 def test_case_set_is_the_expected_size_and_well_formed() -> None:
     cases = all_cases()
-    assert len(cases) == 51
+    assert len(cases) == 71
     by_cat = {c.category: 0 for c in cases}
     for c in cases:
         by_cat[c.category] += 1
@@ -46,7 +47,7 @@ def test_case_set_is_the_expected_size_and_well_formed() -> None:
         "t0_safety": 8,
         "t0_plan": 8,
         "explain": 15,
-        "injection": 10,
+        "injection": 30,
     }
 
 
@@ -126,12 +127,42 @@ def test_every_deterministic_case_passes_and_is_a_regression_gate() -> None:
     assert rep.passed == len(cases), rep.summary()
 
 
-def test_template_baseline_is_known_and_its_one_weakness_is_recorded() -> None:
+def test_template_baseline_has_no_regressions_and_covers_every_case() -> None:
+    from vitalmesh_evals.baseline import compare, load_baseline, path_for
+
     cases = [c for c in all_cases() if c.sut == "explain"]
     rep = run_cases("template", cases, {"explain": ExplainSut(TemplateExplainer())})
-    failed = {r.case_id for r in rep.results if not r.passed}
-    # The template relays fact text verbatim, so an instruction planted in the facts gets through.
-    assert failed == {"inj-data-borne"}, rep.summary()
+    cmp = compare(rep, load_baseline(path_for("template")))
+    assert cmp.ok, cmp.summary()  # a regression, or a case nobody recorded a baseline for
+
+
+def test_baseline_comparison_and_writing_rules(tmp_path: Path) -> None:
+    from vitalmesh_evals.baseline import compare, load_baseline, write_baseline
+
+    ok = Fixed(SutOutput({"text": "fine answer"}))
+    rep = run_cases("t", _cases(3), {"explain": ok})
+    path = write_baseline(rep, "unit", tmp_path)
+    base = load_baseline(path)
+    assert base == {"c0": True, "c1": True, "c2": True}
+    assert compare(rep, base).ok
+    # a case that passed before and fails now is a regression
+    worse = run_cases(
+        "t", _cases(3), {"explain": Fixed(SutOutput({"text": "one two three four six seven"}))}
+    )
+    assert compare(worse, base).regressions == ["c0", "c1", "c2"]
+    # a case with no entry fails the check, and a baseline entry for a vanished case is stale
+    more = run_cases("t", _cases(4), {"explain": ok})
+    assert compare(more, base).missing == ["c3"] and not compare(more, base).ok
+    assert compare(run_cases("t", _cases(2), {"explain": ok}), base).stale == ["c2"]
+    # a failing case may be in the baseline; it only counts when it later passes
+    bad_base = {"c0": False, "c1": True, "c2": True}
+    assert compare(rep, bad_base).improvements == ["c0"] and compare(rep, bad_base).ok
+    # a run with provider errors can never become a baseline
+    flaky = run_cases(
+        "t", _cases(2), {"explain": Fixed(SutOutput({"text": ""}, error="llm_unavailable"))}
+    )
+    with pytest.raises(ValueError):
+        write_baseline(flaky, "bad", tmp_path)
 
 
 def test_cases_have_teeth_a_weakened_guardian_fails_the_safety_cases() -> None:
