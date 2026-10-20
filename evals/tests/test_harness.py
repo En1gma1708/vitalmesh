@@ -9,6 +9,7 @@ from vitalmesh_evals.cases import all_cases
 from vitalmesh_evals.graders import REGISTRY, numbers_in, run_grader
 from vitalmesh_evals.runner import run_cases
 from vitalmesh_evals.suts import (
+    Explainer,
     ExplainSut,
     SutOutput,
     T0Sut,
@@ -36,7 +37,7 @@ def grade(name: str, text: str, **args: Any) -> bool:
 # --------------------------------------------------------------------- case integrity
 def test_case_set_is_the_expected_size_and_well_formed() -> None:
     cases = all_cases()
-    assert len(cases) == 71
+    assert len(cases) == 79
     by_cat = {c.category: 0 for c in cases}
     for c in cases:
         by_cat[c.category] += 1
@@ -47,7 +48,7 @@ def test_case_set_is_the_expected_size_and_well_formed() -> None:
         "t0_safety": 8,
         "t0_plan": 8,
         "explain": 15,
-        "injection": 30,
+        "injection": 38,
     }
 
 
@@ -127,12 +128,17 @@ def test_every_deterministic_case_passes_and_is_a_regression_gate() -> None:
     assert rep.passed == len(cases), rep.summary()
 
 
-def test_template_baseline_has_no_regressions_and_covers_every_case() -> None:
+@pytest.mark.parametrize("label", ["template", "template+guard"])
+def test_no_model_baselines_have_no_regressions_and_cover_every_case(label: str) -> None:
     from vitalmesh_evals.baseline import compare, load_baseline, path_for
+    from vitalmesh_evals.guard import GuardedExplainer
 
+    explainer: Explainer = TemplateExplainer()
+    if label.endswith("+guard"):
+        explainer = GuardedExplainer(explainer)
     cases = [c for c in all_cases() if c.sut == "explain"]
-    rep = run_cases("template", cases, {"explain": ExplainSut(TemplateExplainer())})
-    cmp = compare(rep, load_baseline(path_for("template")))
+    rep = run_cases(label, cases, {"explain": ExplainSut(explainer)})
+    cmp = compare(rep, load_baseline(path_for(label)))
     assert cmp.ok, cmp.summary()  # a regression, or a case nobody recorded a baseline for
 
 

@@ -83,7 +83,7 @@ class Router:
             self.stats["cache"]["misses"] += 1
 
         resp = self._mock_call(req) if req.alias == "mock" else self._call_waiting(req, max_wait_s)
-        if key is not None:
+        if key is not None and not resp.truncated:  # a cut-off answer must never be replayed
             self._cache.put(key, resp)
         return resp
 
@@ -198,6 +198,7 @@ class Router:
         try:
             data = r.json()
             text = data["choices"][0]["message"]["content"]
+            finish = data["choices"][0].get("finish_reason")
             usage = data.get("usage") or {}
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise _Retryable(r.status_code, "unusable response body") from exc
@@ -211,6 +212,7 @@ class Router:
             prompt_tokens=int(usage.get("prompt_tokens", 0)),
             completion_tokens=int(usage.get("completion_tokens", 0)),
             latency_ms=elapsed_ms,
+            finish_reason=finish if isinstance(finish, str) else None,
         )
         s = self.stats[spec.name]
         s["calls"] += 1

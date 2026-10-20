@@ -46,6 +46,13 @@ class LLMResponse(BaseModel):
     completion_tokens: int
     latency_ms: float
     cached: bool = False
+    finish_reason: str | None = None
+
+    @property
+    def truncated(self) -> bool:
+        """True when the model stopped at ``max_tokens``: reasoning models can spend the whole
+        budget thinking and return a cut-off answer ("Your")."""
+        return (self.finish_reason or "").lower() in {"length", "max_tokens"}
 
 
 class LLMError(RuntimeError):

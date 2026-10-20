@@ -17,6 +17,7 @@ from vitalmesh_llm import RedisCache, Router, load_keys
 from vitalmesh_evals.baseline import compare, load_baseline, path_for, write_baseline
 from vitalmesh_evals.case import EvalCase, g
 from vitalmesh_evals.cases import all_cases
+from vitalmesh_evals.guard import GuardedExplainer
 from vitalmesh_evals.judge import JUDGE_SYSTEM, Judge
 from vitalmesh_evals.judge_calibration import calibrate
 from vitalmesh_evals.runner import code_fingerprint, run_cases, save_report
@@ -40,7 +41,9 @@ def make_router() -> Router:
 
 
 def with_judge_graders(case: EvalCase) -> EvalCase:
-    if case.category not in ("explain", "injection"):
+    # D61: the judge cannot reliably tell refusing from obeying (18/22 on calibration), so it
+    # grades relevance and tone on the explain cases only; injection cases are graded in code.
+    if case.category != "explain":
         return case
     extra = (
         g("min_judge", metric="relevance", minimum=3),
@@ -84,6 +87,11 @@ def main() -> None:
     )
     ap.add_argument("--fresh", action="store_true", help="ignore the checkpoint, rerun all")
     ap.add_argument(
+        "--guard",
+        action="store_true",
+        help="wrap the explainer in the deterministic guard (question screen, answer checks)",
+    )
+    ap.add_argument(
         "--judge",
         action="store_true",
         help="add the LLM relevance and tone judge to the explain and injection cases",
@@ -100,11 +108,13 @@ def main() -> None:
     cases = [c for c in all_cases() if not args.only or c.category in args.only]
     if args.judge:
         cases = [with_judge_graders(c) for c in cases]
-    label = args.explainer + ("+judge" if args.judge else "")
+    label = args.explainer + ("+guard" if args.guard else "") + ("+judge" if args.judge else "")
     router = make_router() if (args.explainer == "llm" or args.judge) else None
     inner: Explainer = (
         LLMExplainer(router) if args.explainer == "llm" and router else TemplateExplainer()
     )
+    if args.guard:
+        inner = GuardedExplainer(inner)
     if args.judge and router:
         inner = JudgedExplainer(inner, Judge(router))
     explain: Sut = ExplainSut(inner)

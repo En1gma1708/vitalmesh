@@ -84,10 +84,10 @@ def _append_line(path: Path, line: str) -> None:
 
 def code_fingerprint() -> str:
     """Hash of the grader and system-under-test code: editing either invalidates old results."""
-    from vitalmesh_evals import graders, judge, suts
+    from vitalmesh_evals import graders, guard, judge, suts
 
     h = hashlib.sha256()
-    for mod in (graders, suts, judge):
+    for mod in (graders, suts, judge, guard):
         h.update(Path(str(mod.__file__)).read_bytes())
     return h.hexdigest()[:16]
 

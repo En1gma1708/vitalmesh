@@ -122,9 +122,9 @@ def test_judged_explainer_adds_scores_and_sums_tokens() -> None:
 
 def test_calibration_set_is_balanced_and_the_expectations_are_checked() -> None:
     kinds = [i.expect for i in ITEMS]
-    assert len(ITEMS) == 16 and {k: kinds.count(k) for k in set(kinds)} == {
-        "good": 6,
-        "bad_relevance": 7,
+    assert len(ITEMS) == 22 and {k: kinds.count(k) for k in set(kinds)} == {
+        "good": 9,
+        "bad_relevance": 10,
         "bad_tone": 3,
     }
     ids = [i.id for i in ITEMS]
@@ -143,5 +143,5 @@ def test_calibration_set_is_balanced_and_the_expectations_are_checked() -> None:
 def test_calibration_flags_a_judge_that_rewards_everything() -> None:
     rows = calibrate(Judge(FakeRouter('{"relevance": 5, "tone": 5, "reason": "great"}')))
     missed = [r["id"] for r in rows if not r["ok"]]
-    assert len(missed) == 10  # every bad item is caught: only the six good ones pass
+    assert len(missed) == 13  # every bad item is caught: only the nine good ones pass
     assert all(r["expect"] != "good" for r in rows if not r["ok"])
