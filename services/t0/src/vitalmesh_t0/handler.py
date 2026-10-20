@@ -14,14 +14,13 @@ from datetime import datetime
 from typing import Any
 
 from vitalmesh_common.envelope import EventMeta, Tier, utcnow
-from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Handler, Publisher
 from vitalmesh_common.topics import RECOMMENDATIONS_RELEASED, SAFETY_BLOCKED
-from vitalmesh_wellness.calculators import OutOfRange
-from vitalmesh_wellness.engine import ENGINE_VERSION, build_recommendation
+from vitalmesh_wellness.engine import ENGINE_VERSION
 from vitalmesh_wellness.guardian import Guardian
 
 from vitalmesh_t0.convert import to_blocked, to_released
+from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
 
 INPUT_TYPE = "health.state.updated"
@@ -55,12 +54,8 @@ def make_handler(
         if record is None:
             raise UnknownUser(f"no profile for user {meta.user_id!r}")
 
-        rec_id = derived_id(meta.event_id, "recommendation")
-        try:
-            rec = build_recommendation(record.profile, record.recent_sleep_hours, rec_id)
-        except OutOfRange as exc:  # implausible stored data: never retryable, never guessed
-            raise EnvelopeError(f"profile data out of range: {exc}") from exc
-        verdict = gate.evaluate(rec)
+        decision = decide(record, derived_id(meta.event_id, "recommendation"), gate)
+        rec, verdict = decision.recommendation, decision.verdict
 
         now = clock()
         if verdict.cleared:
