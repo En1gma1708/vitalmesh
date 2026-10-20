@@ -18,9 +18,10 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
 
 from vitalmesh_wellness.claims import Claim, Provenance, Quantity, Recommendation
+from vitalmesh_wellness.knowledge import DEFAULT_INDEX
 from vitalmesh_wellness.recipes import ALLERGENS, BY_ID, DIET_NAMES, PORTION_MAX, PORTION_MIN
 
-RULES_VERSION = "2"
+RULES_VERSION = "3"
 
 # Metric names the rules understand, with the only unit each may use.
 METRIC_ENERGY = "daily_energy_target"
@@ -40,8 +41,7 @@ ENERGY_FLOOR_KCAL = {"female": 1200.0, "male": 1500.0}
 ENERGY_CEILING_KCAL = 6000.0
 SLEEP_TARGET_HOURS = (7.0, 10.0)
 # Conditions that cap exercise intensity at zone 3 until a clinician clears more.
-INTENSITY_LIMITING_CONDITIONS = frozenset({"cardiac", "uncontrolled_hypertension"})
-MAX_ZONE_WITH_LIMITING_CONDITION = 3.0
+INTENSITY_LIMITING_CONDITIONS = DEFAULT_INDEX.limiting_conditions()  # from the knowledge graph
 
 
 class Severity(StrEnum):
@@ -128,17 +128,18 @@ def rule_energy_bounds(rec: Recommendation) -> list[Violation]:
 
 
 def rule_intensity_cap(rec: Recommendation) -> list[Violation]:
-    if not rec.user.conditions & INTENSITY_LIMITING_CONDITIONS:
+    cap = DEFAULT_INDEX.max_zone(rec.user.conditions)
+    if cap is None:
         return []
     return [
         Violation(
             rule="intensity_cap",
-            message=f"zone {q.value:g} exceeds zone {MAX_ZONE_WITH_LIMITING_CONDITION:g} "
+            message=f"zone {q.value:g} exceeds zone {cap:g} "
             "for a user with an intensity-limiting condition",
             claim_text=c.text,
         )
         for c, q in _quantities(rec, METRIC_HR_ZONE)
-        if q.value > MAX_ZONE_WITH_LIMITING_CONDITION
+        if q.value > cap
     ]
 
 
@@ -159,6 +160,7 @@ def rule_meal_plan_safe(rec: Recommendation) -> list[Violation]:
     """Every entry is re-checked against the catalogue, never against what the planner says."""
     out: list[Violation] = []
     user = rec.user
+    avoided = user.effective_allergens
     diet = DIET_NAMES.get(user.diet)
     if rec.meal_plan and diet is None:
         out.append(Violation(rule="meal_plan_safe", message=f"unknown diet {user.diet!r}"))
@@ -176,7 +178,7 @@ def rule_meal_plan_safe(rec: Recommendation) -> list[Violation]:
             out.append(Violation(rule="meal_plan_safe", message=f"wrong meal slot ({label})"))
         if diet is not None and recipe.diet > diet:
             out.append(Violation(rule="meal_plan_safe", message=f"does not fit the diet ({label})"))
-        hit = recipe.allergens & user.allergens
+        hit = recipe.allergens & avoided
         if hit:
             out.append(
                 Violation(

@@ -42,7 +42,7 @@ def eligible(recipe: Recipe, user: UserConstraints) -> bool:
     diet = DIET_NAMES.get(user.diet)
     if diet is None:  # an unknown diet is not guessed
         return False
-    return recipe.diet <= diet and not (recipe.allergens & user.allergens)
+    return recipe.diet <= diet and not (recipe.allergens & user.effective_allergens)
 
 
 def _tiebreak(user_id: str, day: date, meal: Meal, recipe_id: str) -> int:

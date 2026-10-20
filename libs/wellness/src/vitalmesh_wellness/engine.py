@@ -19,12 +19,12 @@ from vitalmesh_wellness import calculators as calc
 from vitalmesh_wellness.claims import Claim, Provenance, Quantity, Recommendation, UserConstraints
 from vitalmesh_wellness.guardian import (
     ENERGY_FLOOR_KCAL,
-    INTENSITY_LIMITING_CONDITIONS,
     METRIC_ENERGY,
     METRIC_HR_ZONE,
     METRIC_PLAN_ENERGY,
     METRIC_SLEEP,
 )
+from vitalmesh_wellness.knowledge import DEFAULT_INDEX
 from vitalmesh_wellness.mealplan import plan_days
 from vitalmesh_wellness.recipes import BY_ID
 
@@ -97,8 +97,9 @@ def build_recommendation(
     debt = calc.sleep_debt_hours(recent_sleep_hours)
     recovering = debt >= SLEEP_DEBT_RECOVERY_HOURS
     zone = RECOVERY_ZONE if recovering else DEFAULT_ZONE
-    if profile.conditions & INTENSITY_LIMITING_CONDITIONS:
-        zone = min(zone, 3)
+    cap = DEFAULT_INDEX.max_zone(profile.conditions)
+    if cap is not None:
+        zone = min(zone, int(cap))
     zones = calc.heart_rate_zones(profile.age_years, profile.resting_hr_bpm)
     target = zones[zone - 1]
     sleep_target = EXTRA_SLEEP_TARGET_H if recovering else BASE_SLEEP_TARGET_H

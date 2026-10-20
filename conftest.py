@@ -12,7 +12,7 @@ from vitalmesh_common.retry import RetryPolicy
 from vitalmesh_common.testing import service_reachable
 from vitalmesh_common.topics import all_topic_specs
 
-_STACK_PORTS = {"kafka": 9092, "schema-registry": 8081, "redis": 6379}
+_STACK_PORTS = {"kafka": 9092, "schema-registry": 8081, "redis": 6379, "neo4j": 7687}
 
 
 def _missing_services() -> list[str]:

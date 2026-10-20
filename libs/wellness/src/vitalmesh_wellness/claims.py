@@ -15,6 +15,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from vitalmesh_wellness.knowledge import DEFAULT_INDEX
+
 
 class Provenance(StrEnum):
     COMPUTED = "computed"
@@ -75,6 +77,11 @@ class UserConstraints(BaseModel):
     medications: frozenset[str] = frozenset()
     diet: str = "omnivore"  # omnivore / vegetarian / vegan; anything else blocks a meal plan
     allergens: frozenset[str] = frozenset()
+
+    @property
+    def effective_allergens(self) -> frozenset[str]:
+        """Allergens the user listed plus those implied by their conditions (knowledge graph)."""
+        return self.allergens | DEFAULT_INDEX.implied_allergens(self.conditions)
 
     @field_validator("allergens", "conditions", "medications")
     @classmethod

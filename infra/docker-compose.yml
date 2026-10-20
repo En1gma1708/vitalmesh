@@ -1,5 +1,5 @@
 # Local development stack (Phase 0): only what the code exercises today.
-# Neo4j arrives with the knowledge graph (Phase 1); Langfuse with the first LLM calls (Phase 2).
+# Neo4j Community holds the seed knowledge graph (Phase 1); Langfuse arrives with the first LLM calls (Phase 2).
 # All ports are bound to 127.0.0.1: nothing is reachable from the LAN.
 #
 #   docker compose -f infra/docker-compose.yml up -d --wait
@@ -79,6 +79,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: vitalmesh-neo4j
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    environment:
+      # Local development only: no auth, loopback-bound. Production would set real credentials.
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 128m
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 'RETURN 1' > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
 
 volumes:
   kafka-data:
