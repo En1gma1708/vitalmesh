@@ -7,6 +7,7 @@ members = [
     "vitalmesh",
     "vitalmesh-api",
     "vitalmesh-common",
+    "vitalmesh-evals",
     "vitalmesh-kg",
     "vitalmesh-llm",
     "vitalmesh-processor",
@@ -846,6 +847,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "vitalmesh-api" },
     { name = "vitalmesh-common" },
+    { name = "vitalmesh-evals" },
     { name = "vitalmesh-kg" },
     { name = "vitalmesh-llm" },
     { name = "vitalmesh-processor" },
@@ -868,6 +870,7 @@ dev = [
 requires-dist = [
     { name = "vitalmesh-api", editable = "services/api" },
     { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-evals", editable = "evals" },
     { name = "vitalmesh-kg", editable = "services/kg" },
     { name = "vitalmesh-llm", editable = "libs/llm" },
     { name = "vitalmesh-processor", editable = "services/processor" },
@@ -928,6 +931,23 @@ requires-dist = [
     { name = "protobuf", specifier = ">=5" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "redis", specifier = ">=5" },
+]
+
+[[package]]
+name = "vitalmesh-evals"
+version = "0.1.0"
+source = { editable = "evals" }
+dependencies = [
+    { name = "redis" },
+    { name = "vitalmesh-llm" },
+    { name = "vitalmesh-wellness" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-llm", editable = "libs/llm" },
+    { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
 [[package]]

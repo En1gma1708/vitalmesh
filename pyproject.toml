@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Event-driven multi-agent health recommendation platform (workspace root)"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
-dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm"]
+dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-evals"]
 
 [tool.uv.workspace]
-members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm"]
+members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "evals"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }
@@ -17,6 +17,7 @@ vitalmesh-t0 = { workspace = true }
 vitalmesh-api = { workspace = true }
 vitalmesh-kg = { workspace = true }
 vitalmesh-llm = { workspace = true }
+vitalmesh-evals = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -50,7 +51,7 @@ follow_imports = "skip"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["libs", "services"]
+testpaths = ["libs", "services", "evals"]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: needs the docker compose stack (Kafka, Schema Registry, Redis); skipped when unreachable",

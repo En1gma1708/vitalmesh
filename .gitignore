@@ -21,3 +21,6 @@ libs/common/src/vitalmesh/
 
 # Real personal documents (e.g. a blood report used as a layout reference): never commit
 private/
+
+# eval run reports
+evals/results/

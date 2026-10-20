@@ -233,3 +233,67 @@ def test_limiter_requests_tokens_refill_and_daily_cap() -> None:
     assert not lim.try_acquire(1)  # daily cap of 3 spent
     tight = RateLimiter(rpm=10, tpm=100, clock=clock)
     assert not tight.try_acquire(101) and tight.try_acquire(100) and not tight.try_acquire(1)
+
+
+# ------------------------------------------------------------------ waiting for budget
+def test_seconds_until_reports_the_wait_or_never() -> None:
+    clock = Clock()
+    lim = RateLimiter(rpm=60, tpm=1000, clock=clock)
+    assert lim.seconds_until(500) == 0.0
+    assert lim.try_acquire(1000)
+    assert lim.seconds_until(500) == pytest.approx(30.0)  # 1000 tokens/min refill
+    assert lim.seconds_until(5000) is None
+
+
+def test_waiting_for_budget_stays_on_the_primary_provider() -> None:
+    clock = Clock()
+    slept: list[float] = []
+
+    def sleep(s: float) -> None:
+        slept.append(s)
+        clock.t += s
+
+    s = Server({GROQ: [(200, ok_body("g"))], GEMINI: [(200, ok_body("gem"))]})
+    rt = Router(
+        KEYS, client=httpx.Client(transport=httpx.MockTransport(s)), clock=clock, sleep=sleep
+    )
+    assert rt.complete(req("x" * 20_000, max_tokens=1000), max_wait_s=120).provider == "groq"
+    second = rt.complete(req("y" * 20_000, max_tokens=1000), max_wait_s=120)
+    assert second.provider == "groq" and slept  # waited for Groq instead of using Gemini
+    assert [c[0] for c in s.calls] == [GROQ, GROQ]
+
+
+def test_waiting_is_bounded_and_never_hides_real_failures() -> None:
+    clock = Clock()
+    s = Server({GROQ: [(500, {})], GEMINI: [(500, {})], OPENR: [(500, {})]})
+    rt = Router(
+        KEYS,
+        client=httpx.Client(transport=httpx.MockTransport(s)),
+        clock=clock,
+        sleep=lambda x: setattr(clock, "t", clock.t + x),
+    )
+    with pytest.raises(AllProvidersFailed):
+        rt.complete(req(), max_wait_s=300)
+    assert len(s.calls) == 3  # a real failure is raised at once, not waited out
+
+
+def test_a_429_is_waited_out_on_the_primary_when_waiting_is_allowed() -> None:
+    clock = Clock()
+    slept: list[float] = []
+
+    def sleep(s: float) -> None:
+        slept.append(s)
+        clock.t += s
+
+    s = Server({GROQ: [(429, {}), (200, ok_body("after the wait"))], GEMINI: [(200, ok_body("g"))]})
+    rt = Router(
+        KEYS, client=httpx.Client(transport=httpx.MockTransport(s)), clock=clock, sleep=sleep
+    )
+    r = rt.complete(req(), max_wait_s=120)
+    assert (r.provider, r.text) == ("groq", "after the wait") and slept
+    assert [c[0] for c in s.calls] == [GROQ, GROQ]  # never downgraded to Gemini
+
+
+def test_without_waiting_a_429_still_falls_through_at_once() -> None:
+    s = Server({GROQ: [(429, {})], GEMINI: [(200, ok_body("g"))]})
+    assert router(s).complete(req()).provider == "gemini"

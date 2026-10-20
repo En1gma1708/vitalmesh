@@ -53,6 +53,10 @@ class LLMError(RuntimeError):
 
 
 class AllProvidersFailed(LLMError):
-    def __init__(self, attempts: list[str]) -> None:
+    def __init__(
+        self, attempts: list[str], budget_only: bool = False, retry_after_s: float = 0.0
+    ) -> None:
         super().__init__("no provider could serve the request: " + "; ".join(attempts))
         self.attempts = attempts
+        self.budget_only = budget_only  # every skip was for rate budget alone: waiting can help
+        self.retry_after_s = retry_after_s

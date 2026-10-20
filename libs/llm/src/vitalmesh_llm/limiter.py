@@ -40,6 +40,23 @@ class RateLimiter:
         self._day = _Bucket(rpd, rpd / 1440, now) if rpd is not None else None
         self._lock = threading.Lock()
 
+    def seconds_until(self, tokens: int) -> float | None:
+        """Seconds until a request of ``tokens`` could be admitted, or None if it never can
+        (larger than the whole token bucket)."""
+        with self._lock:
+            now = self._clock()
+            buckets = [(self._req, 1.0), (self._tok, float(tokens))]
+            if self._day is not None:
+                buckets.append((self._day, 1.0))
+            wait = 0.0
+            for b, need in buckets:
+                if need > b.capacity:
+                    return None
+                b.refill(now)
+                if b.level < need:
+                    wait = max(wait, (need - b.level) / b.rate)
+            return wait
+
     def try_acquire(self, tokens: int) -> bool:
         """Reserve one request and ``tokens`` tokens, or reserve nothing and return False."""
         with self._lock:
