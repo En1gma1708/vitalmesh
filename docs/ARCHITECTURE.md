@@ -74,13 +74,13 @@ Assumptions (to validate by load test): 1M registered; 10% concurrent peak = 100
 - **Proof plan**: k6/Locust + Kafka producer simulator; mock-LLM mode with realistic latency distribution for scale tests; real-LLM run for quality. Report p50/p95/p99, lag, cost. Be explicit about what was measured vs extrapolated.
 
 ## 6. Reliability
-At-least-once + idempotent consumers; DLQ per topic with replay tool; circuit breakers + provider fallback (LiteLLM); resumable graphs; rainbow/canary deploys so in-flight runs finish on old version; timeouts and max-step limits per run.
+At-least-once + idempotent consumers; DLQ per topic with replay tool; circuit breakers + provider fallback (own router in libs/llm); resumable graphs; rainbow/canary deploys so in-flight runs finish on old version; timeouts and max-step limits per run.
 
 ## 7. Security / privacy
 Synthetic data only. Design hooks: JWT auth, per-user encryption keys (KMS), PII-free traces (redaction in Langfuse), audit log, consent flags, prompt-injection defence (user text never in system prompt; tool outputs treated as data).
 
 ## 8. Tech choices
-Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/Groq/Cerebras), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector, Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
+Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on httpx (OpenAI-compatible providers: Groq, Gemini, OpenRouter), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector, Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
 
 ## 9. Settled decisions
 - Tiered compute is the core novelty (T0 deterministic, T1 cohort cache, T2 single agent, T3 multi-agent).
@@ -88,7 +88,7 @@ Python 3.12, FastAPI, LangGraph + LangChain, LiteLLM (provider-agnostic: Claude/
 - Redis is a store only (cache, idempotency, rate limits), never a bus; Neo4j Community is the knowledge-graph source of truth with a precompiled hot-path lookup.
 - Protobuf with a Schema Registry (backward compatibility); real Apache Kafka in KRaft mode.
 - Azure for Students is the primary cloud; the design is cloud-portable with an AWS mapping; zero personal spend.
-- LLMs through a provider router (Groq, Cerebras, Gemini Flash free tiers) with a mock for scale tests; first LLM call arrives in Phase 2.
+- LLMs through a provider router (`libs/llm`: Groq, Gemini and OpenRouter free tiers, with a rate limiter, a response cache and a mock for scale tests). Only synthetic or public data is ever sent.
 - Safety checks at every agent boundary plus an authoritative final Guardian.
 
 ## 10. Cloud plan
