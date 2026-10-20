@@ -8,6 +8,7 @@ members = [
     "vitalmesh-api",
     "vitalmesh-common",
     "vitalmesh-kg",
+    "vitalmesh-llm",
     "vitalmesh-processor",
     "vitalmesh-t0",
     "vitalmesh-wellness",
@@ -846,6 +847,7 @@ dependencies = [
     { name = "vitalmesh-api" },
     { name = "vitalmesh-common" },
     { name = "vitalmesh-kg" },
+    { name = "vitalmesh-llm" },
     { name = "vitalmesh-processor" },
     { name = "vitalmesh-t0" },
     { name = "vitalmesh-wellness" },
@@ -867,6 +869,7 @@ requires-dist = [
     { name = "vitalmesh-api", editable = "services/api" },
     { name = "vitalmesh-common", editable = "libs/common" },
     { name = "vitalmesh-kg", editable = "services/kg" },
+    { name = "vitalmesh-llm", editable = "libs/llm" },
     { name = "vitalmesh-processor", editable = "services/processor" },
     { name = "vitalmesh-t0", editable = "services/t0" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
@@ -942,6 +945,23 @@ requires-dist = [
     { name = "neo4j", specifier = ">=5.20" },
     { name = "redis", specifier = ">=5" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
+]
+
+[[package]]
+name = "vitalmesh-llm"
+version = "0.1.0"
+source = { editable = "libs/llm" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "redis" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2" },
+    { name = "redis", specifier = ">=5" },
 ]
 
 [[package]]
