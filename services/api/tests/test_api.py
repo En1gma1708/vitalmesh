@@ -248,3 +248,64 @@ def test_mealplan_rejects_bad_parameters(query: str) -> None:
 def test_mealplan_unknown_user_is_404() -> None:
     client, _, _ = make()
     assert client.get("/v1/users/nobody/mealplan").status_code == 404
+
+
+# ------------------------------------------------------------------ series and the page
+def seeded_client() -> TestClient:
+    from vitalmesh_processor.history import InMemoryHistoryStore, Point
+    from vitalmesh_wellness.synthetic import synthetic_history
+
+    profile, sleep = synthetic_user(3, 1)
+    profiles = InMemoryProfileStore()
+    profiles.put(ProfileRecord(profile=profile, recent_sleep_hours=tuple(sleep)))
+    hist = InMemoryHistoryStore()
+    units = {
+        "body_weight": "kg",
+        "sleep_duration": "h",
+        "active_minutes": "min",
+        "step_count": "count",
+        "energy_intake": "kcal",
+    }
+    for metric, pts in synthetic_history(3, profile, 60, NOW).items():
+        for t, v in pts:
+            hist.add(profile.user_id, metric, Point(t, v, units[metric]))
+    app = create_app(profiles, PlainSerde(), RecordingPublisher(), history=hist, clock=lambda: NOW)
+    client = TestClient(app)
+    client.uid = profile.user_id  # type: ignore[attr-defined]
+    return client
+
+
+def test_series_has_average_for_smooth_metrics_and_weekly_for_activity() -> None:
+    c = seeded_client()
+    uid = c.uid  # type: ignore[attr-defined]
+    w = c.get(f"/v1/users/{uid}/series/body_weight?days=30").json()
+    assert w["unit"] == "kg" and len(w["points"]) == len(w["average"]) > 20
+    assert w["weekly"] == [] and w["target"] is None
+    a = c.get(f"/v1/users/{uid}/series/active_minutes?days=60").json()
+    assert a["weekly_goal"] == 150.0 and a["weekly"] and a["average"] == []
+    s = c.get(f"/v1/users/{uid}/series/sleep_duration").json()
+    assert s["target"] in (8.0, 9.0)
+    e = c.get(f"/v1/users/{uid}/series/energy_intake").json()
+    assert e["target"] and e["target"] >= 1200
+
+
+def test_series_window_and_validation() -> None:
+    c = seeded_client()
+    uid = c.uid  # type: ignore[attr-defined]
+    few = c.get(f"/v1/users/{uid}/series/body_weight?days=3").json()
+    assert len(few["points"]) <= 4
+    assert c.get(f"/v1/users/{uid}/series/mystery").status_code == 404
+    assert c.get(f"/v1/users/{uid}/series/body_weight?days=0").status_code == 422
+    assert c.get(f"/v1/users/{uid}/series/body_weight?days=366").status_code == 422
+    assert c.get("/v1/users/bad%20id/series/body_weight").status_code == 422
+    assert c.get("/v1/users/nobody/series/body_weight").json()["points"] == []
+
+
+def test_health_page_is_served_and_health_only() -> None:
+    c = seeded_client()
+    r = c.get("/app/demo-1")
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+    page = r.text.lower()
+    for internal in ("guardian", "tier", "kafka", "agent", "provenance", "rules_version"):
+        assert internal not in page, internal
+    assert c.get("/app/bad%20id").status_code == 422

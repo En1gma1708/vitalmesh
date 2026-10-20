@@ -18,15 +18,18 @@ import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Publisher
 from vitalmesh_common.topics import USER_EVENTS
+from vitalmesh_processor.history import HistoryStore
 from vitalmesh_processor.labstore import LabStore
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
@@ -37,7 +40,9 @@ from vitalmesh_wellness.guardian import Guardian
 from vitalmesh_wellness.labs import LabError, interpret
 from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
+from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 
+STATIC = Path(__file__).parent / "static"
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_FUTURE = timedelta(minutes=5)
 _NAMESPACE = uuid.UUID("0c4e6d1a-3b2f-4f7a-9d58-2a1b7c9e4f10")
@@ -149,6 +154,30 @@ class MealPlanOut(BaseModel):
     days: list[DayOut]
 
 
+class SeriesPoint(BaseModel):
+    t: datetime
+    v: float
+
+
+class WeekTotal(BaseModel):
+    week_start: date
+    total: float
+
+
+class SeriesOut(BaseModel):
+    metric: str
+    unit: str
+    points: list[SeriesPoint]
+    average: list[SeriesPoint]  # 7-day trailing average (smooth metrics only)
+    weekly: list[WeekTotal]  # weekly totals (activity metrics only)
+    target: float | None  # a daily target, when the user has one
+    weekly_goal: float | None
+
+
+SMOOTHED = {"body_weight", "resting_heart_rate"}
+WEEKLY = {"active_minutes", "step_count"}
+
+
 class RecommendationOut(BaseModel):
     recommendation_id: str
     items: list[Item]
@@ -183,6 +212,7 @@ def create_app(
     guardian: Guardian | None = None,
     clock: Callable[[], datetime] = utcnow,
     labs: LabStore | None = None,
+    history: HistoryStore | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -306,6 +336,50 @@ def create_app(
             )
             for r in labs.list(user_id)
         ]
+
+    @app.get("/v1/users/{user_id}/series/{metric}", response_model=SeriesOut)
+    def get_series(user_id: str, metric: str, days: int = 90) -> SeriesOut:
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        spec = METRICS.get(metric)
+        if spec is None:
+            raise HTTPException(status_code=404, detail="unknown metric")
+        if not 1 <= days <= 365:
+            raise HTTPException(status_code=422, detail="days must be between 1 and 365")
+        if history is None:
+            raise HTTPException(status_code=503, detail="temporarily unavailable")
+        points = history.series(user_id, metric, since=clock() - timedelta(days=days))
+        pairs = [(p.t, p.value) for p in points]
+        target: float | None = None
+        record = profiles.get(user_id)
+        if record is not None and metric in {"sleep_duration", "energy_intake"}:
+            try:
+                rec = decide(record, "chart", gate).recommendation
+            except EnvelopeError:
+                rec = None
+            wanted = {"sleep_duration": "sleep_target", "energy_intake": "daily_energy_target"}
+            for c in rec.claims if rec else ():
+                if c.quantity and c.quantity.metric == wanted[metric]:
+                    target = c.quantity.value
+        return SeriesOut(
+            metric=metric,
+            unit=spec.unit,
+            points=[SeriesPoint(t=t, v=v) for t, v in pairs],
+            average=[SeriesPoint(t=t, v=v) for t, v in trailing_average(pairs)]
+            if metric in SMOOTHED
+            else [],
+            weekly=[WeekTotal(week_start=w, total=v) for w, v in weekly_totals(pairs)]
+            if metric in WEEKLY
+            else [],
+            target=target,
+            weekly_goal=WEEKLY_ACTIVE_MINUTES_GOAL if metric == "active_minutes" else None,
+        )
+
+    @app.get("/app/{user_id}", response_class=HTMLResponse)
+    def health_app(user_id: str) -> HTMLResponse:
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        return HTMLResponse((STATIC / "app.html").read_text(encoding="utf-8"))
 
     @app.get("/v1/users/{user_id}/mealplan", response_model=MealPlanOut)
     def get_mealplan(user_id: str, start: date | None = None, days: int = 7) -> MealPlanOut:

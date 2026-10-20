@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VitalMesh</title>
+<style>
+:root {
+  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #66756d; --line: #dfe5e0;
+  --accent: #1f8a5b; --accent-soft: #d8efe3; --warn: #c2571a; --grid: #e9eeea; --avg: #1b5fa8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+    --accent: #4cc38a; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+  --accent: #4cc38a; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.sub { color: var(--muted); font-size: 13px; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); margin-top: 20px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.rings { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-around; }
+.ring { text-align: center; }
+.ring .big { font-size: 20px; font-weight: 650; }
+.ring .lab { font-size: 12px; color: var(--muted); }
+svg { width: 100%; height: auto; display: block; }
+.axis { fill: var(--muted); font-size: 10px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.dot { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.tag { padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
+.tag.high, .tag.low { background: rgba(194, 87, 26, .15); color: var(--warn); }
+.tag.unclassified, .tag.not { background: var(--grid); color: var(--muted); }
+ul.plain { margin: 0; padding-left: 18px; }
+ul.plain li { margin: 4px 0; }
+.meals { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.meal { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.meal b { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Your health, at a glance</h1>
+    <span class="sub" id="who"></span>
+  </header>
+  <div class="grid">
+    <section class="card wide"><h2>This week</h2><div class="rings" id="rings"></div></section>
+    <section class="card"><h2>Weight</h2><div id="weight"></div></section>
+    <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
+    <section class="card"><h2>Active minutes per week</h2><div id="active"></div></section>
+    <section class="card"><h2>Calories</h2><div id="energy"></div></section>
+    <section class="card"><h2>Your numbers</h2><ul class="plain" id="numbers"></ul></section>
+    <section class="card"><h2>Lab results</h2><div id="labs"></div></section>
+    <section class="card wide"><h2>Today's meals</h2><div id="meals"></div></section>
+  </div>
+  <footer>General wellness information, not medical advice. Demo data.</footer>
+</main>
+<script>
+const uid = decodeURIComponent(location.pathname.split("/").pop());
+document.getElementById("who").textContent = uid;
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const get = async (path) => { const r = await fetch(path); return r.ok ? r.json() : null; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+function el(name, attrs = {}, text) {
+  const e = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function frame(host, w, h) {
+  host.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img" });
+  host.appendChild(svg);
+  return svg;
+}
+
+function scale(domain, range) {
+  const [d0, d1] = domain, [r0, r1] = range, span = d1 - d0 || 1;
+  return (v) => r0 + ((v - d0) / span) * (r1 - r0);
+}
+
+function niceRange(values, pad = 0.1) {
+  let lo = Math.min(...values), hi = Math.max(...values);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const p = (hi - lo) * pad;
+  return [lo - p, hi + p];
+}
+
+function axes(svg, x0, x1, y0, y1, yDomain, xDomain, ticks = 4) {
+  const y = scale(yDomain, [y1, y0]);
+  for (let i = 0; i <= ticks; i++) {
+    const v = yDomain[0] + ((yDomain[1] - yDomain[0]) * i) / ticks;
+    svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: css("--grid") }));
+    svg.appendChild(el("text", { x: x0 - 6, y: y(v) + 3, "text-anchor": "end", class: "axis" }, v.toFixed(v < 20 ? 1 : 0)));
+  }
+  if (xDomain) {
+    for (let i = 0; i <= 3; i++) {
+      const t = xDomain[0] + ((xDomain[1] - xDomain[0]) * i) / 3;
+      svg.appendChild(el("text", { x: x0 + ((x1 - x0) * i) / 3, y: y1 + 16, "text-anchor": i === 0 ? "start" : i === 3 ? "end" : "middle", class: "axis" }, fmtDay(t)));
+    }
+  }
+  return y;
+}
+
+function legend(host, items) {
+  const d = document.createElement("div");
+  d.className = "legend";
+  d.innerHTML = items.map(([c, t]) => `<span><span class="dot" style="background:${c}"></span>${t}</span>`).join("");
+  host.appendChild(d);
+}
+
+function lineChart(host, s, unit) {
+  if (!s || !s.points.length) { host.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  const W = 480, H = 220, x0 = 38, x1 = W - 8, y0 = 10, y1 = H - 24;
+  const t = s.points.map((p) => +new Date(p.t));
+  const vals = s.points.map((p) => p.v).concat(s.average.map((p) => p.v));
+  const yd = niceRange(vals);
+  const svg = frame(host, W, H);
+  const xd = [Math.min(...t), Math.max(...t)];
+  const y = axes(svg, x0, x1, y0, y1, yd, xd);
+  const x = scale(xd, [x0, x1]);
+  const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(+new Date(p.t)).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  svg.appendChild(el("path", { d: path(s.points), fill: "none", stroke: css("--accent"), "stroke-width": 1.2, opacity: 0.55 }));
+  s.points.forEach((p) => svg.appendChild(el("circle", { cx: x(+new Date(p.t)), cy: y(p.v), r: 2, fill: css("--accent"), opacity: 0.6 })));
+  if (s.average.length) svg.appendChild(el("path", { d: path(s.average), fill: "none", stroke: css("--avg"), "stroke-width": 2.4 }));
+  legend(host, [[css("--accent"), `Daily (${unit})`], ...(s.average.length ? [[css("--avg"), "7-day average"]] : [])]);
+}
+
+function barChart(host, bars, opts) {
+  if (!bars.length) { host.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  const W = 480, H = 220, x0 = 38, x1 = W - 8, y0 = 10, y1 = H - 24;
+  const max = Math.max(...bars.map((b) => b.v), opts.line || 0) * 1.15;
+  const svg = frame(host, W, H);
+  const y = axes(svg, x0, x1, y0, y1, [0, max], null);
+  const bw = (x1 - x0) / bars.length;
+  bars.forEach((b, i) => {
+    const hit = opts.line && b.v >= opts.line;
+    const top = y(b.v);
+    svg.appendChild(el("rect", { x: x0 + i * bw + bw * 0.15, y: top, width: bw * 0.7, height: y1 - top, rx: 2, fill: hit || !opts.line ? css("--accent") : css("--accent"), opacity: hit || !opts.line ? 1 : 0.55 }));
+    if (bars.length <= 7 || i % Math.ceil(bars.length / 7) === 0) {
+      svg.appendChild(el("text", { x: x0 + i * bw + bw / 2, y: y1 + 16, "text-anchor": "middle", class: "axis" }, b.label));
+    }
+  });
+  if (opts.line) {
+    svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(opts.line), y2: y(opts.line), stroke: css("--warn"), "stroke-width": 1.6, "stroke-dasharray": "5 4" }));
+  }
+  legend(host, [[css("--accent"), opts.label], ...(opts.line ? [[css("--warn"), opts.lineLabel]] : [])]);
+}
+
+function ring(host, value, goal, label, unit) {
+  const r = 38, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(value / goal, 1));
+  const wrap = document.createElement("div");
+  wrap.className = "ring";
+  const svg = el("svg", { viewBox: "0 0 100 100", width: 104, height: 104 });
+  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--grid"), "stroke-width": 9 }));
+  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
+  svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:17px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
+  wrap.appendChild(svg);
+  wrap.insertAdjacentHTML("beforeend", `<div class="big">${Math.round(value)} <span class="lab">/ ${Math.round(goal)} ${unit}</span></div><div class="lab">${label}</div>`);
+  host.appendChild(wrap);
+}
+
+const last = (a) => a[a.length - 1];
+const day = (p) => ({ label: fmtDay(p.t), v: p.v });
+
+async function main() {
+  const [weight, sleep, active, energy, rec, labs, plan] = await Promise.all([
+    get(`/v1/users/${uid}/series/body_weight?days=90`),
+    get(`/v1/users/${uid}/series/sleep_duration?days=30`),
+    get(`/v1/users/${uid}/series/active_minutes?days=90`),
+    get(`/v1/users/${uid}/series/energy_intake?days=30`),
+    get(`/v1/users/${uid}/recommendation`),
+    get(`/v1/users/${uid}/labs`),
+    get(`/v1/users/${uid}/mealplan?days=1`),
+  ]);
+
+  lineChart($("weight"), weight, "kg");
+  barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target" });
+  barChart($("active"), (active?.weekly || []).slice(-12).map((w) => ({ label: fmtDay(w.week_start), v: w.total })), { label: "Minutes per week", line: active?.weekly_goal, lineLabel: "150 min goal" });
+  barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target" });
+
+  const rings = $("rings");
+  if (sleep?.points.length && sleep.target) ring(rings, last(sleep.points).v, sleep.target, "Last night's sleep", "h");
+  if (energy?.points.length && energy.target) ring(rings, last(energy.points).v, energy.target, "Calories today", "kcal");
+  if (active?.weekly.length) ring(rings, last(active.weekly).total, active.weekly_goal, "Active minutes this week", "min");
+  if (!rings.children.length) rings.innerHTML = '<div class="empty">Log some data to see your goals.</div>';
+
+  $("numbers").innerHTML = rec ? rec.items.map((i) => `<li>${i.text} <span class="sub">(${i.basis.toLowerCase()})</span></li>`).join("") : '<li class="empty">No recommendation is available right now.</li>';
+
+  $("labs").innerHTML = labs && labs.length
+    ? `<table><tr><th>Test</th><th>Result</th><th>Range</th><th></th></tr>${labs.map((l) => `<tr><td>${l.name}</td><td>${l.value ?? l.text} ${l.unit ?? ""}</td><td>${l.reference_range || "-"}</td><td><span class="tag ${l.status.replace(" ", "")}">${l.status}</span></td></tr>`).join("")}</table>`
+    : '<div class="empty">No lab results yet.</div>';
+
+  $("meals").innerHTML = plan && plan.days.length
+    ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${m.meal}</b>${m.title}<div class="sub">${m.kcal} kcal &middot; ${m.protein_g} g protein &middot; portion ${m.portion}</div></div>`).join("")}</div>`
+    : '<div class="empty">No meal plan is available right now.</div>';
+}
+main();
+</script>
+</body>
+</html>

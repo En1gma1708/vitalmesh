@@ -9,6 +9,7 @@ import redis
 import uvicorn
 from fastapi import FastAPI
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde, ensure_topics
+from vitalmesh_processor.history import RedisHistoryStore
 from vitalmesh_processor.labstore import RedisLabStore
 from vitalmesh_t0.profiles import RedisProfileStore
 
@@ -24,6 +25,7 @@ def build_app() -> FastAPI:
         SchemaRegistrySerde(settings),
         KafkaPublisher(settings, client_id="api"),
         labs=RedisLabStore(client),
+        history=RedisHistoryStore(client),
     )
 
 

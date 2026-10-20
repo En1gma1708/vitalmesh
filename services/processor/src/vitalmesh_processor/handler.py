@@ -19,6 +19,7 @@ from vitalmesh_common.processor import EventSerde, Handler, Publisher
 from vitalmesh_common.topics import USER_STATE
 from vitalmesh_wellness.labs import LabError, interpret
 
+from vitalmesh_processor.history import HistoryStore, Point
 from vitalmesh_processor.labstore import LabStore
 from vitalmesh_processor.state import HealthState, StateStore, apply_measurement
 
@@ -47,6 +48,7 @@ def make_handler(
     publisher: Publisher,
     clock: Callable[[], datetime] = utcnow,
     labs: LabStore | None = None,
+    history: HistoryStore | None = None,
 ) -> Handler:
     def handle_lab(meta: EventMeta, payload: Any) -> None:
         if labs is None:
@@ -81,13 +83,14 @@ def make_handler(
             raise EnvelopeError("measurement needs value and measured_at")
 
         state = store.get(meta.user_id)
+        measured_at = m.measured_at.ToDatetime(tzinfo=UTC)
         updated = apply_measurement(
-            state,
-            m.metric_type,
-            m.value.value,
-            m.value.unit,
-            m.measured_at.ToDatetime(tzinfo=UTC),
-        )
+            state, m.metric_type, m.value.value, m.value.unit, measured_at
+        )  # validates first: nothing invalid reaches the history
+        if history is not None:  # older readings belong in history even when they are not "latest"
+            history.add(
+                meta.user_id, m.metric_type, Point(measured_at, m.value.value, m.value.unit)
+            )
         if updated is not state:
             store.put(updated)
 
