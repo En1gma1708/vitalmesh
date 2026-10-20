@@ -51,3 +51,11 @@ def test_document_id_and_url_are_validated() -> None:
         Document(doc_id="Bad Id", source_url="https://who.int/x", **ok)
     with pytest.raises(ValidationError):
         Document(doc_id="d1", source_url="file:///etc/passwd", **ok)
+
+
+def test_or_query_keeps_only_safe_unique_words() -> None:
+    from vitalmesh_retrieval.store import or_query
+
+    assert or_query("How much salt, per DAY? salt") == "how | much | salt | per | day"
+    assert or_query("a'; DROP TABLE chunks; --") == "a | drop | table | chunks"
+    assert or_query("?!  ") is None

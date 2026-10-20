@@ -1,0 +1,25 @@
+{
+  "note": "Gold = a chunk that contains ALL phrases in `must` (case-insensitive). Written from the source text before any retrieval was run; q01, q13 and q18 were widened AFTER reading the top results because the first phrase was too narrow (disclosed in D63); the phrases anchor relevance to the text, not to what a retriever returned. `kind` marks whether the question reuses the source's words (lexical) or paraphrases them (paraphrase).",
+  "questions": [
+    {"id": "q01", "kind": "paraphrase", "question": "How much moderate aerobic exercise should an adult get each week?", "must": ["150 minutes", "300 minutes", "moderate-intensity"]},
+    {"id": "q02", "kind": "lexical", "question": "How many minutes of moderate-to-vigorous physical activity do children and adolescents aged 6 to 17 need daily?", "must": ["60 minutes (1 hour) or more of moderate-to-vigorous"]},
+    {"id": "q03", "kind": "paraphrase", "question": "What kind of exercise helps older people avoid falling?", "must": ["balance training"]},
+    {"id": "q04", "kind": "lexical", "question": "What is the limit for added sugars as a percent of daily calories?", "must": ["added sugars", "less than 10 percent of calories per day"]},
+    {"id": "q05", "kind": "paraphrase", "question": "How much salt can I eat in a day?", "must": ["2,300 milligrams"]},
+    {"id": "q06", "kind": "paraphrase", "question": "How many alcoholic drinks a day are acceptable for women?", "must": ["1 drink or less in a day for women"]},
+    {"id": "q07", "kind": "lexical", "question": "What is the saturated fat limit per day?", "must": ["saturated fat", "less than 10 percent of calories per day"]},
+    {"id": "q08", "kind": "paraphrase", "question": "How often should adults do strength training?", "must": ["muscle-strengthening", "2 or more days"]},
+    {"id": "q09", "kind": "paraphrase", "question": "Is it safe to exercise while expecting a baby?", "must": ["pregnan", "physical activity"]},
+    {"id": "q10", "kind": "paraphrase", "question": "What does the sedentary lifestyle do to the risk of dying early?", "must": ["sedentary", "mortality"]},
+    {"id": "q11", "kind": "lexical", "question": "Which foods are in the dairy and fortified soy alternatives group?", "must": ["dairy", "fortified soy"]},
+    {"id": "q12", "kind": "paraphrase", "question": "Why is dietary fibre important and which foods provide it?", "must": ["dietary fiber", "whole grains"]},
+    {"id": "q13", "kind": "paraphrase", "question": "Which nutrients are people not getting enough of?", "must": ["do not consume enough"]},
+    {"id": "q14", "kind": "paraphrase", "question": "How does physical activity help with high blood pressure?", "must": ["blood pressure", "physical activity"]},
+    {"id": "q15", "kind": "paraphrase", "question": "Can exercise help people with arthritis?", "must": ["arthritis", "physical activity"]},
+    {"id": "q16", "kind": "paraphrase", "question": "What are the benefits of exercise for brain health and thinking?", "must": ["cognition"]},
+    {"id": "q17", "kind": "paraphrase", "question": "How much should a toddler eat in terms of food groups?", "must": ["toddler"]},
+    {"id": "q18", "kind": "lexical", "question": "What is the Dietary Guidelines recommendation for breastfeeding infants and vitamin D supplements?", "must": ["supplemental vitamin d"]},
+    {"id": "q19", "kind": "paraphrase", "question": "Does exercise reduce the risk of type 2 diabetes?", "must": ["type 2 diabetes", "physical activity"]},
+    {"id": "q20", "kind": "paraphrase", "question": "What intensity of activity makes it hard to talk while doing it?", "must": ["talk", "vigorous"]}
+  ]
+}

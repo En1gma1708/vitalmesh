@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "note": "Only text is ingested (photos and illustrations are excluded). Raw downloads live in .cache/corpus (gitignored) and are never redistributed by this repository; each entry records the SHA-256 of the file that was ingested.",
+  "documents": [
+    {
+      "doc_id": "hhs-pag-2018",
+      "title": "Physical Activity Guidelines for Americans, 2nd edition",
+      "publisher": "U.S. Department of Health and Human Services",
+      "source_url": "https://health.gov/sites/default/files/2019-09/Physical_Activity_Guidelines_2nd_edition.pdf",
+      "licence": "US federal government work (17 U.S.C. 105): no US copyright. The PDF itself states no licence, so this is inferred from its authorship, not quoted; third-party images are not ingested",
+      "licence_evidence": "searched the PDF text for 'public domain', 'copyright' and 'permission': no match (2026-10-21)",
+      "first_page": 1
+    },
+    {
+      "doc_id": "dga-2020-2025",
+      "title": "Dietary Guidelines for Americans, 2020-2025",
+      "publisher": "U.S. Department of Agriculture and U.S. Department of Health and Human Services",
+      "source_url": "https://www.dietaryguidelines.gov/sites/default/files/2021-03/Dietary_Guidelines_for_Americans-2020-2025.pdf",
+      "licence": "public domain (stated by dietaryguidelines.gov for the text, tables and figures; photographs and illustrations are excluded and not ingested)",
+      "licence_evidence": "dietaryguidelines.gov policy page and the 2020-2025 presentation decks (found by search 2026-10-21); the PDF itself states no licence. This edition has been superseded by 2025-2030",
+      "first_page": 1
+    }
+  ],
+  "not_ingested": [
+    "cdc.gov pages: scripted downloads are refused (HTTP 403); not worked around",
+    "ods.od.nih.gov fact sheets: HTTP 403 for scripted downloads; not worked around",
+    "MedlinePlus encyclopedia articles: partly licensed from a commercial publisher, not public domain",
+    "WHO guidelines: CC BY-NC-SA 3.0 IGO (non-commercial); possible later with the licence recorded"
+  ]
+}

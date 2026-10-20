@@ -118,3 +118,13 @@ def test_a_failed_insert_rolls_the_whole_document_back(store: Store) -> None:
     with pytest.raises(psycopg.Error):
         store.add_document(doc("sleep"), [Chunk(text="fine", embedding=unit(0)), bad])
     assert store.count() == (2, 4)  # the old version of the document is intact
+
+
+def test_text_search_matches_any_word_and_a_locator_round_trips(store: Store) -> None:
+    store.add_document(
+        doc("loc"),
+        [Chunk(text="Strength training two days weekly.", embedding=unit(0), locator="p. 12")],
+    )
+    hits = store.search_text("how often should adults do strength training", 3)
+    assert [(h.doc_id, h.locator) for h in hits] == [("loc", "p. 12")]  # not every word is present
+    assert store.search_text("???") == []

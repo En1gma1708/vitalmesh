@@ -12,6 +12,7 @@ agent requires citations). The embedding dimension is fixed per database at migr
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -44,6 +45,7 @@ class Chunk(BaseModel):
 
     text: str = Field(min_length=1)
     embedding: tuple[float, ...]
+    locator: str | None = None  # where in the source ("p. 34"), so a citation can point at it
 
 
 class Hit(BaseModel):
@@ -53,6 +55,7 @@ class Hit(BaseModel):
     ordinal: int
     text: str
     score: float
+    locator: str | None = None
     title: str
     source_url: str
     licence: str
@@ -77,6 +80,7 @@ def _migration(dim: int) -> str:
         doc_id text NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
         ordinal int NOT NULL,
         text text NOT NULL,
+        locator text,
         tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
         embedding vector({dim}) NOT NULL,
         PRIMARY KEY (doc_id, ordinal)
@@ -126,8 +130,12 @@ class Store:
             self._conn.execute("DELETE FROM chunks WHERE doc_id = %s", (doc.doc_id,))
             with self._conn.cursor() as cur:
                 cur.executemany(
-                    "INSERT INTO chunks (doc_id, ordinal, text, embedding) VALUES (%s, %s, %s, %s)",
-                    [(doc.doc_id, i, c.text, list(c.embedding)) for i, c in enumerate(chunks)],
+                    "INSERT INTO chunks (doc_id, ordinal, text, locator, embedding) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    [
+                        (doc.doc_id, i, c.text, c.locator, list(c.embedding))
+                        for i, c in enumerate(chunks)
+                    ],
                 )
         return len(chunks)
 
@@ -138,8 +146,8 @@ class Store:
 
     # ------------------------------------------------------------------------- search
     _SELECT = (
-        "SELECT c.doc_id, c.ordinal, c.text, {score} AS score, d.title, d.source_url, d.licence "
-        "FROM chunks c JOIN documents d USING (doc_id) "
+        "SELECT c.doc_id, c.ordinal, c.text, {score} AS score, d.title, d.source_url, d.licence, "
+        "c.locator FROM chunks c JOIN documents d USING (doc_id) "
     )
 
     def _hits(self, rows: Sequence[Any]) -> list[Hit]:
@@ -152,17 +160,24 @@ class Store:
                 title=r[4],
                 source_url=r[5],
                 licence=r[6],
+                locator=r[7],
             )
             for r in rows
         ]
 
     def search_text(self, query: str, k: int = 5) -> list[Hit]:
+        """Rank chunks that match ANY query word. ``websearch_to_tsquery`` requires every word,
+        which finds nothing for a natural-language question (measured: D63), so the words are
+        OR-ed and ``ts_rank_cd`` orders chunks by how many of them (and how close) they match."""
+        tsquery = or_query(query)
+        if tsquery is None:
+            return []
         sql = (
             self._SELECT.format(score="ts_rank_cd(c.tsv, q)")
-            + "CROSS JOIN websearch_to_tsquery('english', %s) q "
+            + "CROSS JOIN to_tsquery('english', %s) q "
             "WHERE c.tsv @@ q ORDER BY score DESC, c.doc_id, c.ordinal LIMIT %s"
         )
-        return self._hits(self._conn.execute(sql, (query, k)).fetchall())
+        return self._hits(self._conn.execute(sql, (tsquery, k)).fetchall())
 
     def search_vector(self, embedding: Sequence[float], k: int = 5) -> list[Hit]:
         if len(embedding) != self._dim:
@@ -179,6 +194,16 @@ class Store:
     ) -> list[Hit]:
         """Reciprocal rank fusion of the full-text and vector rankings (each cut to ``pool``)."""
         return fuse([self.search_text(query, pool), self.search_vector(embedding, pool)], k)
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def or_query(text: str) -> str | None:
+    """``a | b | c`` from the alphanumeric words of ``text`` (safe to pass to ``to_tsquery``:
+    nothing else can reach it). None when there are no words."""
+    words = dict.fromkeys(_WORD.findall(text.lower()))  # unique, in order
+    return " | ".join(words) if words else None
 
 
 def fuse(rankings: Sequence[Sequence[Hit]], k: int) -> list[Hit]:

@@ -80,7 +80,7 @@ At-least-once + idempotent consumers; DLQ per topic with replay tool; circuit br
 Synthetic data only. Design hooks: JWT auth, per-user encryption keys (KMS), PII-free traces (redaction in Langfuse), audit log, consent flags, prompt-injection defence (user text never in system prompt; tool outputs treated as data).
 
 ## 8. Tech choices
-Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on httpx (OpenAI-compatible providers: Groq, Gemini, OpenRouter), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector, Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
+Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on httpx (OpenAI-compatible providers: Groq, Gemini, OpenRouter), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector (local bge-small embeddings through fastembed), Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
 
 ## 9. Settled decisions
 - Tiered compute is the core novelty (T0 deterministic, T1 cohort cache, T2 single agent, T3 multi-agent).
