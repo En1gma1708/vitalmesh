@@ -27,10 +27,12 @@ from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Publisher
 from vitalmesh_common.topics import USER_EVENTS
+from vitalmesh_processor.labstore import LabStore
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
 from vitalmesh_wellness.claims import Provenance
 from vitalmesh_wellness.guardian import Guardian
+from vitalmesh_wellness.labs import LabError, interpret
 
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_FUTURE = timedelta(minutes=5)
@@ -75,6 +77,39 @@ class MeasurementIn(BaseModel):
         if not USER_ID.match(v):
             raise ValueError("ids are 1-64 characters of letters, digits, '.', '_' or '-'")
         return v
+
+
+class LabIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    household_id: str = "default"
+    marker_name: Annotated[str, Field(min_length=1, max_length=120)]
+    value: float | None = None
+    unit: Annotated[str | None, Field(max_length=32)] = None
+    text: Annotated[str | None, Field(max_length=200)] = None
+    reference_range: Annotated[str, Field(max_length=200)] = ""
+    collected_at: datetime
+    derived: bool = False
+    client_event_id: Annotated[str | None, Field(max_length=128)] = None
+
+    @field_validator("user_id", "household_id")
+    @classmethod
+    def _ids(cls, v: str) -> str:
+        if not USER_ID.match(v):
+            raise ValueError("ids are 1-64 characters of letters, digits, '.', '_' or '-'")
+        return v
+
+
+class LabOut(BaseModel):
+    name: str
+    value: float | None
+    unit: str | None
+    text: str | None
+    reference_range: str
+    status: str  # low / normal / high / not classified
+    collected_at: datetime
+    calculated: bool
 
 
 class Accepted(BaseModel):
@@ -122,6 +157,7 @@ def create_app(
     publisher: Publisher,
     guardian: Guardian | None = None,
     clock: Callable[[], datetime] = utcnow,
+    labs: LabStore | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -166,6 +202,85 @@ def create_app(
         except Exception as exc:  # broker or registry down: tell the client to retry
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return Accepted(event_id=event_id, correlation_id=correlation_id)
+
+    @app.post("/v1/labs", status_code=202, response_model=Accepted)
+    def post_lab(m: LabIn) -> Accepted:
+        now = clock()
+        try:
+            if m.collected_at.tzinfo is not None and m.collected_at > now + MAX_FUTURE:
+                raise LabError("collected_at is in the future")
+            result = interpret(
+                m.marker_name,
+                m.collected_at,
+                value=m.value,
+                unit=m.unit,
+                text=m.text,
+                reference_text=m.reference_range,
+                derived=m.derived,
+            )
+        except LabError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        correlation_id = str(uuid.uuid4())
+        event_id = (
+            str(uuid.uuid5(_NAMESPACE, f"lab:{m.user_id}:{m.client_event_id}"))
+            if m.client_event_id
+            else str(uuid.uuid4())
+        )
+        meta = EventMeta(
+            event_id=event_id,
+            correlation_id=correlation_id,
+            user_id=m.user_id,
+            household_id=m.household_id,
+            source="api" if m.client_event_id else None,
+            external_id=m.client_event_id,
+            type="lab.result.recorded",
+            occurred_at=now,
+            trace_id=correlation_id,
+        )
+        payload = payloads_pb2.LabResultRecorded(
+            marker_code=result.loinc or "", marker_name=result.name, derived=result.derived
+        )
+        if result.text is not None:
+            payload.text = result.text
+        else:
+            assert result.value is not None and result.unit is not None
+            payload.numeric.value, payload.numeric.unit = result.value, result.unit
+        payload.reference.raw_text = result.reference.raw_text
+        payload.reference.parsed = result.reference.parsed
+        if result.reference.low is not None:
+            payload.reference.low = result.reference.low
+        if result.reference.high is not None:
+            payload.reference.high = result.reference.high
+        payload.collected_at.FromDatetime(result.collected_at.astimezone(UTC).replace(tzinfo=None))
+        try:
+            publisher.publish(
+                USER_EVENTS, m.user_id, serde.serialize_event(USER_EVENTS, meta, payload)
+            )
+            publisher.flush()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
+        return Accepted(event_id=event_id, correlation_id=correlation_id)
+
+    @app.get("/v1/users/{user_id}/labs", response_model=list[LabOut])
+    def get_labs(user_id: str) -> list[LabOut]:
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        if labs is None:
+            raise HTTPException(status_code=503, detail="temporarily unavailable")
+        return [
+            LabOut(
+                name=r.name,
+                value=r.value,
+                unit=r.unit,
+                text=r.text,
+                reference_range=r.reference.raw_text,
+                status="not classified" if r.flag.value == "unclassified" else r.flag.value,
+                collected_at=r.collected_at,
+                calculated=r.derived,
+            )
+            for r in labs.list(user_id)
+        ]
 
     @app.get("/v1/users/{user_id}/recommendation", response_model=RecommendationOut)
     def get_recommendation(user_id: str) -> RecommendationOut:

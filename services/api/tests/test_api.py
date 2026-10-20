@@ -142,3 +142,75 @@ def test_blocked_recommendation_is_never_returned() -> None:
     r = client.get(f"/v1/users/{uid}/recommendation")
     assert r.status_code == 409
     assert "blocked for the test" not in r.text  # the reason stays internal
+
+
+# ---------------------------------------------------------------------------------- labs
+def lab_body(**over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "user_id": "u-1",
+        "marker_name": "Glucose Fasting",
+        "value": 5.0,
+        "unit": "mmol/L",
+        "reference_range": "3.9 - 5.5",
+        "collected_at": (NOW - timedelta(days=1)).isoformat(),
+    }
+    return {**base, **over}
+
+
+def test_lab_is_validated_and_published_as_entered() -> None:
+    client, pub, _ = make()
+    r = client.post("/v1/labs", json=lab_body())
+    assert r.status_code == 202
+    meta, payload = codec.decode(pub.sent[0].value)
+    assert meta.type == "lab.result.recorded" and pub.sent[0].topic == USER_EVENTS
+    assert (payload.numeric.value, payload.numeric.unit) == (5.0, "mmol/L")  # not converted
+    assert payload.marker_code == "1558-6" and payload.reference.parsed
+    assert payload.reference.low == 3.9 and payload.reference.high == 5.5
+
+
+def test_one_sided_range_does_not_become_a_zero_lower_limit() -> None:
+    client, pub, _ = make()
+    client.post(
+        "/v1/labs",
+        json=lab_body(marker_name="ALT", value=30, unit="U/L", reference_range="< 50"),
+    )
+    _, payload = codec.decode(pub.sent[0].value)
+    assert payload.reference.HasField("high") and not payload.reference.HasField("low")
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"unit": "furlongs"},
+        {"value": 9000.0, "unit": "mg/dL"},
+        {"value": None},
+        {"value": 5.0, "text": "x"},
+        {"collected_at": "2026-10-19T08:00:00"},
+        {"collected_at": (NOW + timedelta(days=1)).isoformat()},
+        {"marker_name": ""},
+        {"extra": 1},
+    ],
+)
+def test_bad_labs_are_rejected_and_nothing_is_published(over: dict[str, Any]) -> None:
+    client, pub, _ = make()
+    assert client.post("/v1/labs", json=lab_body(**over)).status_code == 422
+    assert pub.sent == []
+
+
+def test_labs_listing_is_health_only() -> None:
+    from vitalmesh_processor.labstore import InMemoryLabStore
+    from vitalmesh_wellness.labs import interpret
+
+    labs = InMemoryLabStore()
+    labs.put(
+        "u-1", interpret("ALT", NOW, value=64, unit="U/L", reference_text="<50", derived=False)
+    )
+    profile, sleep = synthetic_user(3, 1)
+    profiles = InMemoryProfileStore()
+    profiles.put(ProfileRecord(profile=profile, recent_sleep_hours=tuple(sleep)))
+    client = TestClient(create_app(profiles, PlainSerde(), RecordingPublisher(), labs=labs))
+    out = client.get("/v1/users/u-1/labs").json()
+    assert out[0]["name"] == "ALT" and out[0]["status"] == "high"
+    assert out[0]["reference_range"] == "<50"
+    for internal in ("flag", "marker", "canonical", "loinc"):
+        assert internal not in str(out).lower()

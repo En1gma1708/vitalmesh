@@ -868,6 +868,7 @@ dependencies = [
     { name = "redis" },
     { name = "uvicorn" },
     { name = "vitalmesh-common" },
+    { name = "vitalmesh-processor" },
     { name = "vitalmesh-t0" },
     { name = "vitalmesh-wellness" },
 ]
@@ -878,6 +879,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-processor", editable = "services/processor" },
     { name = "vitalmesh-t0", editable = "services/t0" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
@@ -906,11 +908,17 @@ name = "vitalmesh-processor"
 version = "0.1.0"
 source = { editable = "services/processor" }
 dependencies = [
+    { name = "redis" },
     { name = "vitalmesh-common" },
+    { name = "vitalmesh-wellness" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vitalmesh-common", editable = "libs/common" }]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-wellness", editable = "libs/wellness" },
+]
 
 [[package]]
 name = "vitalmesh-t0"

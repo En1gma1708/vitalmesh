@@ -97,3 +97,51 @@ def test_api_measurement_reaches_a_released_recommendation(
     sync = client.get(f"/v1/users/{uid}/recommendation").json()
     kafka_values = sorted(c.quantity.value for c in rec.claims)
     assert sorted(i["value"] for i in sync["items"]) == pytest.approx(kafka_values)
+
+
+def test_lab_through_kafka_is_stored_and_listed(
+    kafka_settings: KafkaSettings, redis_client: redis.Redis
+) -> None:
+    from vitalmesh_common.kafka_testing import wait_for
+    from vitalmesh_processor.labstore import RedisLabStore
+
+    ensure_topics(kafka_settings)
+    serde = SchemaRegistrySerde(kafka_settings)
+    publisher = KafkaPublisher(kafka_settings, client_id="api-lab-it")
+    prefix = f"it-{uuid.uuid4().hex[:8]}"
+    labs = RedisLabStore(redis_client, prefix=f"{prefix}:labs")
+    state = RedisStateStore(redis_client, prefix=f"{prefix}:state")
+    uid = f"lab-user-{prefix}"
+    client = TestClient(
+        create_app(
+            RedisProfileStore(redis_client, prefix=f"{prefix}:profile"), serde, publisher, labs=labs
+        )
+    )
+    with running_consumers(
+        kafka_settings,
+        serde,
+        publisher,
+        redis_client,
+        USER_EVENTS,
+        make_state_handler(state, serde, publisher, labs=labs),
+    ):
+        r = client.post(
+            "/v1/labs",
+            json={
+                "user_id": uid,
+                "marker_name": "ALT",
+                "value": 64,
+                "unit": "U/L",
+                "reference_range": "< 50",
+                "collected_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        assert r.status_code == 202, r.text
+        assert wait_for(lambda: bool(labs.list(uid)), timeout=30)
+    [item] = client.get(f"/v1/users/{uid}/labs").json()
+    assert (item["name"], item["value"], item["unit"], item["status"]) == (
+        "ALT",
+        64,
+        "U/L",
+        "high",
+    )

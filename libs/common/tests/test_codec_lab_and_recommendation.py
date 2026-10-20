@@ -19,7 +19,7 @@ def meta(type_: str) -> EventMeta:
 
 def numeric_lab() -> payloads_pb2.LabResultRecorded:
     lab = payloads_pb2.LabResultRecorded(marker_code="1742-6", marker_name="ALT")
-    lab.numeric.value = 90.0
+    lab.numeric.value = 64.0
     lab.numeric.unit = "U/L"
     lab.reference.raw_text = "<50"
     lab.reference.parsed = True
@@ -31,7 +31,7 @@ def numeric_lab() -> payloads_pb2.LabResultRecorded:
 def test_numeric_lab_result_round_trips_with_unit_and_reference() -> None:
     _, got = codec.decode(codec.encode(meta("lab.result.recorded"), numeric_lab()))
     assert got.WhichOneof("result") == "numeric"
-    assert (got.numeric.value, got.numeric.unit) == (90.0, "U/L")
+    assert (got.numeric.value, got.numeric.unit) == (64.0, "U/L")
     assert got.reference.raw_text == "<50"
     assert got.reference.HasField("high")
     assert not got.reference.HasField("low")  # a one-sided limit must not become low = 0

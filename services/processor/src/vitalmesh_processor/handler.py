@@ -17,7 +17,9 @@ from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Handler, Publisher
 from vitalmesh_common.topics import USER_STATE
+from vitalmesh_wellness.labs import LabError, interpret
 
+from vitalmesh_processor.labstore import LabStore
 from vitalmesh_processor.state import HealthState, StateStore, apply_measurement
 
 STATE_EVENT_TYPE = "health.state.updated"
@@ -44,10 +46,36 @@ def make_handler(
     serde: EventSerde,
     publisher: Publisher,
     clock: Callable[[], datetime] = utcnow,
+    labs: LabStore | None = None,
 ) -> Handler:
+    def handle_lab(meta: EventMeta, payload: Any) -> None:
+        if labs is None:
+            return
+        lab: payloads_pb2.LabResultRecorded = payload
+        if not lab.HasField("collected_at"):
+            raise EnvelopeError("lab result needs collected_at")
+        which = lab.WhichOneof("result")
+        ref = lab.reference.raw_text if lab.HasField("reference") else ""
+        try:
+            result = interpret(
+                lab.marker_name,
+                lab.collected_at.ToDatetime(tzinfo=UTC),
+                value=lab.numeric.value if which == "numeric" else None,
+                unit=lab.numeric.unit if which == "numeric" else None,
+                text=lab.text if which == "text" else None,
+                reference_text=ref,
+                derived=lab.derived,
+            )
+        except LabError as exc:  # passed ingress but cannot be interpreted: not retryable
+            raise EnvelopeError(f"lab result rejected: {exc}") from exc
+        labs.put(meta.user_id, result)
+
     def handle(meta: EventMeta, payload: Any) -> None:
+        if meta.type == "lab.result.recorded":
+            handle_lab(meta, payload)  # stored only: lab results do not change recommendations yet
+            return
         if meta.type != "measurement.recorded":
-            return  # Phase 0 handles measurements only; other families are acknowledged as no-ops
+            return  # other families are acknowledged as no-ops
         m: payloads_pb2.MeasurementRecorded = payload
         if not m.HasField("measured_at") or not m.HasField("value"):
             raise EnvelopeError("measurement needs value and measured_at")

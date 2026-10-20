@@ -28,6 +28,7 @@ from vitalmesh_common.retry import RetryPolicy
 from vitalmesh_common.topics import USER_EVENTS, retry_topic
 
 from vitalmesh_processor.handler import make_handler
+from vitalmesh_processor.labstore import RedisLabStore
 from vitalmesh_processor.state import RedisStateStore
 
 GROUP = os.environ.get("VITALMESH_CONSUMER_GROUP", "state-processor")
@@ -61,7 +62,7 @@ def main() -> None:
         serde=serde,
         publisher=publisher,
         store=RedisIdempotencyStore(client),
-        handler=make_handler(RedisStateStore(client), serde, publisher),
+        handler=make_handler(RedisStateStore(client), serde, publisher, labs=RedisLabStore(client)),
         policy=policy,
     )
 
