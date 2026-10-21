@@ -138,6 +138,12 @@ message RecommendationReleased {
   string engine_version = 3;
   string rules_version = 4;
   google.protobuf.Timestamp generated_at = 5;
+  // Added for T3 answers (D68); T0 releases leave them empty.
+  string summary = 6;                 // the plain-language reply the user sees
+  repeated Citation citations = 7;    // verified quotes behind the cited claims
+  bool partial = 8;                   // some specialists did not finish
+  repeated Specialist missing = 9;
+  string question = 10;
 }
 
 message GuardianViolation {

@@ -12,6 +12,10 @@ dependencies = [
   "vitalmesh-specialists",
   "vitalmesh-tracing",
   "redis>=5",
+  "langgraph>=1.2",
+  "langgraph-checkpoint-postgres>=3.2",
+  "psycopg[binary]>=3.2",
+  "psycopg-pool>=3.2",
 ]
 
 [build-system]

@@ -764,6 +764,21 @@ wheels = [
 ]
 
 [[package]]
+name = "langgraph-checkpoint-postgres"
+version = "3.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langgraph-checkpoint" },
+    { name = "orjson" },
+    { name = "psycopg" },
+    { name = "psycopg-pool" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/28/bc0927c2770ab713edc33c4c2f87d1f7b51c344b401d7dda5c8584bd8bf8/langgraph_checkpoint_postgres-3.2.0.tar.gz", hash = "sha256:dffef0e6822d7c614019f7f2c4bdbef42859746aee2d3e6d9d9747cf3744ca90", size = 165780, upload-time = "2026-10-14T19:54:41.116Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/af/07090322c0ac00429ff7f4789b0855e72cbd3c47026ce6b8575f39cd0f9a/langgraph_checkpoint_postgres-3.2.0-py3-none-any.whl", hash = "sha256:4d89526ab3dff0c71d575233e4132327f95812deb07b6c2e75fc473525b5b8fc", size = 55937, upload-time = "2026-10-14T19:54:40.048Z" },
+]
+
+[[package]]
 name = "langgraph-prebuilt"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1207,6 +1222,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6e/90/2f46d2e0de79706ac170df0a3637fe63c4498fc04f131f6049520b78b806/psycopg_binary-3.3.6-cp312-cp312-musllinux_1_2_riscv64.whl", hash = "sha256:289aadd6a00e151203c081f708348ec89f1e483c9b510ef4ac3981f847f01f79", size = 4007358, upload-time = "2026-09-18T13:18:53.944Z" },
     { url = "https://files.pythonhosted.org/packages/03/48/6744e91291b751a8cf12d63d719977974bb94c84ceba913e7ddb2e478e51/psycopg_binary-3.3.6-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:f21d057f3e5f5491067e5b292498073b73847d48799b099803fef100775fcc52", size = 4320156, upload-time = "2026-09-18T13:18:59.258Z" },
     { url = "https://files.pythonhosted.org/packages/1a/9b/94ff7fce53a64d5b286e2ec454e0a025cf3d6e6b4a9189bef16aa5de98b2/psycopg_binary-3.3.6-cp312-cp312-win_amd64.whl", hash = "sha256:e23a66a763fbe83fcc210bc77c27e5a5ea380ebf091c06f34d8561b695e5a40f", size = 3658864, upload-time = "2026-09-18T13:19:06.503Z" },
+]
+
+[[package]]
+name = "psycopg-pool"
+version = "3.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/5e/c0664b968b102ff68b811d999c728546c48d5c1eec03e3bbaf88c0cb4472/psycopg_pool-3.3.3.tar.gz", hash = "sha256:df87b5d9d0ad7db37f6cdad4fa8ce113d250f5997f6db38e9a99192fb67f9e1d", size = 32006, upload-time = "2026-09-22T15:53:24.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/b4/452c6607a0f479465cd8a9b0d9956919fcb150050c1f83f9f11e6b8ee8dc/psycopg_pool-3.3.3-py3-none-any.whl", hash = "sha256:9b9cd6a4fcec47a410f7e82d408540e7f77b478509e91b44c1a5457a13e5ff37", size = 40304, upload-time = "2026-09-22T15:53:23.712Z" },
 ]
 
 [[package]]
@@ -1656,6 +1683,10 @@ name = "vitalmesh-agents"
 version = "0.1.0"
 source = { editable = "services/agents" }
 dependencies = [
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "psycopg-pool" },
     { name = "redis" },
     { name = "vitalmesh-common" },
     { name = "vitalmesh-evidence" },
@@ -1668,6 +1699,10 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "langgraph", specifier = ">=1.2" },
+    { name = "langgraph-checkpoint-postgres", specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "psycopg-pool", specifier = ">=3.2" },
     { name = "redis", specifier = ">=5" },
     { name = "vitalmesh-common", editable = "libs/common" },
     { name = "vitalmesh-evidence", editable = "libs/evidence" },
@@ -1876,6 +1911,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "vitalmesh-evidence" },
     { name = "vitalmesh-llm" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-tracing" },
     { name = "vitalmesh-wellness" },
 ]
@@ -1886,6 +1922,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "vitalmesh-evidence", editable = "libs/evidence" },
     { name = "vitalmesh-llm", editable = "libs/llm" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-tracing", editable = "libs/tracing" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
