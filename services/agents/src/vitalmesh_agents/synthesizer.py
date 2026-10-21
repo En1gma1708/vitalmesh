@@ -59,6 +59,7 @@ class PartView:
     specialist: str
     status: str  # answered / fallback / declined
     text: str
+    grounded: bool = True  # the part carried claims; an answer with none rests on nothing
 
 
 @dataclass(frozen=True)
@@ -99,15 +100,45 @@ def check_summary(text: str, allowed: frozenset[float], max_words: int = MAX_WOR
     return problems
 
 
-def assemble(parts: Sequence[PartView]) -> str:
-    """The specialists' own checked notes, joined in order, without repeats."""
+FALLBACK_MAX_WORDS = 150  # inside the Guardian's limit, so the fallback itself is never blocked
+
+
+def _words(text: str) -> int:
+    return len(re.findall(r"\b\w+\b", text))
+
+
+def _clip(text: str, max_words: int) -> str:
+    """Whole sentences up to the word limit (the first sentence alone if it is already too long)."""
+    out: list[str] = []
+    used = 0
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+        n = _words(sentence)
+        if out and used + n > max_words:
+            break
+        out.append(sentence)
+        used += n
+    return " ".join(out)
+
+
+def assemble(parts: Sequence[PartView], max_words: int = FALLBACK_MAX_WORDS) -> str:
+    """The specialists' own checked notes, joined in order, without repeats and within the word
+    limit. Grounded parts come first; parts that rest on no claim are used only if nothing else
+    exists; whole parts are dropped from the end rather than cut mid-way."""
+    ordered = [p for p in parts if p.grounded and p.status != "declined"]
+    ordered += [p for p in parts if p.status == "declined"]
+    if not ordered:
+        ordered = list(parts)
     seen: set[str] = set()
     out: list[str] = []
-    for p in parts:
+    used = 0
+    for p in ordered:
         t = p.text.strip()
-        if t and t not in seen:
-            seen.add(t)
-            out.append(t)
+        n = _words(t)
+        if not t or t in seen or (out and used + n > max_words):
+            continue
+        seen.add(t)
+        out.append(t if n <= max_words else _clip(t, max_words))
+        used += min(n, max_words)
     return " ".join(out) if out else NO_ANSWER
 
 

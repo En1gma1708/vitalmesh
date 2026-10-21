@@ -321,3 +321,47 @@ def test_claim_numbers_feed_the_allowed_set() -> None:
     _, draft = bundle_event()[1], None
     assert 2124.0 in claim_numbers(list(bundle_event()[1].parts[0].claims))
     assert draft is None
+
+
+# --------------------------------------------------------- live-run fixes (grounded, bounded)
+def test_the_fallback_prefers_grounded_notes_and_drops_ungrounded_rambling() -> None:
+    parts = (
+        PartView("condition_medication", "answered", "Eat well and exercise.", grounded=False),
+        PartView("nutrition", "answered", "Aim for about 2124 kcal a day."),
+    )
+    assert assemble(parts) == "Aim for about 2124 kcal a day."
+    only_ungrounded = (PartView("condition_medication", "answered", "Nothing declared.", False),)
+    assert assemble(only_ungrounded) == "Nothing declared."
+
+
+def test_the_fallback_stays_inside_the_guardian_word_limit() -> None:
+    long_note = " ".join(f"Sentence number {i} is here." for i in range(60))  # 300 words
+    out = assemble((PartView("nutrition", "answered", long_note),))
+    assert len(out.split()) <= 150 and out.endswith(".")
+    two = (
+        PartView("nutrition", "answered", "word " * 100),
+        PartView("movement_recovery", "answered", "other " * 100),
+    )
+    assert "other" not in assemble(two)  # a whole part is dropped rather than cut mid-way
+
+
+def test_declined_notes_come_after_grounded_ones() -> None:
+    parts = (
+        PartView("condition_medication", "declined", "Please ask a doctor about medication."),
+        PartView("nutrition", "answered", "Aim for about 2124 kcal a day."),
+    )
+    assert assemble(parts) == "Aim for about 2124 kcal a day. Please ask a doctor about medication."
+
+
+def test_an_ungrounded_part_is_not_shown_to_the_model_when_grounded_notes_exist() -> None:
+    rambling = payloads_pb2.AdviceCompleted(
+        specialist=common_pb2.SPECIALIST_CONDITION_MEDICATION,
+        status=payloads_pb2.ADVICE_ANSWERED,
+        text="Drink water and stretch daily.",
+    )
+    event = bundle_event(
+        parts=[advice(NUT, "Aim for about 2124 kcal a day.", 2124.0, "kcal"), rambling]
+    )
+    router = FakeRouter(resp("You can aim for about 2124 kcal a day."))
+    run_handler(router, event)
+    assert "Drink water" not in router.requests[0].messages[1].content

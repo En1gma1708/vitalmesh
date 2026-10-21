@@ -202,3 +202,32 @@ def test_other_event_types_are_ignored() -> None:
         meta.model_copy(update={"type": "advice.completed"}), plan
     )
     assert pub.sent == []
+
+
+def test_each_specialist_is_told_to_answer_only_its_own_part() -> None:
+    from vitalmesh_agents.specialist_handler import scoped_question
+
+    for kind, phrase in (
+        (Specialist.NUTRITION, "food and nutrition"),
+        (Specialist.MOVEMENT_RECOVERY, "exercise, training and sleep"),
+        (Specialist.CONDITION_MEDICATION, "conditions, medications and lab results"),
+    ):
+        q = scoped_question(kind, "What should I eat and how should I train?")
+        assert q.startswith("What should I eat") and phrase in q and "other specialists" in q
+
+
+def test_the_model_call_wait_follows_the_run_deadline_with_bounds() -> None:
+    from vitalmesh_agents.specialist_handler import wait_budget
+
+    d = deps(FakeRouter(resp("x")))
+    assert wait_budget(d, NOW + timedelta(seconds=100), NOW) == 85.0  # deadline minus margin
+    assert wait_budget(d, NOW + timedelta(seconds=5), NOW) == 10.0  # never below the floor
+    assert wait_budget(d, NOW + timedelta(hours=1), NOW) == 240.0  # never above the ceiling
+    assert wait_budget(d, None, NOW) == d.max_wait_s
+
+
+def test_the_scoped_question_reaches_the_model() -> None:
+    router = FakeRouter(asks("get_energy_target"), resp("Aim for the calories in your plan."))
+    run(Specialist.NUTRITION, deps(router), planned(common_pb2.SPECIALIST_NUTRITION))
+    user = next(m for m in router.requests[0].messages if m.role == "user").content
+    assert "food and nutrition specialist" in user

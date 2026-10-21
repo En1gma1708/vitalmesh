@@ -59,12 +59,41 @@ class SpecialistDeps:
     sleep: Callable[[float], None] = field(default=time.sleep)
 
 
-def build_specialist(kind: Specialist, deps: SpecialistDeps, max_calls: int) -> ToolSpecialist:
+SCOPE = {
+    Specialist.NUTRITION: "food and nutrition",
+    Specialist.MOVEMENT_RECOVERY: "exercise, training and sleep",
+    Specialist.CONDITION_MEDICATION: "declared conditions, medications and lab results",
+}
+MIN_WAIT_S = 10.0
+MAX_WAIT_S = 240.0
+DEADLINE_MARGIN_S = 15.0
+
+
+def scoped_question(kind: Specialist, question: str) -> str:
+    """Each specialist answers only its own part: overlap wastes quota and contradicts."""
+    return (
+        f"{question}\n\n(You are the {SCOPE[kind]} specialist. Answer only the "
+        f"{SCOPE[kind]} part of this question; other specialists cover the rest.)"
+    )
+
+
+def wait_budget(deps: SpecialistDeps, deadline: datetime | None, now: datetime) -> float:
+    """How long a model call may wait for free-tier budget: what is left of the run deadline,
+    less a margin to publish, so a throttled specialist still reports before the run closes."""
+    if deadline is None:
+        return deps.max_wait_s
+    left = (deadline - now).total_seconds() - DEADLINE_MARGIN_S
+    return max(MIN_WAIT_S, min(left, MAX_WAIT_S))
+
+
+def build_specialist(
+    kind: Specialist, deps: SpecialistDeps, max_calls: int, max_wait_s: float | None = None
+) -> ToolSpecialist:
     common: dict[str, Any] = {
         "tracer": deps.tracer,
         "attempts": deps.attempts,
         "retry_pause_s": deps.retry_pause_s,
-        "max_wait_s": deps.max_wait_s,
+        "max_wait_s": deps.max_wait_s if max_wait_s is None else max_wait_s,
         "sleep": deps.sleep,
         "max_model_calls": max_calls,
     }
@@ -104,11 +133,16 @@ def make_specialist_handler(
         if record is None:
             advice = failed_advice(kind, "profile.missing")
         else:
-            specialist = build_specialist(kind, deps, int(payload.max_model_calls) or 1)
+            specialist = build_specialist(
+                kind,
+                deps,
+                int(payload.max_model_calls) or 1,
+                wait_budget(deps, meta.deadline_at, now),
+            )
             tools = build_tools(kind, deps, record, meta.user_id, now)
             try:
                 result = specialist.advise(
-                    payload.question,
+                    scoped_question(kind, payload.question),
                     tools,
                     user_id=meta.user_id,
                     session_id=meta.correlation_id,

@@ -9,6 +9,7 @@ disclosure sentence appended by code, so the answer never reads as complete when
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -37,6 +38,7 @@ from vitalmesh_agents.synthesizer import (
     assemble,
 )
 
+log = logging.getLogger("vitalmesh.synthesizer")
 OUTPUT_TYPE = "recommendation.drafted"
 _STATUS = {
     payloads_pb2.ADVICE_ANSWERED: "answered",
@@ -120,12 +122,17 @@ def _first_draft(
 ) -> payloads_pb2.RecommendationDrafted:
     parts = [p for p in bundle.parts if p.status in _STATUS]
     views = tuple(
-        PartView(specialist_from_proto(p.specialist).value, _STATUS[p.status], p.text)
+        PartView(
+            specialist_from_proto(p.specialist).value, _STATUS[p.status], p.text, bool(p.claims)
+        )
         for p in parts
     )
     claims = _dedupe_claims(parts)
     missing = [specialist_from_proto(s) for s in bundle.missing]
-    usable = [v for v in views if v.status != "declined" or v.text.strip()]
+    # Notes for the model: parts that rest on claims, plus refusals (they carry "ask a doctor").
+    # An answer with no claim behind it is kept only when nothing else exists.
+    grounded = [v for v in views if (v.grounded or v.status == "declined") and v.text.strip()]
+    usable = grounded or [v for v in views if v.text.strip()]
     if not usable:
         text, fallback = NO_ANSWER, True
     else:
@@ -142,6 +149,8 @@ def _first_draft(
                 inp, user_id=meta.user_id, session_id=meta.correlation_id
             )
             text, fallback = result.text, result.used_fallback
+            if fallback:
+                log.info("synthesis used the checked notes: %s", result.reason)
         except AgentUnavailable:
             text, fallback = assemble(usable), True  # checked notes, no model needed
     return _draft(

@@ -41,9 +41,12 @@ CLINICIAN_NOTE = "Please discuss this with a clinician."
 
 SYSTEM_PROMPT = (
     "You are a general-wellness assistant that explains how a user's declared conditions, "
-    "medications and lab results affect wellness advice. Answer in at most 100 words, in plain "
+    "medications and lab results affect wellness advice. Answer in at most 60 words, in plain "
     "language.\n"
     "Rules:\n"
+    "0. Say ONLY what your tools return about their conditions, medications and labs. Do NOT "
+    "give general diet, exercise or lifestyle advice: other assistants cover that. If the "
+    "tools show nothing (no conditions, no labs), say so in one sentence.\n"
     "1. Get facts ONLY from your tools: get_constraints (their conditions, medications and what "
     "the safety knowledge graph says about them), get_lab_summary (their latest lab results "
     "against the lab's own ranges), search_guidelines (general cited recommendations). Call a "
@@ -231,7 +234,9 @@ def fallback_text(results: Sequence[ToolResult]) -> str:
     return " ".join(parts)
 
 
-CONFIG = SpecialistConfig(name="condition", system_prompt=SYSTEM_PROMPT, fallback=fallback_text)
+CONFIG = SpecialistConfig(
+    name="condition", system_prompt=SYSTEM_PROMPT, fallback=fallback_text, max_words=70
+)
 
 
 class ConditionSpecialist(ToolSpecialist):
