@@ -1,6 +1,6 @@
 # EVENT BACKBONE — Kafka as the agents' nervous system
 
-Status: DRAFT v0.1. Supersedes the "in-process T3 graph" idea in ARCHITECTURE.md section 3. Sections 3 and 10-13 are implemented for the deterministic T0 path (Phases 0-1); the agent events in section 4 (run.planned, advice.completed, evidence.attached, advice.bundle.ready, recommendation.drafted, review.*) are planned for Phase 3.
+Status: DRAFT v0.1. Supersedes the "in-process T3 graph" idea in ARCHITECTURE.md section 3. Sections 3 and 10-13 are implemented for the deterministic T0 path (Phases 0-1); the agent events in section 4 are implemented for the T3 run in Phase 3 (D68) with two deviations: one `advice.completed` payload carries a `specialist` field instead of one event type per specialist, and there is no `evidence.attached` (Evidence is a tool inside each specialist). Topics: questions.asked, runs.planned, advice.completed, advice.bundles, recommendations.drafted, drafts.cleared, reviews.completed, reviews.requested, reviews.decided. The Aggregator is built with Redis state (the Quix Streams spike was not done).
 
 ## 1. Core idea
 Agents never call each other. Each agent **consumes events, does its work, publishes a fact** about what it finished. Producers do not know who consumes their output.

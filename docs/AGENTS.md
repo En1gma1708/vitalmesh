@@ -1,6 +1,6 @@
 # AGENTS — what we build and why (no implementation)
 
-Status: DRAFT v0.1. Companion to ARCHITECTURE.md. Implementation status (Phase 2): built and evaluated as in-process LangGraph agents: Concierge (1), Nutrition Specialist (3), Evidence Agent (6); not built: Triage/Budget (2), Movement & Recovery (4), Condition & Medication (5), Synthesizer (7), Checker (8), Escalation Briefer (9), Engagement (10), Scheduler (11) and the background agents; the Kafka hand-offs are Phase 3.
+Status: DRAFT v0.1. Companion to ARCHITECTURE.md. Implementation status (Phase 3): built and tested: Concierge (1, in-process), Triage/Budget (2, rules only), Nutrition Specialist (3), Movement & Recovery (4), Condition & Medication (5), Evidence Agent (6, a tool inside each specialist), Synthesizer (7), Checker (8), Escalation Briefer (9); the specialists, Triage, Synthesizer, Checker and the Release gate run as Kafka consumers (services/agents). Not built: Engagement (10), Scheduler (11) and the background agents. Whether the multi-agent graph beats a single agent with tools is being measured (ablation) and is not yet claimed.
 
 ## 1. The test an agent must pass
 A component becomes an **LLM agent** only if at least one is true; otherwise it is plain code (cheaper, testable, safer):
