@@ -50,7 +50,7 @@ _PROTO_TO_RISK = {v: k for k, v in _RISK_TO_PROTO.items()}
 
 
 def specialist_to_proto(value: Specialist) -> int:
-    return _SPECIALIST_TO_PROTO[value]
+    return int(_SPECIALIST_TO_PROTO[value])
 
 
 def specialist_from_proto(value: int) -> Specialist:
@@ -61,7 +61,7 @@ def specialist_from_proto(value: int) -> Specialist:
 
 
 def risk_to_proto(value: Risk) -> int:
-    return _RISK_TO_PROTO[value]
+    return int(_RISK_TO_PROTO[value])
 
 
 def risk_from_proto(value: int) -> Risk:
