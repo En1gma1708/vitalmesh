@@ -1,80 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
-from vitalmesh_agents.inprocess import Bus, Wiring, ask, build_graph, outcome_of
-from vitalmesh_agents.specialist_handler import SpecialistDeps
-from vitalmesh_agents.testing import NoEvidence, ScriptedRouter
+from vitalmesh_agents.inprocess import ask, outcome_of
+from vitalmesh_agents.testing import T0, world
 from vitalmesh_common.run import Specialist
-from vitalmesh_stores import (
-    InMemoryHistoryStore,
-    InMemoryLabStore,
-    InMemoryProfileStore,
-    ProfileRecord,
-)
-from vitalmesh_wellness.engine import Profile
-from vitalmesh_wellness.labs import interpret
-
-T0 = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
-
-
-class Clock:
-    def __init__(self) -> None:
-        self.now = T0
-
-    def __call__(self) -> datetime:
-        return self.now
-
-
-def world(
-    conditions: list[str] | None = None,
-    verdicts: list[str] | None = None,
-    specialists: frozenset[Specialist] = frozenset(Specialist),
-    labs: bool = False,
-) -> tuple[Bus, ScriptedRouter, Clock]:
-    profiles = InMemoryProfileStore()
-    profiles.put(
-        ProfileRecord(
-            profile=Profile.model_validate(
-                {
-                    "user_id": "u-1",
-                    "sex": "female",
-                    "age_years": 30,
-                    "weight_kg": 65,
-                    "height_cm": 165,
-                    "activity": "moderate",
-                    "resting_hr_bpm": 60,
-                    "conditions": conditions or [],
-                }
-            ),
-            recent_sleep_hours=tuple([8.0] * 14),
-        )
-    )
-    lab_store = InMemoryLabStore()
-    if labs:
-        lab_store.put(
-            "u-1",
-            interpret(
-                "LDL Cholesterol",
-                T0 - timedelta(days=3),
-                value=190,
-                unit="mg/dL",
-                reference_text="< 100",
-            ),
-        )
-    router, clock = ScriptedRouter(verdicts), Clock()
-    deps = SpecialistDeps(
-        router=router,
-        evidence=NoEvidence(),
-        profiles=profiles,
-        labs=lab_store,
-        history=InMemoryHistoryStore(),
-        sleep=lambda _s: None,
-    )
-    bus = build_graph(
-        Wiring(router=router, deps=deps, profiles=profiles, clock=clock, specialists=specialists)
-    )
-    return bus, router, clock
 
 
 def test_a_low_risk_question_is_released_through_the_real_handlers() -> None:
