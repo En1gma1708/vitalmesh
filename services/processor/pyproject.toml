@@ -3,7 +3,7 @@ name = "vitalmesh-processor"
 version = "0.1.0"
 description = "State processor: consumes user events idempotently, updates per-user state, emits state events"
 requires-python = ">=3.12,<3.13"
-dependencies = ["vitalmesh-common", "vitalmesh-wellness", "redis>=5"]
+dependencies = ["vitalmesh-common", "vitalmesh-wellness", "vitalmesh-stores", "redis>=5"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }

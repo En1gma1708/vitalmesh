@@ -3,7 +3,7 @@ name = "vitalmesh-api"
 version = "0.1.0"
 description = "API gateway: validated ingress to Kafka and the synchronous in-process T0 recommendation"
 requires-python = ">=3.12,<3.13"
-dependencies = ["vitalmesh-common", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-processor", "fastapi>=0.115", "uvicorn>=0.30", "redis>=5"]
+dependencies = ["vitalmesh-common", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-processor", "vitalmesh-stores", "fastapi>=0.115", "uvicorn>=0.30", "redis>=5"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }

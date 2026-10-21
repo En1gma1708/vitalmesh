@@ -15,6 +15,7 @@ members = [
     "vitalmesh-processor",
     "vitalmesh-retrieval",
     "vitalmesh-specialists",
+    "vitalmesh-stores",
     "vitalmesh-t0",
     "vitalmesh-tracing",
     "vitalmesh-wellness",
@@ -1601,6 +1602,7 @@ dependencies = [
     { name = "vitalmesh-processor" },
     { name = "vitalmesh-retrieval" },
     { name = "vitalmesh-specialists" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-t0" },
     { name = "vitalmesh-tracing" },
     { name = "vitalmesh-wellness" },
@@ -1629,6 +1631,7 @@ requires-dist = [
     { name = "vitalmesh-processor", editable = "services/processor" },
     { name = "vitalmesh-retrieval", editable = "libs/retrieval" },
     { name = "vitalmesh-specialists", editable = "libs/specialists" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-t0", editable = "services/t0" },
     { name = "vitalmesh-tracing", editable = "libs/tracing" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
@@ -1655,6 +1658,7 @@ dependencies = [
     { name = "uvicorn" },
     { name = "vitalmesh-common" },
     { name = "vitalmesh-processor" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-t0" },
     { name = "vitalmesh-wellness" },
 ]
@@ -1666,6 +1670,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "vitalmesh-common", editable = "libs/common" },
     { name = "vitalmesh-processor", editable = "services/processor" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-t0", editable = "services/t0" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
@@ -1799,6 +1804,7 @@ source = { editable = "services/processor" }
 dependencies = [
     { name = "redis" },
     { name = "vitalmesh-common" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -1806,6 +1812,7 @@ dependencies = [
 requires-dist = [
     { name = "redis", specifier = ">=5" },
     { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
@@ -1854,12 +1861,30 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vitalmesh-stores"
+version = "0.1.0"
+source = { editable = "libs/stores" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "redis" },
+    { name = "vitalmesh-wellness" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2" },
+    { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-wellness", editable = "libs/wellness" },
+]
+
+[[package]]
 name = "vitalmesh-t0"
 version = "0.1.0"
 source = { editable = "services/t0" }
 dependencies = [
     { name = "redis" },
     { name = "vitalmesh-common" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -1867,6 +1892,7 @@ dependencies = [
 requires-dist = [
     { name = "redis", specifier = ">=5" },
     { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 

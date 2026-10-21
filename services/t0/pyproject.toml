@@ -3,7 +3,7 @@ name = "vitalmesh-t0"
 version = "0.1.0"
 description = "T0 service: state updates in, deterministic Guardian-checked recommendations out (no LLM)"
 requires-python = ">=3.12,<3.13"
-dependencies = ["vitalmesh-common", "vitalmesh-wellness", "redis>=5"]
+dependencies = ["vitalmesh-common", "vitalmesh-wellness", "vitalmesh-stores", "redis>=5"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }
