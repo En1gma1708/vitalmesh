@@ -115,6 +115,7 @@ class Wiring:
     checker_alias: Alias = "strong"
     clock: Callable[[], datetime] = utcnow
     load: Load = Load.NORMAL
+    run_deadline_s: float = 90.0
     specialists: frozenset[Specialist] = frozenset(Specialist)
 
 
@@ -137,7 +138,15 @@ def build_graph(wiring: Wiring) -> Bus:
     checker = Checker(w.router, alias=w.checker_alias, tracer=w.deps.tracer, sleep=w.deps.sleep)
     bus.subscribe(
         QUESTIONS_ASKED,
-        make_triage_handler(w.profiles, labs, serde, bus, load=lambda: w.load, clock=w.clock),
+        make_triage_handler(
+            w.profiles,
+            labs,
+            serde,
+            bus,
+            load=lambda: w.load,
+            clock=w.clock,
+            run_deadline_s=w.run_deadline_s,
+        ),
     )
     for kind in w.specialists:
         bus.subscribe(RUNS_PLANNED, make_specialist_handler(kind, w.deps, serde, bus, w.clock))

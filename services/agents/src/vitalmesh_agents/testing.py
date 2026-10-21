@@ -11,6 +11,7 @@ TOOL_FIRST = {
     "nutrition-specialist": "get_energy_target",
     "movement-specialist": "get_training_targets",
     "condition-specialist": "get_constraints",
+    "single-specialist": "get_energy_target",
 }
 
 
