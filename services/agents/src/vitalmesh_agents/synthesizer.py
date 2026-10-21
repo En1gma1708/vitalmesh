@@ -163,6 +163,7 @@ def render_prompt(inp: SynthInput) -> str:
 class _State(TypedDict, total=False):
     prompt: str
     text: str
+    cut_off: bool
     problems: list[str]
     drafts: int
     calls: int
@@ -223,6 +224,7 @@ class Synthesizer:
             alias=self._alias,
             data_class=self._data_class,
             purpose="synthesizer",
+            max_tokens=1000,
             attempts=self._attempts,
             pause_s=self._pause_s,
             max_wait_s=self._max_wait_s,
@@ -230,6 +232,7 @@ class Synthesizer:
         )
         return {
             "text": resp.text.strip(),
+            "cut_off": resp.truncated,
             "calls": state["calls"] + 1,
             "prompt_tokens": state["prompt_tokens"] + resp.prompt_tokens,
             "completion_tokens": state["completion_tokens"] + resp.completion_tokens,
@@ -241,6 +244,8 @@ class Synthesizer:
             "verify-summary", as_type="guardrail", input=state.get("text", "")[:500]
         ) as span:
             problems = check_summary(state.get("text", ""), self._inp.allowed_numbers)
+            if state.get("cut_off"):
+                problems.append("the reply was cut off before it finished")
             span.update(output={"passed": not problems, "problems": problems})
         return {"problems": problems, "drafts": state["drafts"] + 1}
 

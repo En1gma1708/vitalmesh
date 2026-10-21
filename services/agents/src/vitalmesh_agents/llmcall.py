@@ -1,5 +1,7 @@
 """One way for the T3 agents to call the router: bounded retries on provider trouble, and one
-bigger second try when a reasoning model spent its whole budget thinking (D61, D66).
+bigger second try when a reasoning model spent its budget thinking and its reply was
+cut off (D61, D66). A reply cut off twice is returned with ``truncated`` set; callers treat that
+as a failed draft, never as an answer.
 
 Nothing here hides a failure: after the last attempt it raises ``AgentUnavailable``, which each
 agent turns into its own safe outcome (a deterministic fallback, a FAILED advice, an escalation).
@@ -60,6 +62,6 @@ def complete(
         raise AgentUnavailable(str(last)[:200]) from last
 
     resp = once(max_tokens)
-    if resp.truncated and not resp.text.strip():
-        resp = once(min(2 * max_tokens, 2048))  # the model spent its budget reasoning
-    return resp
+    if resp.truncated:  # cut off (or empty): the model spent its budget reasoning; ask once more
+        resp = once(min(2 * max_tokens, 2048))
+    return resp  # the caller must still check ``resp.truncated``: a second cut-off is a failure

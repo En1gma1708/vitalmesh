@@ -148,7 +148,7 @@ class Briefer:
                     alias=self._alias,
                     data_class=self._data_class,
                     purpose="briefer",
-                    max_tokens=500,
+                    max_tokens=800,
                     attempts=self._attempts,
                     pause_s=self._pause_s,
                     max_wait_s=self._max_wait_s,
@@ -163,6 +163,8 @@ class Briefer:
                 "verify-briefing", as_type="guardrail", input=text[:500]
             ) as s:
                 problems = check_briefing(text, case.allowed_numbers)
+                if resp.truncated:
+                    problems.append("the briefing was cut off before it finished")
                 s.update(output={"passed": not problems, "problems": problems})
             if not problems:
                 return Briefing(text=text)

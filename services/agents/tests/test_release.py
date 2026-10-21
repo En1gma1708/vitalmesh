@@ -352,3 +352,18 @@ def test_a_good_briefing_is_used_as_written() -> None:
         CASE
     )
     assert not result.used_fallback and "2124" in result.text
+
+
+def test_a_briefing_cut_off_at_the_token_limit_uses_the_template() -> None:
+    cut = LLMResponse(
+        text="User asked: “What",
+        provider="fake",
+        model="fake",
+        prompt_tokens=1,
+        completion_tokens=1,
+        latency_ms=1.0,
+        finish_reason="length",
+    )
+    result = Briefer(FakeRouter(cut), sleep=lambda _s: None).brief(CASE)
+    assert result.used_fallback and "cut off" in result.reason
+    assert "Question: How many calories?" in result.text

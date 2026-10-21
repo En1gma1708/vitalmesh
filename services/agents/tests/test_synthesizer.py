@@ -365,3 +365,21 @@ def test_an_ungrounded_part_is_not_shown_to_the_model_when_grounded_notes_exist(
     router = FakeRouter(resp("You can aim for about 2124 kcal a day."))
     run_handler(router, event)
     assert "Drink water" not in router.requests[0].messages[1].content
+
+
+# ------------------------------------------------- a cut-off reply is never an answer (found live)
+def test_a_non_empty_reply_cut_off_at_the_token_limit_is_asked_again_with_more_room() -> None:
+    router = FakeRouter(
+        resp("Continue the balanced meals; each day provides a good mix of protein,", "length"),
+        resp("Eat about 2124 kcal."),
+    )
+    result = synth(router).synthesize(inp())
+    assert not result.used_fallback and result.text == "Eat about 2124 kcal."
+    assert router.requests[1].max_tokens > router.requests[0].max_tokens
+
+
+def test_a_reply_cut_off_twice_is_not_used_it_falls_back_to_the_checked_notes() -> None:
+    cut = resp("Eat about 2124 kcal and then", "length")
+    result = synth(FakeRouter(cut)).synthesize(inp())
+    assert result.used_fallback and "cut off" in result.reason
+    assert "and then" not in result.text
