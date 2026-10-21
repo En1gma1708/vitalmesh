@@ -144,6 +144,13 @@ class Store:
         c = self._conn.execute("SELECT count(*) FROM chunks").fetchone()
         return (int(d[0]) if d else 0, int(c[0]) if c else 0)
 
+    def documents(self) -> list[tuple[str, str, str, str]]:
+        """(doc_id, title, source_url, licence) for every document, in a stable order."""
+        rows = self._conn.execute(
+            "SELECT doc_id, title, source_url, licence FROM documents ORDER BY doc_id"
+        ).fetchall()
+        return [(str(r[0]), str(r[1]), str(r[2]), str(r[3])) for r in rows]
+
     # ------------------------------------------------------------------------- search
     _SELECT = (
         "SELECT c.doc_id, c.ordinal, c.text, {score} AS score, d.title, d.source_url, d.licence, "

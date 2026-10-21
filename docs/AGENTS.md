@@ -32,7 +32,7 @@ Mapping to the research-assistant analogy: research -> Evidence; analysis -> Spe
 MCP (Model Context Protocol) is used only where a shared tool server or an external integration is the point. Never for agent-to-agent messaging (Kafka), the Safety Guardian, or T0/T1 hot paths.
 | Server | Exposes | Used by | Phase |
 |---|---|---|---|
-| **Knowledge MCP** | KG lookups, wellness calculators, guideline search (stateless, read-only) | Specialists, Evidence; also pluggable into Claude Desktop for the demo | ~P2 |
+| **Knowledge MCP** (built: corpus search and source list only, D69; the specialists still use in-process retrieval) | KG lookups, wellness calculators, guideline search (stateless, read-only) | Specialists, Evidence; also pluggable into Claude Desktop for the demo | ~P2 |
 | **Ops MCP** (read-only) | run lookup by correlation_id, Langfuse trace link, consumer lag, "why was this blocked?" | operators | ~P5 |
 | **Calendar MCP** (user-side) | free/busy read; event create gated by user confirmation | Scheduler Agent | P5 |
 Calendar fallback (lower risk): the Scheduler can instead publish a tokenized, read-only iCal feed of the user's plan (the pattern Mealie ships), so users subscribe without us holding OAuth write scope; Calendar MCP write stays the opt-in upgrade.
