@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 from vitalmesh_agents.testing import NoEvidence, ScriptedRouter
 from vitalmesh_evals.ablation import metrics
 from vitalmesh_evals.ablation.arms import ARMS, ArmResult, CountingRouter, UnionTools, seed
@@ -122,8 +124,6 @@ def test_a_provider_outage_is_flagged_so_it_is_never_saved_as_a_result() -> None
             raise AllProvidersFailed(attempts=["503"])
 
     counting = CountingRouter(Down())
-    try:
+    with contextlib.suppress(AllProvidersFailed):
         counting.complete(object(), 0.0)  # type: ignore[arg-type]
-    except AllProvidersFailed:
-        pass
     assert counting.outages == 1

@@ -6,6 +6,10 @@ Two jobs:
   registry (known metric, registered unit, plausible range, no future timestamps) and only
   then produces ``measurement.recorded`` to ``user.events``. Answers 202 once the broker has
   acknowledged the write.
+* ``POST /v1/users/{user_id}/questions``: a free-text question. The ingress screen runs first
+  (a declined request never reaches Kafka); otherwise ``question.asked`` starts a T3 run and the
+  caller gets 202 with the correlation id. The answer is not returned here: it is released later
+  on ``recommendations.released`` (or held for human review).
 * ``GET /v1/users/{user_id}/recommendation``: the synchronous in-process T0 path (profile ->
   engine -> Guardian, no Kafka hop). Only a Guardian-cleared recommendation is returned; the
   response is health-only (D40): plain-language statements, no tiers, agents or rule ids.
@@ -21,14 +25,15 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Publisher
-from vitalmesh_common.topics import USER_EVENTS
+from vitalmesh_common.topics import QUESTIONS_ASKED, USER_EVENTS
+from vitalmesh_concierge.screen import REFUSALS, screen_question
 from vitalmesh_processor.history import HistoryStore
 from vitalmesh_processor.labstore import LabStore
 from vitalmesh_t0.decision import decide
@@ -119,6 +124,19 @@ class LabOut(BaseModel):
     status: str  # low / normal / high / not classified
     collected_at: datetime
     calculated: bool
+
+
+class QuestionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: Annotated[str, Field(min_length=1, max_length=500)]
+    session_id: Annotated[str, Field(max_length=64)] = ""
+
+
+class QuestionOut(BaseModel):
+    status: str  # "accepted" (a run started) or "declined" (screened out, nothing was started)
+    correlation_id: str | None = None
+    message: str | None = None
 
 
 class Accepted(BaseModel):
@@ -425,6 +443,36 @@ def create_app(
         ]
         avg = sum(d.kcal for d in out_days) / len(out_days)
         return MealPlanOut(average_daily_kcal=round(avg), days=out_days)
+
+    @app.post("/v1/users/{user_id}/questions", status_code=202, response_model=QuestionOut)
+    def post_question(user_id: str, q: QuestionIn, response: Response) -> QuestionOut:
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        if profiles.get(user_id) is None:
+            raise HTTPException(status_code=404, detail="no profile for this user")
+        category = screen_question(q.question)
+        if category is not None:
+            response.status_code = 200  # answered, not accepted for processing
+            return QuestionOut(status="declined", message=REFUSALS[category])
+        correlation_id = str(uuid.uuid4())
+        meta = EventMeta(
+            correlation_id=correlation_id,
+            user_id=user_id,
+            household_id="default",
+            type="question.asked",
+            occurred_at=clock(),
+            trace_id=correlation_id,
+        )
+        payload = payloads_pb2.QuestionAsked(question=q.question, session_id=q.session_id)
+        try:
+            data = serde.serialize_event(QUESTIONS_ASKED, meta, payload)
+            publisher.publish(QUESTIONS_ASKED, user_id, data)
+            publisher.flush()
+        except EnvelopeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:  # broker or registry down: tell the client to retry
+            raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
+        return QuestionOut(status="accepted", correlation_id=correlation_id)
 
     @app.get("/v1/users/{user_id}/recommendation", response_model=RecommendationOut)
     def get_recommendation(user_id: str) -> RecommendationOut:
