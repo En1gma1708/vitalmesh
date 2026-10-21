@@ -22,6 +22,7 @@ from vitalmesh_llm import AllProvidersFailed, LLMRequest, Message
 from vitalmesh_llm.types import Alias, DataClass, LLMResponse
 from vitalmesh_retrieval import Hit, Store
 from vitalmesh_retrieval.embed import Embedder
+from vitalmesh_tracing import NULL, Tracer
 
 from vitalmesh_evidence.types import (
     Draft,
@@ -128,7 +129,9 @@ class EvidenceAgent:
         data_class: DataClass = "public",
         min_score: float = DEFAULT_MIN_SCORE,
         max_wait_s: float = 120.0,
+        tracer: Tracer = NULL,
     ) -> None:
+        self._tracer = tracer
         self._router = router
         self._retriever = retriever
         self._alias: Alias = alias
@@ -158,8 +161,23 @@ class EvidenceAgent:
         return g.compile()
 
     def _retrieve(self, state: _State) -> _State:
-        passages, score = self._retriever.retrieve(state["question"])
-        weak = not passages or score < self._min_score
+        with self._tracer.observe(
+            "retrieve-passages", as_type="retriever", input=state["question"]
+        ) as span:
+            passages, score = self._retriever.retrieve(state["question"])
+            weak = not passages or score < self._min_score
+            span.update(
+                output=[
+                    {"ref": p.ref, "doc_id": p.doc_id, "page": p.locator, "title": p.title}
+                    for p in passages
+                ],
+                metadata={
+                    "top_cosine": round(score, 3),
+                    "min_score": self._min_score,
+                    "gated_out": weak,
+                    "passages": len(passages),
+                },
+            )
         return {
             "passages": [] if weak else passages,
             "top_score": score,
@@ -194,7 +212,17 @@ class EvidenceAgent:
         draft = state.get("draft")
         if draft is None:
             return {}  # the parse problem is already recorded
-        return {"problems": verify(draft, state["passages"])}
+        with self._tracer.observe(
+            "verify-draft",
+            as_type="guardrail",
+            input=[{"cite": x.cite, "quote": x.quote[:200]} for x in draft.sentences],
+        ) as span:
+            problems = verify(draft, state["passages"])
+            span.update(
+                output={"passed": not problems, "problems": problems},
+                metadata={"attempt": state.get("attempt", 0)},
+            )
+        return {"problems": problems}
 
     def _finish(self, state: _State) -> _State:
         pt, ct = state.get("prompt_tokens", 0), state.get("completion_tokens", 0)
@@ -253,7 +281,30 @@ class EvidenceAgent:
         except AllProvidersFailed as exc:
             raise EvidenceUnavailable(str(exc)[:200]) from exc
 
-    def answer(self, question: str) -> EvidenceAnswer:
-        result = self._graph.invoke({"question": question})
-        answer: EvidenceAnswer = result["answer"]
+    def answer(
+        self, question: str, *, user_id: str | None = None, session_id: str | None = None
+    ) -> EvidenceAnswer:
+        with self._tracer.run(
+            "answer-with-evidence",
+            input=question,
+            user_id=user_id,
+            session_id=session_id,
+            tags=["evidence"],
+            metadata={"alias": self._alias},
+        ) as root:
+            result = self._graph.invoke({"question": question})
+            answer: EvidenceAnswer = result["answer"]
+            root.update(
+                output={
+                    "status": answer.status,
+                    "answer": [
+                        {"text": x.text, "source": f"{x.citation.doc_id} {x.citation.locator}"}
+                        for x in answer.sentences
+                    ],
+                    "reason": answer.reason,
+                },
+                metadata={"attempts": answer.attempts},
+            )
+            self._tracer.score("evidence-status", answer.status)
+            self._tracer.score("citations-verified", answer.status == "supported")
         return answer

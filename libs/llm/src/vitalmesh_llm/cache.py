@@ -15,14 +15,18 @@ import redis
 
 from vitalmesh_llm.types import LLMRequest, LLMResponse
 
-CACHE_VERSION = "llm-cache-1"
+CACHE_VERSION = "llm-cache-2"
 
 
 def cache_key(req: LLMRequest) -> str:
     doc = {
         "v": CACHE_VERSION,
         "alias": req.alias,
-        "messages": [(m.role, m.content) for m in req.messages],
+        "messages": [
+            (m.role, m.content, [(t.id, t.name, t.arguments) for t in m.tool_calls], m.tool_call_id)
+            for m in req.messages
+        ],
+        "tools": [(t.name, t.description, t.parameters) for t in req.tools],
         "temperature": req.temperature,
         "max_tokens": req.max_tokens,
         "json": req.json_output,

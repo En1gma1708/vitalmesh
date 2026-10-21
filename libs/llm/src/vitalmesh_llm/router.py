@@ -10,19 +10,22 @@ errors; logs and stats carry provider names, token counts and timings only.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Mapping
+from typing import Any
 
 import httpx
+from vitalmesh_tracing import NULL, Tracer
 
 from vitalmesh_llm.cache import Cache, InMemoryCache, cache_key, cacheable
 from vitalmesh_llm.limiter import RateLimiter
 from vitalmesh_llm.providers import CHAINS, ProviderSpec
-from vitalmesh_llm.types import AllProvidersFailed, LLMRequest, LLMResponse
+from vitalmesh_llm.types import AllProvidersFailed, LLMRequest, LLMResponse, Message, ToolCall
 
 log = logging.getLogger("vitalmesh.llm")
 
@@ -55,7 +58,9 @@ class Router:
         clock: Callable[[], float] = time.monotonic,
         mock: MockFn = default_mock,
         sleep: Callable[[float], None] = time.sleep,
+        tracer: Tracer = NULL,
     ) -> None:
+        self._tracer = tracer
         self._keys = keys
         self._client = client or httpx.Client(timeout=REQUEST_TIMEOUT_S)
         self._cache = cache if cache is not None else InMemoryCache()
@@ -73,7 +78,35 @@ class Router:
     def complete(self, req: LLMRequest, max_wait_s: float = 0.0) -> LLMResponse:
         """``max_wait_s`` > 0 lets the call wait for rate budget (eval runs) instead of failing
         over to a weaker provider; waiting happens only when every provider was skipped for
-        budget alone, never after a real failure."""
+        budget alone, never after a real failure. Each call is one Langfuse ``generation``
+        (a cache hit too, marked cached); only synthetic or public data reaches it (D56)."""
+        with self._tracer.observe(
+            "llm-complete",
+            as_type="generation",
+            input=[_wire_message(m) for m in req.messages],
+            model_parameters={"temperature": req.temperature, "max_tokens": req.max_tokens},
+            metadata={"alias": req.alias, "purpose": req.purpose, "data_class": req.data_class},
+        ) as span:
+            try:
+                resp = self._complete(req, max_wait_s)
+            except AllProvidersFailed as exc:
+                span.update(level="ERROR", status_message=str(exc)[:200])
+                raise
+            span.update(
+                output=resp.text or [_wire_tool_call(t) for t in resp.tool_calls],
+                model=resp.model,  # bare name, so Langfuse can match its pricing table
+                usage={"input": resp.prompt_tokens, "output": resp.completion_tokens},
+                metadata={
+                    "provider": resp.provider,
+                    "reasoning": (resp.reasoning or "")[:2000],
+                    "cached": resp.cached,
+                    "finish_reason": resp.finish_reason or "",
+                    "latency_ms": round(resp.latency_ms),
+                },
+            )
+            return resp
+
+    def _complete(self, req: LLMRequest, max_wait_s: float) -> LLMResponse:
         key = cache_key(req) if cacheable(req) else None
         if key is not None:
             hit = self._cache.get(key)
@@ -172,12 +205,24 @@ class Router:
     def _post(self, spec: ProviderSpec, req: LLMRequest) -> LLMResponse:
         body: dict[str, object] = {
             "model": spec.model,
-            "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+            "messages": [_wire_message(m) for m in req.messages],
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
         }
         if req.json_output:
             body["response_format"] = {"type": "json_object"}
+        if req.tools:
+            body["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                }
+                for t in req.tools
+            ]
         started = self._clock()
         try:
             r = self._client.post(
@@ -197,12 +242,15 @@ class Router:
             raise _Retryable(r.status_code, f"HTTP {r.status_code}")
         try:
             data = r.json()
-            text = data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
+            text = message.get("content") or ""
+            calls = _parse_tool_calls(message.get("tool_calls"))
+            thinking = message.get("reasoning") or message.get("reasoning_content")
             finish = data["choices"][0].get("finish_reason")
             usage = data.get("usage") or {}
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise _Retryable(r.status_code, "unusable response body") from exc
-        if not isinstance(text, str) or not text.strip():
+        if not isinstance(text, str) or (not text.strip() and not calls):
             raise _Retryable(r.status_code, "empty completion")
         elapsed_ms = (self._clock() - started) * 1000
         resp = LLMResponse(
@@ -213,6 +261,8 @@ class Router:
             completion_tokens=int(usage.get("completion_tokens", 0)),
             latency_ms=elapsed_ms,
             finish_reason=finish if isinstance(finish, str) else None,
+            tool_calls=calls,
+            reasoning=thinking if isinstance(thinking, str) and thinking else None,
         )
         s = self.stats[spec.name]
         s["calls"] += 1
@@ -226,6 +276,41 @@ class Router:
             resp.completion_tokens,
         )
         return resp
+
+
+def _wire_message(m: Message) -> dict[str, Any]:
+    out: dict[str, Any] = {"role": m.role, "content": m.content}
+    if m.tool_calls:
+        out["tool_calls"] = [
+            {"id": t.id, "type": "function", "function": {"name": t.name, "arguments": t.arguments}}
+            for t in m.tool_calls
+        ]
+    if m.tool_call_id:
+        out["tool_call_id"] = m.tool_call_id
+    return out
+
+
+def _wire_tool_call(t: ToolCall) -> dict[str, Any]:
+    return {"id": t.id, "type": "function", "function": {"name": t.name, "arguments": t.arguments}}
+
+
+def _parse_tool_calls(raw: Any) -> tuple[ToolCall, ...]:
+    """Provider tool calls -> ToolCall. A malformed entry is dropped, never guessed."""
+    out: list[ToolCall] = []
+    for item in raw or []:
+        try:
+            fn = item["function"]
+            name, args = fn["name"], fn.get("arguments", "")
+            out.append(
+                ToolCall(
+                    id=str(item.get("id") or f"call_{len(out)}"),
+                    name=str(name),
+                    arguments=args if isinstance(args, str) else json.dumps(args),
+                )
+            )
+        except (KeyError, TypeError):
+            continue
+    return tuple(out)
 
 
 def _retry_after(r: httpx.Response) -> float:

@@ -1,7 +1,14 @@
 from vitalmesh_llm.cache import Cache, InMemoryCache, RedisCache
 from vitalmesh_llm.providers import CHAINS, load_keys
 from vitalmesh_llm.router import Router
-from vitalmesh_llm.types import AllProvidersFailed, LLMRequest, LLMResponse, Message
+from vitalmesh_llm.types import (
+    AllProvidersFailed,
+    LLMRequest,
+    LLMResponse,
+    Message,
+    ToolCall,
+    ToolSpec,
+)
 
 __all__ = [
     "CHAINS",
@@ -13,5 +20,7 @@ __all__ = [
     "Message",
     "RedisCache",
     "Router",
+    "ToolCall",
+    "ToolSpec",
     "load_keys",
 ]

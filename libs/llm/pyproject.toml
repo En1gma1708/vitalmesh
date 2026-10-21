@@ -3,7 +3,7 @@ name = "vitalmesh-llm"
 version = "0.1.0"
 description = "LLM router: provider fallback, rate limiting, response cache, mock provider; synthetic or public data only"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic>=2", "httpx>=0.27", "redis>=5"]
+dependencies = ["pydantic>=2", "httpx>=0.27", "redis>=5", "vitalmesh-tracing"]
 
 [build-system]
 requires = ["hatchling"]

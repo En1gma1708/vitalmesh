@@ -6,10 +6,19 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import ValidationError
-from vitalmesh_llm import AllProvidersFailed, InMemoryCache, LLMRequest, Message, Router
+from vitalmesh_llm import (
+    AllProvidersFailed,
+    InMemoryCache,
+    LLMRequest,
+    Message,
+    Router,
+    ToolCall,
+    ToolSpec,
+)
 from vitalmesh_llm.cache import cache_key, cacheable
 from vitalmesh_llm.limiter import RateLimiter
 from vitalmesh_llm.providers import CHAINS, GROQ_STRONG
+from vitalmesh_tracing.testing import RecordingTracer
 
 SECRET = "sk-test-SECRET-do-not-leak"
 KEYS = {"GROQ_API_KEY": SECRET, "GEMINI_API_KEY": SECRET + "g", "OPENROUTER_API_KEY": SECRET + "o"}
@@ -297,3 +306,146 @@ def test_a_429_is_waited_out_on_the_primary_when_waiting_is_allowed() -> None:
 def test_without_waiting_a_429_still_falls_through_at_once() -> None:
     s = Server({GROQ: [(429, {})], GEMINI: [(200, ok_body("g"))]})
     assert router(s).complete(req()).provider == "gemini"
+
+
+# ------------------------------------------------------------------------ tool calling
+LOOKUP = ToolSpec(
+    name="lookup_target",
+    description="Return the user's daily energy target.",
+    parameters={"type": "object", "properties": {"day": {"type": "string"}}, "required": []},
+)
+
+
+def tool_body(*calls: Any, content: str | None = None) -> dict[str, Any]:
+    return {
+        "choices": [
+            {
+                "message": {"content": content, "tool_calls": list(calls)},
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {"prompt_tokens": 20, "completion_tokens": 9},
+    }
+
+
+def call(id_: str, name: str, args: Any) -> dict[str, Any]:
+    return {"id": id_, "type": "function", "function": {"name": name, "arguments": args}}
+
+
+def test_tools_are_sent_in_the_openai_shape_and_calls_are_parsed() -> None:
+    s = Server({GROQ: [(200, tool_body(call("c1", "lookup_target", '{"day": "mon"}')))]})
+    r = router(s).complete(req(tools=(LOOKUP,)))
+    sent = s.calls[0][1]["tools"][0]
+    assert sent["type"] == "function" and sent["function"]["name"] == "lookup_target"
+    assert sent["function"]["parameters"]["type"] == "object"
+    assert r.text == "" and r.finish_reason == "tool_calls"
+    assert [(t.id, t.name, t.arguments) for t in r.tool_calls] == [
+        ("c1", "lookup_target", '{"day": "mon"}')
+    ]
+
+
+def test_object_arguments_become_a_json_string_and_malformed_calls_are_dropped() -> None:
+    body = tool_body(
+        call("c1", "lookup_target", {"day": "tue"}), {"id": "x", "function": {}}, "junk"
+    )
+    r = router(Server({GROQ: [(200, body)]})).complete(req(tools=(LOOKUP,)))
+    assert [(t.name, json.loads(t.arguments)) for t in r.tool_calls] == [
+        ("lookup_target", {"day": "tue"})
+    ]
+
+
+def test_a_reply_with_no_text_and_no_tool_calls_is_still_empty() -> None:
+    body = {"choices": [{"message": {"content": None}}], "usage": {}}
+    with pytest.raises(AllProvidersFailed):
+        router(Server({GROQ: [(200, body)], GEMINI: [(200, body)], OPENR: [(200, body)]})).complete(
+            req()
+        )
+
+
+def test_tool_results_go_back_with_their_call_ids() -> None:
+    s = Server({GROQ: [(200, ok_body("done"))]})
+    asked = Message(
+        role="assistant", tool_calls=(ToolCall(id="c1", name="lookup_target", arguments="{}"),)
+    )
+    answer = Message(role="tool", content='{"kcal": 2124}', tool_call_id="c1")
+    router(s).complete(
+        req(messages=(Message(role="user", content="q"), asked, answer), tools=(LOOKUP,))
+    )
+    sent = s.calls[0][1]["messages"]
+    assert sent[1]["tool_calls"][0] == {
+        "id": "c1",
+        "type": "function",
+        "function": {"name": "lookup_target", "arguments": "{}"},
+    }
+    assert sent[2] == {"role": "tool", "content": '{"kcal": 2124}', "tool_call_id": "c1"}
+
+
+def test_message_and_tool_validation() -> None:
+    with pytest.raises(ValidationError):
+        Message(role="assistant")  # neither text nor tool calls
+    with pytest.raises(ValidationError):
+        Message(role="tool", content="x")  # a tool message must name its call
+    with pytest.raises(ValidationError):
+        ToolSpec(name="bad name!", description="d", parameters={})
+    with pytest.raises(ValidationError):
+        req(tools=(LOOKUP,) * 9)
+
+
+def test_the_cache_key_covers_tools_and_tool_messages() -> None:
+    base = req()
+    assert cache_key(base) != cache_key(req(tools=(LOOKUP,)))
+    other = LOOKUP.model_copy(update={"description": "changed"})
+    assert cache_key(req(tools=(LOOKUP,))) != cache_key(req(tools=(other,)))
+    m1 = Message(role="tool", content="x", tool_call_id="a")
+    m2 = Message(role="tool", content="x", tool_call_id="b")
+    assert cache_key(req(messages=(m1,))) != cache_key(req(messages=(m2,)))
+
+
+# ------------------------------------------------------------------------------ tracing
+def traced(server: Server) -> tuple[Router, RecordingTracer]:
+    tr = RecordingTracer()
+    rt = Router(
+        KEYS,
+        client=httpx.Client(transport=httpx.MockTransport(server)),
+        cache=InMemoryCache(),
+        clock=Clock(),
+        tracer=tr,
+    )
+    return rt, tr
+
+
+def test_each_call_is_one_generation_with_the_bare_model_and_token_usage() -> None:
+    rt, tr = traced(Server({GROQ: [(200, ok_body("hi"))]}))
+    rt.complete(req(max_tokens=64))
+    (g,) = tr.named("llm-complete")
+    assert g.kind == "generation" and g.attrs["model_parameters"] == {
+        "temperature": 0.0,
+        "max_tokens": 64,
+    }
+    assert g.input == [{"role": "user", "content": "hello"}]  # role-labelled messages
+    u = g.updates[-1]
+    assert u["model"] == GROQ_STRONG.model and "/" not in u["model"].replace("openai/", "")
+    assert u["usage"] == {"input": 11, "output": 7} and u["output"] == "hi"
+    assert u["metadata"]["provider"] == "groq" and u["metadata"]["cached"] is False
+    assert g.metadata["purpose"] == "test" and g.metadata["data_class"] == "synthetic"
+
+
+def test_a_cache_hit_is_traced_as_cached_and_a_failure_as_an_error() -> None:
+    rt, tr = traced(Server({GROQ: [(200, ok_body("hi"))]}))
+    rt.complete(req())
+    rt.complete(req())
+    assert [r.metadata["cached"] for r in tr.named("llm-complete")] == [False, True]
+    rt2, tr2 = traced(Server({GROQ: [(500, {})], GEMINI: [(500, {})], OPENR: [(500, {})]}))
+    with pytest.raises(AllProvidersFailed):
+        rt2.complete(req())
+    assert tr2.named("llm-complete")[0].updates[-1]["level"] == "ERROR"
+
+
+def test_tool_calls_are_traced_as_output_and_reasoning_is_captured() -> None:
+    body = tool_body(call("c1", "lookup_target", "{}"))
+    body["choices"][0]["message"]["reasoning"] = "I need the target first."
+    rt, tr = traced(Server({GROQ: [(200, body)]}))
+    rt.complete(req(tools=(LOOKUP,)))
+    u = tr.named("llm-complete")[0].updates[-1]
+    assert u["output"][0]["function"]["name"] == "lookup_target"
+    assert u["metadata"]["reasoning"] == "I need the target first."

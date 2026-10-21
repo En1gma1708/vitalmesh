@@ -3,7 +3,7 @@ name = "vitalmesh-evidence"
 version = "0.1.0"
 description = "Evidence agent: retrieve guideline chunks, draft a cited answer, verify every citation and number in code, refuse when unsupported"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic>=2", "langgraph>=0.2", "vitalmesh-llm", "vitalmesh-retrieval"]
+dependencies = ["pydantic>=2", "langgraph>=0.2", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-tracing"]
 
 [build-system]
 requires = ["hatchling"]
