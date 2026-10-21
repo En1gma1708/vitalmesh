@@ -1785,11 +1785,13 @@ source = { editable = "evals" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "redis" },
+    { name = "vitalmesh-agents" },
     { name = "vitalmesh-concierge" },
     { name = "vitalmesh-evidence" },
     { name = "vitalmesh-llm" },
     { name = "vitalmesh-retrieval" },
     { name = "vitalmesh-specialists" },
+    { name = "vitalmesh-stores" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -1797,11 +1799,13 @@ dependencies = [
 requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-agents", editable = "services/agents" },
     { name = "vitalmesh-concierge", editable = "libs/concierge" },
     { name = "vitalmesh-evidence", editable = "libs/evidence" },
     { name = "vitalmesh-llm", editable = "libs/llm" },
     { name = "vitalmesh-retrieval", editable = "libs/retrieval" },
     { name = "vitalmesh-specialists", editable = "libs/specialists" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
