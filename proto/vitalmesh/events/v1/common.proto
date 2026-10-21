@@ -31,6 +31,24 @@ enum EntryType {
   ENTRY_TYPE_DESSERT = 7;
 }
 
+// The specialists a T3 run can involve (docs/AGENTS.md section 2). Adding one is a new enum
+// value plus a new consumer, never a new payload or topic.
+enum Specialist {
+  SPECIALIST_UNSPECIFIED = 0;
+  SPECIALIST_NUTRITION = 1;
+  SPECIALIST_MOVEMENT_RECOVERY = 2;
+  SPECIALIST_CONDITION_MEDICATION = 3;
+}
+
+// Risk assigned by Triage in code. Decides whether the Checker (medium and up) and a human
+// reviewer (high) are in the path.
+enum RiskLevel {
+  RISK_UNSPECIFIED = 0;  // treated as invalid by consumers
+  RISK_LOW = 1;
+  RISK_MEDIUM = 2;
+  RISK_HIGH = 3;
+}
+
 // How a claim in a recommendation is backed (docs/ARCHITECTURE.md section 12). UNKNOWN is
 // representable on purpose so the Guardian can block it; it is never treated as safe.
 enum Provenance {

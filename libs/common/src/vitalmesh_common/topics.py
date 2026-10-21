@@ -18,6 +18,18 @@ RECOMMENDATIONS_RELEASED = (
 )
 SAFETY_BLOCKED = "safety.blocked"
 
+# The T3 multi-agent run, one topic per pipeline stage (D68). Each is consumed by one agent
+# group; adding a consumer group needs no change upstream.
+QUESTIONS_ASKED = "questions.asked"  # API -> Triage
+RUNS_PLANNED = "runs.planned"  # Triage -> specialists, Aggregator
+ADVICE_COMPLETED = "advice.completed"  # specialists -> Aggregator
+ADVICE_BUNDLES = "advice.bundles"  # Aggregator -> Synthesizer
+RECOMMENDATIONS_DRAFTED = "recommendations.drafted"  # Synthesizer -> Guardian
+DRAFTS_CLEARED = "drafts.cleared"  # Guardian -> Checker or Release
+REVIEWS_COMPLETED = "reviews.completed"  # Checker -> Synthesizer (revise), Release, Briefer
+REVIEWS_REQUESTED = "reviews.requested"  # Briefer -> human console
+REVIEWS_DECIDED = "reviews.decided"  # human console -> Release
+
 RETRY_INFIX = ".retry."  # one retry topic per backoff tier: <topic>.retry.<n>, n = 1..max_retries
 DLQ_SUFFIX = ".dlq"
 
@@ -68,6 +80,25 @@ TOPICS: dict[str, TopicSpec] = {
         retention_ms=30 * _DAY_MS,
     ),
 }
+
+# T3 stages carry far fewer events than user.events (about 0.5% of traffic, ARCHITECTURE s5)
+# and each event costs seconds of agent time, so they get fewer partitions.
+for _name, _prod in (
+    (QUESTIONS_ASKED, 24),
+    (RUNS_PLANNED, 24),
+    (ADVICE_COMPLETED, 48),
+    (ADVICE_BUNDLES, 24),
+    (RECOMMENDATIONS_DRAFTED, 24),
+    (DRAFTS_CLEARED, 24),
+    (REVIEWS_COMPLETED, 24),
+    (REVIEWS_REQUESTED, 12),
+    (REVIEWS_DECIDED, 12),
+):
+    TOPICS[_name] = TopicSpec(
+        name=_name,
+        partitions={Profile.LOCAL: 3, Profile.PRODUCTION: _prod},
+        retention_ms=7 * _DAY_MS,
+    )
 
 
 def retry_topic(name: str, tier: int) -> str:

@@ -146,6 +146,125 @@ message GuardianViolation {
   optional string claim_text = 3;
 }
 
+// ---- The T3 multi-agent run (docs/EVENT_BACKBONE.md section 4, decision D68) ----
+// One run = one correlation_id. Each stage has ONE payload; the specialist is a field.
+
+// A user question that passed the ingress screen. Published by the API, consumed by Triage.
+message QuestionAsked {
+  string question = 1;
+  string session_id = 2;
+}
+
+// Triage's plan, in code: which specialists, how risky, what each may spend. The deadline
+// travels in the envelope (deadline_at); the tier in the envelope tier.
+message RunPlanned {
+  string question = 1;
+  repeated Specialist specialists = 2;
+  RiskLevel risk = 3;
+  uint32 max_model_calls = 4;  // per specialist
+  bool degraded = 5;           // the plan was reduced (back-pressure or a budget rule)
+  repeated string rule_ids = 6;  // why: the Triage rules that fired
+}
+
+// A verified quote from a corpus document supporting a statement.
+message Citation {
+  string document = 1;
+  string locator = 2;  // e.g. "p. 34"
+  string licence = 3;
+  string source_url = 4;
+  string quote = 5;
+}
+
+enum AdviceStatus {
+  ADVICE_STATUS_UNSPECIFIED = 0;
+  ADVICE_ANSWERED = 1;  // the model's checked prose
+  ADVICE_FALLBACK = 2;  // plain facts built only from tool results (the draft failed checks)
+  ADVICE_DECLINED = 3;  // the specialist refused (out of scope or no support)
+  ADVICE_FAILED = 4;    // could not run (provider outage, missing profile); see failure_code
+}
+
+// One specialist's contribution. FAILED is published rather than staying silent, so the
+// Aggregator does not wait for the deadline on a known failure.
+message AdviceCompleted {
+  Specialist specialist = 1;
+  AdviceStatus status = 2;
+  string text = 3;
+  repeated RecommendationClaim claims = 4;  // computed claims returned by the tools used
+  repeated Citation citations = 5;
+  uint32 model_calls = 6;
+  uint32 tool_calls = 7;
+  string failure_code = 8;
+}
+
+// Everything expected arrived, or the deadline passed (partial = true).
+message AdviceBundleReady {
+  string question = 1;
+  RiskLevel risk = 2;
+  repeated AdviceCompleted parts = 3;
+  repeated Specialist missing = 4;
+  bool partial = 5;
+  string reason = 6;  // "complete" or "deadline"
+}
+
+// The Synthesizer's merge. revision 0 is the first draft, 1 the single allowed rewrite.
+message RecommendationDrafted {
+  string recommendation_id = 1;
+  string question = 2;
+  string text = 3;
+  repeated RecommendationClaim claims = 4;
+  repeated Citation citations = 5;
+  RiskLevel risk = 6;
+  bool partial = 7;
+  repeated Specialist missing = 8;
+  uint32 revision = 9;
+  bool used_fallback = 10;  // the model's merge failed checks; text is the plain assembly
+}
+
+// The Guardian cleared a draft. Release (low risk) or the Checker (medium and up) consumes it.
+message SafetyCleared {
+  RecommendationDrafted draft = 1;
+  string rules_version = 2;
+}
+
+enum ReviewVerdict {
+  REVIEW_VERDICT_UNSPECIFIED = 0;
+  REVIEW_APPROVED = 1;
+  REVIEW_REVISE = 2;   // allowed once, then it becomes a rejection
+  REVIEW_REJECTED = 3;
+}
+
+// The Checker's independent review of a cleared draft.
+message ReviewCompleted {
+  string recommendation_id = 1;
+  ReviewVerdict verdict = 2;
+  repeated string problems = 3;
+  RecommendationDrafted draft = 4;
+  string rules_version = 5;
+}
+
+// Case file for the human reviewer (the Escalation Briefer's output).
+message ReviewRequested {
+  string recommendation_id = 1;
+  string briefing = 2;
+  repeated string reasons = 3;
+  RecommendationDrafted draft = 4;
+  string rules_version = 5;
+}
+
+enum ReviewDecision {
+  REVIEW_DECISION_UNSPECIFIED = 0;
+  DECISION_APPROVE = 1;
+  DECISION_REJECT = 2;
+}
+
+// The human's decision; resumes the paused run.
+message ReviewDecided {
+  string recommendation_id = 1;
+  ReviewDecision decision = 2;
+  string reviewer_id = 3;
+  string note = 4;
+}
+
 // Published on safety.blocked when the Guardian does not clear a recommendation.
 message RecommendationBlocked {
   string recommendation_id = 1;

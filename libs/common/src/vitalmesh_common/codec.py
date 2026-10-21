@@ -30,6 +30,15 @@ PAYLOAD_FIELDS: dict[str, str] = {
     "lab.result.recorded": "lab_result",
     "recommendation.released": "recommendation_released",
     "recommendation.blocked": "recommendation_blocked",
+    "question.asked": "question_asked",
+    "run.planned": "run_planned",
+    "advice.completed": "advice_completed",
+    "advice.bundle.ready": "advice_bundle_ready",
+    "recommendation.drafted": "recommendation_drafted",
+    "safety.cleared": "safety_cleared",
+    "review.completed": "review_completed",
+    "review.requested": "review_requested",
+    "review.decided": "review_decided",
 }
 
 _TIER_TO_PROTO = {

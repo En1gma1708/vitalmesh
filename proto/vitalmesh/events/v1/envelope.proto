@@ -36,6 +36,15 @@ message Envelope {
     LabResultRecorded lab_result = 27;
     RecommendationReleased recommendation_released = 28;
     RecommendationBlocked recommendation_blocked = 29;
+    QuestionAsked question_asked = 30;
+    RunPlanned run_planned = 31;
+    AdviceCompleted advice_completed = 32;
+    AdviceBundleReady advice_bundle_ready = 33;
+    RecommendationDrafted recommendation_drafted = 34;
+    SafetyCleared safety_cleared = 35;
+    ReviewCompleted review_completed = 36;
+    ReviewRequested review_requested = 37;
+    ReviewDecided review_decided = 38;
   }
 }
 
