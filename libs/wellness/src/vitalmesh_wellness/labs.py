@@ -354,3 +354,30 @@ def interpret(
         collected_at=collected_at,
         derived=derived,
     )
+
+
+# --------------------------------------------------------------------------------- severity
+# Illustrative policy, NOT a clinical threshold and not cited (same status as D37): a value more
+# than half as far again beyond a printed limit is "marked" and routes to a clinician.
+MARKED_FACTOR = 1.5
+
+
+class Severity(StrEnum):
+    NORMAL = "normal"
+    ABNORMAL = "abnormal"  # outside the lab's range
+    MARKED = "marked"  # far outside it: a human should look
+    UNKNOWN = "unknown"  # qualitative, unparsed range or no number: never treated as normal
+
+
+def severity(result: LabResult) -> Severity:
+    """How far a numeric result is outside the range the lab printed, in the lab's own unit."""
+    if result.value is None or result.flag is Flag.UNCLASSIFIED:
+        return Severity.UNKNOWN
+    if result.flag is Flag.NORMAL:
+        return Severity.NORMAL
+    ref = result.reference
+    if result.flag is Flag.HIGH and ref.high is not None and ref.high > 0:
+        return Severity.MARKED if result.value > ref.high * MARKED_FACTOR else Severity.ABNORMAL
+    if result.flag is Flag.LOW and ref.low is not None and ref.low > 0:
+        return Severity.MARKED if result.value < ref.low / MARKED_FACTOR else Severity.ABNORMAL
+    return Severity.ABNORMAL

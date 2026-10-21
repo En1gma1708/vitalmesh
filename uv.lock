@@ -5,6 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 members = [
     "vitalmesh",
+    "vitalmesh-agents",
     "vitalmesh-api",
     "vitalmesh-common",
     "vitalmesh-concierge",
@@ -1592,6 +1593,7 @@ name = "vitalmesh"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "vitalmesh-agents" },
     { name = "vitalmesh-api" },
     { name = "vitalmesh-common" },
     { name = "vitalmesh-concierge" },
@@ -1621,6 +1623,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "vitalmesh-agents", editable = "services/agents" },
     { name = "vitalmesh-api", editable = "services/api" },
     { name = "vitalmesh-common", editable = "libs/common" },
     { name = "vitalmesh-concierge", editable = "libs/concierge" },
@@ -1646,6 +1649,33 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
+name = "vitalmesh-agents"
+version = "0.1.0"
+source = { editable = "services/agents" }
+dependencies = [
+    { name = "redis" },
+    { name = "vitalmesh-common" },
+    { name = "vitalmesh-evidence" },
+    { name = "vitalmesh-llm" },
+    { name = "vitalmesh-specialists" },
+    { name = "vitalmesh-stores" },
+    { name = "vitalmesh-tracing" },
+    { name = "vitalmesh-wellness" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "redis", specifier = ">=5" },
+    { name = "vitalmesh-common", editable = "libs/common" },
+    { name = "vitalmesh-evidence", editable = "libs/evidence" },
+    { name = "vitalmesh-llm", editable = "libs/llm" },
+    { name = "vitalmesh-specialists", editable = "libs/specialists" },
+    { name = "vitalmesh-stores", editable = "libs/stores" },
+    { name = "vitalmesh-tracing", editable = "libs/tracing" },
+    { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
 [[package]]

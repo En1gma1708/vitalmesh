@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from vitalmesh_wellness import labs
 from vitalmesh_wellness.labs import (
     MARKERS,
     Flag,
@@ -155,3 +156,30 @@ def test_classification_is_monotonic_and_consistent(a: float, b: float, v: float
     assert (flag is Flag.LOW) == (v < lo)
     assert (flag is Flag.HIGH) == (v > hi)
     assert (flag is Flag.NORMAL) == (lo <= v <= hi)
+
+
+# ------------------------------------------------------------------------------ severity
+def _lab(value: float, reference: str) -> labs.LabResult:
+    return labs.interpret(
+        "LDL Cholesterol",
+        datetime(2026, 10, 1, tzinfo=UTC),
+        value=value,
+        unit="mg/dL",
+        reference_text=reference,
+    )
+
+
+def test_severity_normal_abnormal_and_marked_on_both_sides() -> None:
+    assert labs.severity(_lab(90, "< 100")) is labs.Severity.NORMAL
+    assert labs.severity(_lab(128, "< 100")) is labs.Severity.ABNORMAL
+    assert labs.severity(_lab(100 * labs.MARKED_FACTOR, "< 100")) is labs.Severity.ABNORMAL
+    assert labs.severity(_lab(151, "< 100")) is labs.Severity.MARKED
+    assert labs.severity(_lab(40, "40 - 60")) is labs.Severity.NORMAL
+    assert labs.severity(_lab(30, "40 - 60")) is labs.Severity.ABNORMAL
+    assert labs.severity(_lab(20, "40 - 60")) is labs.Severity.MARKED
+
+
+def test_severity_is_unknown_not_normal_when_nothing_can_be_judged() -> None:
+    assert labs.severity(_lab(128, "Desirable: <100; High: >160")) is labs.Severity.UNKNOWN
+    text = labs.interpret("RBC Morphology", datetime(2026, 10, 1, tzinfo=UTC), text="Normocytic")
+    assert labs.severity(text) is labs.Severity.UNKNOWN
