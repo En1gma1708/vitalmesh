@@ -101,6 +101,7 @@ def world(
     cohort: CohortStore | None = None,
     numeric: bool = False,
     load: Load = Load.NORMAL,
+    extra_users: int = 0,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
     profiles = InMemoryProfileStore()
     profiles.put(
@@ -138,6 +139,26 @@ def world(
             recent_sleep_hours=tuple([7.0] * 14),
         )
     )
+    # synthetic cohorts for benchmarks: three archetypes, bodies that differ user to user
+    groups = [("female", 34), ("male", 34), ("female", 24)]
+    for i in range(extra_users):
+        sex, age = groups[i % len(groups)]
+        profiles.put(
+            ProfileRecord(
+                profile=Profile.model_validate(
+                    {
+                        "user_id": f"b-{i}",
+                        "sex": sex,
+                        "age_years": age,
+                        "weight_kg": 55 + (i * 3) % 40,
+                        "height_cm": 160 + (i % 5) * 5,
+                        "activity": "moderate",
+                        "resting_hr_bpm": 52 + i % 12,
+                    }
+                ),
+                recent_sleep_hours=tuple([7.0 + (i % 3) * 0.5] * 14),
+            )
+        )
     lab_store = InMemoryLabStore()
     if labs:
         lab_store.put(

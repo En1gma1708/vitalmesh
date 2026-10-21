@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -26,6 +28,8 @@ from vitalmesh_agents.aggregator import Aggregator
 from vitalmesh_agents.briefer import Briefer
 from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
+from vitalmesh_agents.cohort_handler import make_cohort_handler, make_fill_handler
+from vitalmesh_agents.cohortstore import CohortStore, InMemoryCohortStore
 from vitalmesh_agents.guardian_handler import make_guardian_handler
 from vitalmesh_agents.release import ReleaseGate
 from vitalmesh_agents.release_handler import make_release_handler
@@ -41,7 +45,7 @@ from vitalmesh_common.kafka import (
     SchemaRegistrySerde,
     ensure_topics,
 )
-from vitalmesh_common.kafka_testing import fetch_through, only_for, running_consumers
+from vitalmesh_common.kafka_testing import fetch_through, running_consumers
 from vitalmesh_common.processor import Handler
 from vitalmesh_common.run import Specialist
 from vitalmesh_common.topics import (
@@ -92,8 +96,9 @@ def reply(text: str, calls: tuple[ToolCall, ...] = ()) -> LLMResponse:
 class ScriptedRouter:
     """Answers by purpose: tool first for each specialist, then a checked, number-free text."""
 
-    def __init__(self) -> None:
+    def __init__(self, numeric: bool = False) -> None:
         self.purposes: list[str] = []
+        self._numeric = numeric
 
     def complete(self, req: LLMRequest, max_wait_s: float = 0.0) -> LLMResponse:
         self.purposes.append(req.purpose)
@@ -102,12 +107,21 @@ class ScriptedRouter:
                 return reply("This follows your own targets.")
             return reply("", (ToolCall(id="c0", name=TOOL_FIRST[req.purpose], arguments="{}"),))
         if req.purpose == "synthesizer":
+            found = re.search(
+                r"about (\d[\d,]*) kcal", " ".join(m.content or "" for m in req.messages)
+            )
+            if self_numeric_ok(self) and found:
+                return reply(f"Aim for about {found.group(1)} kcal per day.")
             return reply("Here is a short plan that follows your own targets.")
         if req.purpose == "checker":
             return reply(json.dumps({"verdict": "approve", "problems": []}))
         if req.purpose == "briefer":
             return reply("The user asked for a workout and the system flagged it for review.")
         raise AssertionError(f"unexpected purpose {req.purpose}")
+
+
+def self_numeric_ok(router: ScriptedRouter) -> bool:
+    return router._numeric
 
 
 class NoEvidence:
@@ -144,6 +158,16 @@ def seed(profiles: RedisProfileStore, run: str, conditions: list[str]) -> str:
     return uid
 
 
+def _mine(uid: str, inner: Handler) -> Handler:
+    """Events of this run's users (the user and any id that extends it)."""
+
+    def handler(meta: EventMeta, payload: Any) -> None:
+        if meta.user_id.startswith(uid):
+            inner(meta, payload)
+
+    return handler
+
+
 class Stack:
     """Every agent consuming its topics, each in its own consumer group."""
 
@@ -157,8 +181,9 @@ class Stack:
         run: str,
         specialists: set[Specialist],
         run_deadline_s: float = 60.0,
+        cohort: CohortStore | None = None,
     ) -> None:
-        self.router = ScriptedRouter()
+        self.router = ScriptedRouter(numeric=cohort is not None)
         profiles = RedisProfileStore(client, prefix=f"it-{run}:profile")
         labs = RedisLabStore(client, prefix=f"it-{run}:labs")
         deps = SpecialistDeps(
@@ -190,7 +215,12 @@ class Stack:
             (
                 QUESTIONS_ASKED,
                 make_triage_handler(
-                    profiles, labs, serde, publisher, run_deadline_s=run_deadline_s
+                    profiles,
+                    labs,
+                    serde,
+                    publisher,
+                    run_deadline_s=run_deadline_s,
+                    cohort=cohort,
                 ),
             ),
             (RUNS_PLANNED, serial(self.aggregator.handle)),
@@ -206,6 +236,9 @@ class Stack:
             (REVIEWS_COMPLETED, serial(make_release_handler(gate))),
             (REVIEWS_DECIDED, serial(make_release_handler(gate))),
         ]
+        if cohort is not None:
+            self.wiring.append((RUNS_PLANNED, make_cohort_handler(deps, cohort, serde, publisher)))
+            self.wiring.append((RECOMMENDATIONS_RELEASED, make_fill_handler(deps, cohort)))
         for kind in specialists:
             self.wiring.append(
                 (RUNS_PLANNED, make_specialist_handler(kind, deps, serde, publisher))
@@ -230,7 +263,7 @@ class Stack:
             for topic, handler in self.wiring:
                 stack.enter_context(
                     running_consumers(
-                        settings, serde, publisher, client, topic, only_for(self.uid, handler)
+                        settings, serde, publisher, client, topic, _mine(self.uid, handler)
                     )
                 )
             sweeper.start()
@@ -386,3 +419,52 @@ def test_a_high_risk_question_waits_for_a_human_then_releases_on_approval(
     assert released.recommendation_id == request.recommendation_id
     assert any(c.metric == "max_hr_zone" for c in released.claims)  # the condition review ran
     assert meta.correlation_id == corr
+
+
+def test_a_second_user_of_the_cohort_is_answered_from_the_cache_over_real_kafka(
+    kafka_settings: KafkaSettings,
+    serde: SchemaRegistrySerde,
+    publisher: KafkaPublisher,
+    redis_client: redis.Redis,
+) -> None:
+    run = uuid.uuid4().hex[:8]
+    profiles = RedisProfileStore(redis_client, prefix=f"it-{run}:profile")
+    uid = seed(profiles, run, [])
+    second = f"{uid}-b"
+    first_profile = profiles.get(uid)
+    assert first_profile is not None
+    profiles.put(
+        ProfileRecord(
+            profile=first_profile.profile.model_copy(
+                update={"user_id": second, "weight_kg": 82, "age_years": 33}
+            ),
+            recent_sleep_hours=tuple([7.0] * 14),
+        )
+    )
+    cohort = InMemoryCohortStore()
+    stack = Stack(
+        kafka_settings,
+        serde,
+        publisher,
+        redis_client,
+        uid,
+        run,
+        {Specialist.NUTRITION, Specialist.MOVEMENT_RECOVERY},
+        cohort=cohort,
+    )
+    question = "How many calories should I eat?"
+    with stack.running(kafka_settings, serde, publisher, redis_client):
+        corr1 = ask(serde, publisher, uid, question)
+        _m1, released1 = wait_event(kafka_settings, serde, RECOMMENDATIONS_RELEASED, corr1)
+        calls_after_first = len(stack.router.purposes)
+        deadline = time.monotonic() + 20  # the fill handler is a separate consumer
+        while cohort.stats()["fill"] == 0 and time.monotonic() < deadline:
+            time.sleep(0.2)
+        assert cohort.stats()["fill"] == 1
+        corr2 = ask(serde, publisher, second, question)
+        _m2, released2 = wait_event(kafka_settings, serde, RECOMMENDATIONS_RELEASED, corr2)
+        planned, _ = wait_event(kafka_settings, serde, RUNS_PLANNED, corr2)
+    assert planned.tier is not None and planned.tier.value == "T1"
+    assert len(stack.router.purposes) == calls_after_first  # the hit made no model call
+    assert released2.summary != released1.summary and "kcal per day" in released2.summary
+    assert cohort.stats()["hit"] == 1

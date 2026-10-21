@@ -15,6 +15,7 @@ Two consumers, no model in either:
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -48,6 +49,7 @@ from vitalmesh_agents.triage import plan_run, signals_for
 
 log = logging.getLogger("vitalmesh.cohort")
 
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 PLANNED_TYPE = "run.planned"
 RELEASED_TYPE = "recommendation.released"
 
@@ -94,6 +96,25 @@ def proto_of(view: ClaimView) -> payloads_pb2.RecommendationClaim:
     claim.quantity.value = float(view.value or 0.0)
     claim.quantity.unit = view.unit
     return claim
+
+
+def numbers_are_backed(text: str, claims: Sequence[ClaimView]) -> bool:
+    allowed: set[float] = set()
+    for c in claims:
+        if c.value is not None:
+            allowed.add(round(c.value, 1))
+        allowed.update(_numbers_in(c.text))
+    return all(round(n, 1) in allowed or n in allowed for n in _numbers_in(text))
+
+
+def _numbers_in(text: str) -> set[float]:
+    out: set[float] = set()
+    for m in _NUMBER.findall(text):
+        try:
+            out.add(float(m.replace(",", "")))
+        except ValueError:
+            continue
+    return out
 
 
 def fresh_claims(
@@ -185,6 +206,8 @@ def _answer(
     if got is None:
         return None
     text, claims = got
+    if not numbers_are_backed(text, claims):
+        return None  # a number the user's own calculators did not produce: never serve it
     draft = payloads_pb2.RecommendationDrafted(
         recommendation_id=recommendation_id(meta.correlation_id),
         question=payload.question,
