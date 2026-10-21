@@ -37,12 +37,15 @@ class OneShotRouter:
 
 
 def passage_from_db() -> Passage:
-    with psycopg.connect(DSN) as c:
-        row = c.execute(
-            "SELECT c.doc_id, c.locator, c.text, d.title, d.source_url, d.licence "
-            "FROM chunks c JOIN documents d USING (doc_id) "
-            "WHERE c.text ILIKE '%2,300 milligrams%' LIMIT 1"
-        ).fetchone()
+    try:
+        with psycopg.connect(DSN) as c:
+            row = c.execute(
+                "SELECT c.doc_id, c.locator, c.text, d.title, d.source_url, d.licence "
+                "FROM chunks c JOIN documents d USING (doc_id) "
+                "WHERE c.text ILIKE '%2,300 milligrams%' LIMIT 1"
+            ).fetchone()
+    except psycopg.errors.UndefinedTable:
+        row = None  # a fresh database (CI): no corpus tables yet
     if row is None:
         pytest.skip("the guideline corpus is not loaded: uv run python scripts/build_corpus.py")
     return Passage(
