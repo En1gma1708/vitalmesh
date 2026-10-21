@@ -320,3 +320,28 @@ def contains_number(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, A
     got = numbers_in(out.get("text", ""))
     ok = any(_close(v, float(args["value"])) for v in got)
     return _res("contains_number", ok, f"want {args['value']} in {got}")
+
+
+# ------------------------------------------------------------------- concierge graders (D67)
+@grader
+def field_in(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]) -> GradeResult:
+    got = out.get(args["field"])
+    return _res(
+        "field_in", got in args["expected"], f"{args['field']}={got} want {args['expected']}"
+    )
+
+
+@grader
+def no_model_call(out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]) -> GradeResult:
+    calls = out.get("model_calls")
+    return _res("no_model_call", calls == 0, f"model_calls={calls}")
+
+
+@grader
+def no_digits(out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]) -> GradeResult:
+    return _res("no_digits", not any(c.isdigit() for c in out.get("text", "")), "")
+
+
+@grader
+def has_question(out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]) -> GradeResult:
+    return _res("has_question", "?" in out.get("text", ""), "")

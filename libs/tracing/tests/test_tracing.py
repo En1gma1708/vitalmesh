@@ -52,18 +52,26 @@ class FakeClient:
         self.scores: list[dict[str, Any]] = []
         self.flushed = 0
         self.fail_update = fail_update
+        self.depth = 0
 
     @contextlib.contextmanager
     def start_as_current_observation(self, **kwargs: Any) -> Iterator[FakeObs]:
         obs = FakeObs(kwargs, self.fail_update)
         self.observations.append(obs)
-        yield obs
+        self.depth += 1
+        try:
+            yield obs
+        finally:
+            self.depth -= 1
 
     def score_current_trace(self, **kwargs: Any) -> None:
         self.scores.append(kwargs)
 
     def flush(self) -> None:
         self.flushed += 1
+
+    def get_current_observation_id(self) -> str | None:
+        return "current" if self.depth else None
 
 
 def make(fail_update: bool = False) -> tuple[LangfuseTracer, FakeClient, list[dict[str, Any]]]:
@@ -173,3 +181,15 @@ def test_with_keys_the_client_gets_the_masking_hook_environment_and_region(
         seen["base_url"] == "https://us.cloud.langfuse.com" and seen["environment"] == "evaluation"
     )
     assert seen["mask"](data="mail a@b.co") == "mail [email]"
+
+
+def test_a_run_inside_a_trace_is_a_child_agent_and_does_not_rename_the_trace() -> None:
+    tracer, client, propagated = make()
+    with (
+        tracer.run("concierge-turn", input="hi", user_id="u1", tags=["concierge"]),
+        tracer.run("advise-nutrition", input="hi", tags=["nutrition"]),
+    ):
+        pass
+    assert len(propagated) == 1 and propagated[0]["trace_name"] == "concierge-turn"
+    assert [o.kwargs["name"] for o in client.observations] == ["concierge-turn", "advise-nutrition"]
+    assert client.observations[1].kwargs["as_type"] == "agent"

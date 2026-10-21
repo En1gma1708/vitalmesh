@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import redis
+from vitalmesh_concierge.concierge import CLASSIFY_PROMPT, COACH_PROMPT
 from vitalmesh_evidence.agent import SYSTEM_PROMPT as EVIDENCE_PROMPT
 from vitalmesh_llm import RedisCache, Router, load_keys
 from vitalmesh_specialists.nutrition import SYSTEM_PROMPT as NUTRITION_PROMPT
@@ -47,15 +48,17 @@ EVIDENCE_DSN = "postgresql://vitalmesh@127.0.0.1:5432/vitalmesh"
 
 
 TOOL_SPECS_FINGERPRINT = "|".join(f"{t.name}:{t.description}" for t in _TOOL_SPECS)
-LIVE_CATEGORIES = ("evidence", "nutrition")
+LIVE_CATEGORIES = ("evidence", "nutrition", "concierge")
 
 
 def build_live_suts(categories: list[str]) -> dict[str, Sut]:
+    from vitalmesh_concierge import Concierge
     from vitalmesh_evidence import EvidenceAgent, StoreRetriever
     from vitalmesh_retrieval import Store
     from vitalmesh_retrieval.embed import LocalEmbedder
     from vitalmesh_specialists import NutritionSpecialist
 
+    from vitalmesh_evals.concierge_sut import ConciergeSut
     from vitalmesh_evals.evidence_sut import EvidenceSut
     from vitalmesh_evals.nutrition_sut import NutritionSut
 
@@ -65,8 +68,11 @@ def build_live_suts(categories: list[str]) -> dict[str, Sut]:
     out: dict[str, Sut] = {}
     if "evidence" in categories:
         out["evidence"] = EvidenceSut(agent, EVIDENCE_DSN)
+    specialist = NutritionSpecialist(router)
     if "nutrition" in categories:
-        out["nutrition"] = NutritionSut(NutritionSpecialist(router), agent)
+        out["nutrition"] = NutritionSut(specialist, agent)
+    if "concierge" in categories:
+        out["concierge"] = ConciergeSut(Concierge(router, specialist), agent)
     return out
 
 
@@ -150,7 +156,13 @@ def main() -> None:
     if live:
         label = "+".join(live)
         suts.update(build_live_suts(live))
-        config_extra = EVIDENCE_PROMPT + NUTRITION_PROMPT + TOOL_SPECS_FINGERPRINT
+        config_extra = (
+            EVIDENCE_PROMPT
+            + NUTRITION_PROMPT
+            + TOOL_SPECS_FINGERPRINT
+            + CLASSIFY_PROMPT
+            + COACH_PROMPT
+        )
     router = make_router() if (args.explainer == "llm" or args.judge) else None
     inner: Explainer = (
         LLMExplainer(router) if args.explainer == "llm" and router else TemplateExplainer()

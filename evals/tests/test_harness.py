@@ -37,7 +37,7 @@ def grade(name: str, text: str, **args: Any) -> bool:
 # --------------------------------------------------------------------- case integrity
 def test_case_set_is_the_expected_size_and_well_formed() -> None:
     cases = all_cases()
-    assert len(cases) == 116
+    assert len(cases) == 136
     by_cat = {c.category: 0 for c in cases}
     for c in cases:
         by_cat[c.category] += 1
@@ -51,6 +51,7 @@ def test_case_set_is_the_expected_size_and_well_formed() -> None:
         "injection": 38,
         "evidence": 24,
         "nutrition": 13,
+        "concierge": 20,
     }
 
 

@@ -175,6 +175,14 @@ class LangfuseTracer:
         tags: Sequence[str] = (),
         metadata: Mapping[str, Any] | None = None,
     ) -> Iterator[Handle]:
+        if self._lf.get_current_observation_id():
+            # already inside a trace: this agent is a child of the caller's agent. Opening a new
+            # root here would overwrite the trace's name, tags and user (propagate_attributes).
+            with self._lf.start_as_current_observation(
+                name=name, as_type="agent", input=input
+            ) as obs:
+                yield _LangfuseHandle(obs)
+            return
         attrs: dict[str, Any] = {"trace_name": name, "tags": list(tags)}
         if user_id:
             attrs["user_id"] = pseudonym(user_id)

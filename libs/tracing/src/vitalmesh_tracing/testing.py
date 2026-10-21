@@ -65,7 +65,7 @@ class RecordingTracer:
         rec = Recorded(
             name,
             "run",
-            None,
+            self._stack[-1] if self._stack else None,  # a run inside a run is a child agent
             input,
             {"user_id": user_id, "session_id": session_id, "tags": list(tags)},
         )

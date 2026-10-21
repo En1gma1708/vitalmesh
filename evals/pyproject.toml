@@ -3,13 +3,14 @@ name = "vitalmesh-evals"
 version = "0.1.0"
 description = "Golden-case eval harness: deterministic graders, per-category pass rates, cached model calls"
 requires-python = ">=3.12,<3.13"
-dependencies = ["vitalmesh-wellness", "vitalmesh-llm", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-retrieval", "psycopg[binary]>=3.2", "redis>=5"]
+dependencies = ["vitalmesh-wellness", "vitalmesh-llm", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-concierge", "vitalmesh-retrieval", "psycopg[binary]>=3.2", "redis>=5"]
 
 [tool.uv.sources]
 vitalmesh-wellness = { workspace = true }
 vitalmesh-llm = { workspace = true }
 vitalmesh-evidence = { workspace = true }
 vitalmesh-specialists = { workspace = true }
+vitalmesh-concierge = { workspace = true }
 vitalmesh-retrieval = { workspace = true }
 
 [build-system]

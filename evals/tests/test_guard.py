@@ -3,15 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from vitalmesh_concierge import screen_question
 from vitalmesh_evals.cases import all_cases
 from vitalmesh_evals.cases.explain import BASELINE
 from vitalmesh_evals.graders import run_grader
-from vitalmesh_evals.guard import (
-    GuardedExplainer,
-    check_answer,
-    decline_text,
-    screen_question,
-)
+from vitalmesh_evals.guard import GuardedExplainer, check_answer, decline_text
 from vitalmesh_evals.suts import SutOutput, TemplateExplainer
 from vitalmesh_llm import LLMResponse
 

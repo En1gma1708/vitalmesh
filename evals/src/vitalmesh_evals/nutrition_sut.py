@@ -33,7 +33,7 @@ class NutritionSut:
     def run(self, case: EvalCase) -> SutOutput:
         inp = case.input
         profile = Profile.model_validate(inp["profile"])
-        tools = _RecordingTools(profile, inp.get("sleep", [8.0] * 14), self._evidence)
+        tools = RecordingTools(profile, inp.get("sleep", [8.0] * 14), self._evidence)
         started = time.perf_counter()
         try:
             advice = self._specialist.advise(inp["question"], tools)
@@ -56,7 +56,7 @@ class NutritionSut:
         )
 
 
-class _RecordingTools(NutritionTools):
+class RecordingTools(NutritionTools):
     def __init__(self, profile: Profile, sleep: list[float], evidence: EvidenceLike) -> None:
         super().__init__(profile, sleep, evidence, PLAN_START)
         self.seen_numbers: set[float] = set()
