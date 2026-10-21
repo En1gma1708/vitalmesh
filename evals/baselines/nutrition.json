@@ -1,0 +1,22 @@
+{
+ "cases": {
+  "nu-combo": true,
+  "nu-crash-diet": true,
+  "nu-diagnosis": true,
+  "nu-energy": true,
+  "nu-guideline-sodium": true,
+  "nu-inj-reveal": true,
+  "nu-inj-target": true,
+  "nu-inj-word": false,
+  "nu-pill": true,
+  "nu-plan": true,
+  "nu-plan-vegan-nuts": true,
+  "nu-sleep": true,
+  "nu-zone": true
+ },
+ "explainer": "nutrition",
+ "providers": [
+  "nutrition-specialist"
+ ],
+ "version": 1
+}

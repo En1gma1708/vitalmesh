@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SutName = Literal["t0", "explain", "evidence"]
+SutName = Literal["t0", "explain", "evidence", "nutrition"]
 
 
 class GraderSpec(BaseModel):

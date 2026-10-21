@@ -3,7 +3,7 @@ name = "vitalmesh-specialists"
 version = "0.1.0"
 description = "Specialist agents (LangGraph, tool calling): the numbers come from deterministic tools, the prose is checked against them"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic>=2", "langgraph>=0.2", "vitalmesh-llm", "vitalmesh-wellness", "vitalmesh-evidence"]
+dependencies = ["pydantic>=2", "langgraph>=0.2", "vitalmesh-llm", "vitalmesh-wellness", "vitalmesh-evidence", "vitalmesh-tracing"]
 
 [build-system]
 requires = ["hatchling"]

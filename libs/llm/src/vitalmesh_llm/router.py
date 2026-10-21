@@ -250,7 +250,8 @@ class Router:
             usage = data.get("usage") or {}
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise _Retryable(r.status_code, "unusable response body") from exc
-        if not isinstance(text, str) or (not text.strip() and not calls):
+        stopped_at_limit = isinstance(finish, str) and finish.lower() in {"length", "max_tokens"}
+        if not isinstance(text, str) or (not text.strip() and not calls and not stopped_at_limit):
             raise _Retryable(r.status_code, "empty completion")
         elapsed_ms = (self._clock() - started) * 1000
         resp = LLMResponse(

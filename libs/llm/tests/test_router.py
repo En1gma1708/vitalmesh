@@ -449,3 +449,13 @@ def test_tool_calls_are_traced_as_output_and_reasoning_is_captured() -> None:
     u = tr.named("llm-complete")[0].updates[-1]
     assert u["output"][0]["function"]["name"] == "lookup_target"
     assert u["metadata"]["reasoning"] == "I need the target first."
+
+
+def test_an_empty_reply_that_hit_the_token_limit_is_a_truncation_not_an_outage() -> None:
+    body = {
+        "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 900},
+    }
+    s = Server({GROQ: [(200, body)]})
+    r = router(s).complete(req())
+    assert r.text == "" and r.truncated and s.calls[0][0] == GROQ  # no fall-through, no cooldown

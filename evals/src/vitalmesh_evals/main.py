@@ -14,6 +14,8 @@ from pathlib import Path
 import redis
 from vitalmesh_evidence.agent import SYSTEM_PROMPT as EVIDENCE_PROMPT
 from vitalmesh_llm import RedisCache, Router, load_keys
+from vitalmesh_specialists.nutrition import SYSTEM_PROMPT as NUTRITION_PROMPT
+from vitalmesh_specialists.tools import SPECS as _TOOL_SPECS
 
 from vitalmesh_evals.baseline import compare, load_baseline, path_for, write_baseline
 from vitalmesh_evals.case import EvalCase, g
@@ -44,18 +46,28 @@ def make_router() -> Router:
 EVIDENCE_DSN = "postgresql://vitalmesh@127.0.0.1:5432/vitalmesh"
 
 
-def build_evidence_sut() -> Sut:
+TOOL_SPECS_FINGERPRINT = "|".join(f"{t.name}:{t.description}" for t in _TOOL_SPECS)
+LIVE_CATEGORIES = ("evidence", "nutrition")
+
+
+def build_live_suts(categories: list[str]) -> dict[str, Sut]:
     from vitalmesh_evidence import EvidenceAgent, StoreRetriever
     from vitalmesh_retrieval import Store
     from vitalmesh_retrieval.embed import LocalEmbedder
+    from vitalmesh_specialists import NutritionSpecialist
 
     from vitalmesh_evals.evidence_sut import EvidenceSut
+    from vitalmesh_evals.nutrition_sut import NutritionSut
 
     embedder = LocalEmbedder()
-    agent = EvidenceAgent(
-        make_router(), StoreRetriever(Store(EVIDENCE_DSN, embedder.dim), embedder)
-    )
-    return EvidenceSut(agent, EVIDENCE_DSN)
+    router = make_router()
+    agent = EvidenceAgent(router, StoreRetriever(Store(EVIDENCE_DSN, embedder.dim), embedder))
+    out: dict[str, Sut] = {}
+    if "evidence" in categories:
+        out["evidence"] = EvidenceSut(agent, EVIDENCE_DSN)
+    if "nutrition" in categories:
+        out["nutrition"] = NutritionSut(NutritionSpecialist(router), agent)
+    return out
 
 
 def with_judge_graders(case: EvalCase) -> EvalCase:
@@ -123,20 +135,22 @@ def main() -> None:
 
     if args.calibrate_judge:
         raise SystemExit(run_calibration())
-    # evidence cases need Postgres, the embedding model and a key: only with --only evidence
+    # evidence and nutrition cases need Postgres, the embedding model and a key: only when named
+    live = [c for c in LIVE_CATEGORIES if args.only and c in args.only]
     cases = [
-        c for c in all_cases() if (c.category in args.only if args.only else c.sut != "evidence")
+        c
+        for c in all_cases()
+        if (c.category in args.only if args.only else c.sut not in LIVE_CATEGORIES)
     ]
-    evidence_run = bool(args.only) and "evidence" in args.only
     if args.judge:
         cases = [with_judge_graders(c) for c in cases]
     label = args.explainer + ("+guard" if args.guard else "") + ("+judge" if args.judge else "")
     suts: dict[str, Sut] = {}
     config_extra = ""
-    if evidence_run:
-        label = "evidence"
-        suts["evidence"] = build_evidence_sut()
-        config_extra = EVIDENCE_PROMPT
+    if live:
+        label = "+".join(live)
+        suts.update(build_live_suts(live))
+        config_extra = EVIDENCE_PROMPT + NUTRITION_PROMPT + TOOL_SPECS_FINGERPRINT
     router = make_router() if (args.explainer == "llm" or args.judge) else None
     inner: Explainer = (
         LLMExplainer(router) if args.explainer == "llm" and router else TemplateExplainer()

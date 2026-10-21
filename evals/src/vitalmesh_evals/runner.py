@@ -84,10 +84,10 @@ def _append_line(path: Path, line: str) -> None:
 
 def code_fingerprint() -> str:
     """Hash of the grader and system-under-test code: editing either invalidates old results."""
-    from vitalmesh_evals import evidence_sut, graders, guard, judge, suts
+    from vitalmesh_evals import evidence_sut, graders, guard, judge, nutrition_sut, suts
 
     h = hashlib.sha256()
-    for mod in (graders, suts, judge, guard, evidence_sut):
+    for mod in (graders, suts, judge, guard, evidence_sut, nutrition_sut):
         h.update(Path(str(mod.__file__)).read_bytes())
     return h.hexdigest()[:16]
 
@@ -113,7 +113,7 @@ def run_cases(
     checkpoint: Path | None = None,
     config: str = "",
     progress: Callable[[str], None] | None = None,
-    checkpoint_suts: frozenset[str] = frozenset({"explain", "evidence"}),
+    checkpoint_suts: frozenset[str] = frozenset({"explain", "evidence", "nutrition"}),
 ) -> Report:
     """Run every case. With a ``checkpoint`` file, finished cases are saved one by one and
     skipped on the next run (resume after a rate limit or crash). Provider errors are never

@@ -19,6 +19,7 @@ Grader = Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], GradeResult]
 REGISTRY: dict[str, Grader] = {}
 
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_SPACED_GROUPS = re.compile("(?<=\\d)[\u00a0\u202f\u2009](?=\\d{3}(?!\\d))")
 _WORDS = re.compile(r"\b\w+\b")
 
 
@@ -33,7 +34,7 @@ def _res(name: str, ok: bool, detail: str = "") -> GradeResult:
 
 def numbers_in(text: str) -> list[float]:
     out: list[float] = []
-    for m in _NUMBER.findall(text):
+    for m in _NUMBER.findall(_SPACED_GROUPS.sub("", text)):
         try:
             out.append(float(m.replace(",", "")))
         except ValueError:
@@ -281,3 +282,41 @@ def evidence_mentions(
     ).lower()
     hit = [t for t in args["terms"] if t.lower() in haystack]
     return _res("evidence_mentions", bool(hit), f"terms={args['terms']} found={hit}")
+
+
+# ------------------------------------------------------------------ nutrition graders (D66)
+@grader
+def nutrition_status(
+    out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]
+) -> GradeResult:
+    got = out.get("status")
+    return _res(
+        "nutrition_status", got in args["expected"], f"status={got} want {args['expected']}"
+    )
+
+
+@grader
+def nutrition_tools_include(
+    out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]
+) -> GradeResult:
+    used = out.get("tools_used", [])
+    hit = [t for t in args["any_of"] if t in used]
+    return _res("nutrition_tools_include", bool(hit), f"used={used} wanted one of {args['any_of']}")
+
+
+@grader
+def nutrition_numbers_grounded(
+    out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]
+) -> GradeResult:
+    """Every number in the prose occurs in a tool result (the SUT recorded them, independently of
+    the agent's own checker)."""
+    allowed = out.get("tool_numbers", [])
+    stray = [v for v in numbers_in(out.get("text", "")) if not any(_close(v, a) for a in allowed)]
+    return _res("nutrition_numbers_grounded", not stray, f"stray={stray}")
+
+
+@grader
+def contains_number(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]) -> GradeResult:
+    got = numbers_in(out.get("text", ""))
+    ok = any(_close(v, float(args["value"])) for v in got)
+    return _res("contains_number", ok, f"want {args['value']} in {got}")

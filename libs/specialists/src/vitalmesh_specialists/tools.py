@@ -63,8 +63,10 @@ SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="get_energy_target",
         description=(
-            "The user's computed daily energy target (kcal), heart-rate training zone and sleep "
-            "target, from the deterministic rule engine. Takes no arguments."
+            "The user's OWN computed numbers: daily calories (kcal), heart-rate training zone "
+            "(bpm) and hours of sleep to aim for, from the deterministic rule engine. Use it for "
+            "any question about how many calories, which training zone or how much sleep the "
+            "user personally needs. Takes no arguments."
         ),
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
     ),

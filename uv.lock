@@ -1696,6 +1696,7 @@ dependencies = [
     { name = "vitalmesh-evidence" },
     { name = "vitalmesh-llm" },
     { name = "vitalmesh-retrieval" },
+    { name = "vitalmesh-specialists" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -1706,6 +1707,7 @@ requires-dist = [
     { name = "vitalmesh-evidence", editable = "libs/evidence" },
     { name = "vitalmesh-llm", editable = "libs/llm" },
     { name = "vitalmesh-retrieval", editable = "libs/retrieval" },
+    { name = "vitalmesh-specialists", editable = "libs/specialists" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
@@ -1813,6 +1815,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "vitalmesh-evidence" },
     { name = "vitalmesh-llm" },
+    { name = "vitalmesh-tracing" },
     { name = "vitalmesh-wellness" },
 ]
 
@@ -1822,6 +1825,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "vitalmesh-evidence", editable = "libs/evidence" },
     { name = "vitalmesh-llm", editable = "libs/llm" },
+    { name = "vitalmesh-tracing", editable = "libs/tracing" },
     { name = "vitalmesh-wellness", editable = "libs/wellness" },
 ]
 
