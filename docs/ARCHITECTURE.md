@@ -14,7 +14,7 @@ Status: DRAFT v0.1. Design principles follow Anthropic's *Building Effective Age
 ```
 Clients (web/mobile/wearables)
    |  HTTPS
-ALB -> API Gateway svc (FastAPI, stateless, autoscaled)  --SSE/WS-->  Delivery svc
+Load balancer -> API Gateway svc (FastAPI, stateless, autoscaled)  --SSE/WS-->  Delivery svc
    |  produce                                                  ^
    v                                                           |
 Kafka (Apache Kafka KRaft)  topics: user.events -> user.state -> agent.triggers -> agent.results -> recs.out ; *.dlq
@@ -28,7 +28,7 @@ Kafka (Apache Kafka KRaft)  topics: user.events -> user.state -> agent.triggers 
    +--> Agent Workers (consumer group, KEDA-autoscaled on lag)
    +--> Safety Guardian (always last) --> recs.out / HITL queue
 Stores: Postgres+pgvector (profiles, via pgbouncer), Redis (cohort cache, idempotency, rate limits),
-        Neo4j Community (medical knowledge graph; single node, hot path reads a precompiled Redis lookup), S3 (corpus, artifacts)
+        Neo4j Community (medical knowledge graph; single node, hot path reads a precompiled Redis lookup), object storage (artifacts; the guideline corpus is in Postgres)
 Observability: Langfuse, Prometheus/Grafana, OpenTelemetry
 ```
 
@@ -80,7 +80,7 @@ At-least-once + idempotent consumers; DLQ per topic with replay tool; circuit br
 Synthetic data only. Design hooks: JWT auth, per-user encryption keys (KMS), PII-free traces (redaction in Langfuse), audit log, consent flags, prompt-injection defence (user text never in system prompt; tool outputs treated as data).
 
 ## 8. Tech choices
-Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on httpx (OpenAI-compatible providers: Groq, Gemini, OpenRouter), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector (local bge-small embeddings through fastembed), Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS/EKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
+Python 3.12, FastAPI, LangGraph + LangChain, an in-house provider router on httpx (OpenAI-compatible providers: Groq, Gemini, OpenRouter), Pydantic v2, aiokafka/confluent-kafka, Postgres+pgvector (local bge-small embeddings through fastembed), Redis, Neo4j, Langfuse, Terraform, Kubernetes (AKS) + KEDA, GitHub Actions, pytest, k6. Frontend: Next.js dashboard (demo).
 
 ## 9. Settled decisions
 - Tiered compute is the core novelty (T0 deterministic, T1 cohort cache, T2 single agent, T3 multi-agent).
@@ -125,7 +125,10 @@ Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its 
 - **Tenancy:** every record carries household_id and user_id.
 - **Calendar:** the Scheduler can publish a tokenized read-only iCal feed (no OAuth write scope held by us), with Calendar MCP write as the opt-in upgrade.
 
-## 14. Delivery semantics as implemented (Phase 0)
+## 14. Implementation status (as of Phase 2)
+Built: T0 (deterministic) path on Kafka; the LLM router; a guideline corpus in Postgres + pgvector (local bge-small embeddings, hybrid full-text plus vector search with rank fusion); three LLM agents, each a LangGraph graph with hard limits and code-verified output: the Evidence agent (cited, quote-checked answers), the Nutrition specialist (tool calling; every number must come from a tool result) and the Concierge (input screen, closed-set intent routing, coaching); Langfuse Cloud tracing across them (traces are nested, hashed user ids, synthetic or public text only). Not built: the Kafka-connected multi-agent graph (Triage, parallel specialists, aggregator, synthesizer, checker, human approval), tiers T1-T3 and the cohort cache, the dashboard and console, cloud deployment. Today the agents call each other in-process; Phase 3 moves the hand-offs onto the events in EVENT_BACKBONE.md.
+
+## 15. Delivery semantics as implemented (Phase 0)
 Verified by unit tests and by integration tests against a real Kafka, Schema Registry and Redis.
 - **At-least-once, no loss:** auto-commit is off; the offset commits only after processing returned, and a retry or DLQ publish is flushed before that. A failed flush propagates, so the record is redelivered.
 - **Retry tiers:** one retry topic per backoff tier (`<topic>.retry.<n>`), each with a constant delay, so a long delay can never block a short one; a pure routing function decides retry, DLQ or expiry. DLQ records keep the original bytes for replay.

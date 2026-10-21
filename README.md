@@ -4,7 +4,11 @@ An event-driven, multi-agent health recommendation platform built on **Kafka + L
 
 **Core idea — Tiered Agentic Compute:** most events are handled deterministically (rules, ML, knowledge-graph reasoning); a cohort cache serves similar users; LLM agents are reserved for cases that need them. A pure-code Safety Guardian checks every recommendation, and high-risk cases go to human review.
 
-**Status:** Phase 0 (foundation) and Phase 1 (deterministic core) are implemented and tested: event envelope and failure contracts, Protobuf schemas, an at-least-once processor with retry tiers and a dead-letter queue, wellness calculators, a safety Guardian with typed claim provenance that fails closed, a rule engine, a rule-driven meal planner whose allergen and diet checks the Guardian re-derives, lab results with unit conversion and range classification, an anomaly check, measurement history, a health-only chart page, a seed knowledge graph in Neo4j, a T0 service that turns state updates into Guardian-checked recommendations, and a FastAPI gateway (about 312 unit and 20 integration tests). Measured on one machine: the in-process T0 recommendation over HTTP has p95 of about 3.5 ms; the two-hop Kafka chain has p95 of 13-15 ms for spaced events and about 430 ms for a simultaneous burst of 50 through one consumer thread per stage. Phase 2 has started: an LLM router over free-tier providers and an eval harness with 79 golden cases (deterministic graders, a 38-case prompt-injection suite including 8 held-out attacks, committed baselines, a deterministic guard in front of the explainer, and a relevance and tone judge limited to the explanation cases) are in; the Evidence agent (LangGraph) answers from a small guideline corpus in Postgres + pgvector with every claim cited and verified in code, and refuses when the evidence is weak, with Langfuse tracing of every model call and agent run; the multi-agent graph and cloud deployment follow.
+**Status:** Phases 0-2 are implemented and tested (506 unit and 30 integration tests, CI green).
+
+- **Phase 0-1, the deterministic core:** event envelope and failure contracts, Protobuf schemas, an at-least-once Kafka processor with retry tiers and a dead-letter queue, wellness calculators, a pure-code safety Guardian with typed claim provenance that fails closed, a rule engine, a rule-driven meal planner whose allergen and diet checks the Guardian re-derives, lab results with unit conversion and range classification, an anomaly check, measurement history, a health-only chart page, a seed knowledge graph in Neo4j, a T0 service and a FastAPI gateway. Measured on one machine: the in-process T0 recommendation over HTTP has p95 of about 3.5 ms; the two-hop Kafka chain has p95 of 13-15 ms for spaced events and about 430 ms for a simultaneous burst of 50 through one consumer thread per stage.
+- **Phase 2, the first LLM agents:** an LLM router over free-tier providers (fallback, rate limits, cache, tool calling); an eval harness with 136 golden cases (deterministic graders, prompt-injection cases including held-out attacks, committed baselines, a deterministic guard, a relevance-and-tone judge limited to explanations); a guideline corpus in Postgres + pgvector with local embeddings and hybrid retrieval; an Evidence agent (LangGraph) whose every sentence is cited with document, page and licence and verified in code; a Nutrition specialist (LangGraph tool-calling loop) whose numbers must come from deterministic tools; a Concierge that screens, classifies and routes; and Langfuse tracing across all of it. The model is never trusted: citations, quotes and numbers are checked in code and a plain-facts fallback replaces a failed draft.
+- **Next:** the multi-agent graph over Kafka (triage, parallel specialists, aggregator, synthesizer, checker, human approval) with an ablation that measures whether multiple agents beat one agent with tools; then the cohort cache, a health app and engineering console, and cloud deployment and load tests on Azure (planned, not done). The 1M-user figure is a design target, not a measurement.
 
 Design docs: [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Agents](docs/AGENTS.md), [Event backbone](docs/EVENT_BACKBONE.md).
 
@@ -15,7 +19,7 @@ uv run python scripts/gen_proto.py          # generate Protobuf code
 uv run ruff check . && uv run mypy libs services conftest.py
 uv run pytest -m "not integration"          # unit tests
 
-docker compose -f infra/docker-compose.yml up -d --wait   # Kafka, Schema Registry, Redis, Neo4j (localhost only)
+docker compose -f infra/docker-compose.yml up -d --wait   # Kafka, Schema Registry, Redis, Neo4j, Postgres+pgvector (localhost only)
 uv run pytest -m integration                # end-to-end tests against the real stack
 uv run python -m vitalmesh_processor        # run the state processor
 uv run python -m vitalmesh_t0               # run the T0 recommendation service
@@ -23,13 +27,15 @@ uv run python scripts/seed_demo.py demo-1   # synthetic demo user
 uv run python -m vitalmesh_api              # API; open http://127.0.0.1:8000/app/demo-1
 uv run python scripts/demo_flow.py demo-1   # one event through Kafka, printed as a recommendation
 uv run python scripts/demo_guardian.py      # unsafe recommendations blocked by the Guardian (no stack needed)
-uv run python -m vitalmesh_evals --explainer template   # 79 golden eval cases, no model
+uv run python -m vitalmesh_evals --explainer template --guard   # 79 golden eval cases, no model
+uv run python scripts/build_corpus.py       # guideline corpus into Postgres (downloads two public PDFs, local embeddings)
+uv run python -m vitalmesh_evals --only concierge   # live agent evals (needs the corpus and an LLM key in .env)
 docker compose -f infra/docker-compose.yml down -v
 ```
 The integration tests reset the topics in the topic contract on the local stack; do not point them at anything you care about.
 
 ## Layout
-`libs/common` shared contracts and Kafka adapters · `libs/wellness` calculators, claims, Guardian, rule engine · `libs/llm` LLM router (fallback, rate limits, cache, mock) · `evals` golden-case eval harness (deterministic graders, resumable runs) · `services/processor` state processor · `services/t0` T0 recommendation service · `services/api` FastAPI gateway and chart page · `services/kg` knowledge graph loader · `proto` event schemas · `infra` local stack · `scripts` code generation
+`libs/common` shared contracts and Kafka adapters · `libs/wellness` calculators, claims, Guardian, rule engine · `libs/llm` LLM router (fallback, rate limits, cache, mock, tool calling) · `libs/retrieval` Postgres + pgvector corpus store, chunking, local embeddings · `libs/evidence` Evidence agent · `libs/specialists` Nutrition specialist · `libs/concierge` input screen and intent routing · `libs/tracing` Langfuse tracing · `evals` golden-case eval harness (deterministic graders, resumable runs, live agent evals) · `services/processor` state processor · `services/t0` T0 recommendation service · `services/api` FastAPI gateway and chart page · `services/kg` knowledge graph loader · `proto` event schemas · `infra` local stack · `scripts` code generation, demos, corpus build
 
 **Highlights:** agents communicate only through Kafka events; a Safety Guardian (pure code) checks every boundary; rule-driven meal planning on the deterministic tier; an optional calendar Scheduler that never writes without user confirmation; lab results and blood-report PDF upload with user confirmation of every extracted value.
 

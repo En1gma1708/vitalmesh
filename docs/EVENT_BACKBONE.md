@@ -1,6 +1,6 @@
 # EVENT BACKBONE — Kafka as the agents' nervous system
 
-Status: DRAFT v0.1. Supersedes the "in-process T3 graph" idea in ARCHITECTURE.md section 3. Planning only.
+Status: DRAFT v0.1. Supersedes the "in-process T3 graph" idea in ARCHITECTURE.md section 3. Sections 3 and 10-13 are implemented for the deterministic T0 path (Phases 0-1); the agent events in section 4 (run.planned, advice.completed, evidence.attached, advice.bundle.ready, recommendation.drafted, review.*) are planned for Phase 3.
 
 ## 1. Core idea
 Agents never call each other. Each agent **consumes events, does its work, publishes a fact** about what it finished. Producers do not know who consumes their output.
