@@ -41,6 +41,9 @@ class ToolResult(BaseModel):
     ok: bool
     payload: dict[str, Any] = Field(default_factory=dict)
     error: str = ""
+    # For the caller, NEVER shown to the model (so it cannot widen what a number check allows):
+    # full citation details (title, URL) that the event needs but the prose does not.
+    meta: dict[str, Any] = Field(default_factory=dict)
 
     def to_message_content(self) -> str:
         body = self.payload if self.ok else {"error": self.error}
@@ -97,6 +100,44 @@ SPECS: tuple[ToolSpec, ...] = (
         },
     ),
 )
+
+
+def search_guidelines_result(evidence: EvidenceLike, question: str) -> ToolResult:
+    """The cited-guideline tool shared by every specialist: sentences with their verified quote,
+    or an honest "insufficient" status. The Evidence agent has already checked every citation."""
+    ans = evidence.answer(question)
+    if ans.status != "supported":
+        return ToolResult(
+            name="search_guidelines", ok=True, payload={"status": ans.status, "sentences": []}
+        )
+    sentences = [
+        {
+            "text": s.text,
+            "doc_id": s.citation.doc_id,
+            "page": s.citation.locator,
+            "licence": s.citation.licence,
+            "quote": s.citation.quote,
+        }
+        for s in ans.sentences
+    ]
+    citations = [
+        {
+            "doc_id": s.citation.doc_id,
+            "title": s.citation.title,
+            "locator": s.citation.locator,
+            "licence": s.citation.licence,
+            "source_url": s.citation.source_url,
+            "quote": s.citation.quote,
+            "sentence": s.text,
+        }
+        for s in ans.sentences
+    ]
+    return ToolResult(
+        name="search_guidelines",
+        ok=True,
+        payload={"status": "supported", "sentences": sentences},
+        meta={"citations": citations},
+    )
 
 
 class NutritionTools:
@@ -186,23 +227,4 @@ class NutritionTools:
         return ToolResult(name="get_meal_plan", ok=True, payload={"days": out})
 
     def _search(self, question: str) -> ToolResult:
-        ans = self._evidence.answer(question)
-        if ans.status != "supported":
-            return ToolResult(
-                name="search_guidelines", ok=True, payload={"status": ans.status, "sentences": []}
-            )
-        sentences = [
-            {
-                "text": s.text,
-                "doc_id": s.citation.doc_id,
-                "page": s.citation.locator,
-                "licence": s.citation.licence,
-                "quote": s.citation.quote,
-            }
-            for s in ans.sentences
-        ]
-        return ToolResult(
-            name="search_guidelines",
-            ok=True,
-            payload={"status": "supported", "sentences": sentences},
-        )
+        return search_guidelines_result(self._evidence, question)

@@ -79,6 +79,11 @@ class ConstraintIndex:
     def limiting_conditions(self) -> frozenset[str]:
         return frozenset(self._zone)
 
+    def known_conditions(self) -> frozenset[str]:
+        """Every condition the graph says something about. A declared condition outside this set
+        is UNKNOWN to the graph, which is not the same as safe (callers must say so)."""
+        return frozenset(self._zone) | frozenset(self._allergens)
+
 
 def _fold(conditions: Iterable[str]) -> set[str]:
     return {c.strip().lower() for c in conditions}
