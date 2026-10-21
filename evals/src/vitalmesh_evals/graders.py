@@ -233,3 +233,51 @@ def run_grader(
         return fn(out, inp, args)
     except Exception as exc:  # a grader that crashes fails the case; it never passes it
         return _res(spec_type, False, f"grader error: {type(exc).__name__}")
+
+
+# ------------------------------------------------------------------- evidence graders (D64)
+@grader
+def evidence_status(out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]) -> GradeResult:
+    got = out.get("status")
+    return _res("evidence_status", got in args["expected"], f"status={got} want {args['expected']}")
+
+
+@grader
+def evidence_sources_verified(
+    out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]
+) -> GradeResult:
+    """Every citation has a licence and a quote that occurs in the stored source (checked by the
+    SUT directly against the database, not by the agent's own verifier)."""
+    bad = [
+        s["doc_id"]
+        for s in out.get("sentences", [])
+        if not (s.get("quote_in_source") and s.get("licence") and s.get("doc_id"))
+    ]
+    shown = out.get("status") == "supported" and not out.get("sentences")
+    return _res("evidence_sources_verified", not bad and not shown, f"bad={bad}")
+
+
+@grader
+def evidence_numbers_grounded(
+    out: dict[str, Any], _inp: dict[str, Any], _args: dict[str, Any]
+) -> GradeResult:
+    stray: list[float] = []
+    for s in out.get("sentences", []):
+        allowed = numbers_in(s.get("quote", ""))
+        stray += [
+            v for v in numbers_in(s.get("text", "")) if not any(_close(v, a) for a in allowed)
+        ]
+    return _res("evidence_numbers_grounded", not stray, f"stray={stray}")
+
+
+@grader
+def evidence_mentions(
+    out: dict[str, Any], _inp: dict[str, Any], args: dict[str, Any]
+) -> GradeResult:
+    """At least one term appears in the answer text or in a cited quote: the answer carries the
+    fact the question is about."""
+    haystack = " ".join(
+        [out.get("text", ""), *[s.get("quote", "") for s in out.get("sentences", [])]]
+    ).lower()
+    hit = [t for t in args["terms"] if t.lower() in haystack]
+    return _res("evidence_mentions", bool(hit), f"terms={args['terms']} found={hit}")

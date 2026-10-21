@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import redis
+from vitalmesh_evidence.agent import SYSTEM_PROMPT as EVIDENCE_PROMPT
 from vitalmesh_llm import RedisCache, Router, load_keys
 
 from vitalmesh_evals.baseline import compare, load_baseline, path_for, write_baseline
@@ -38,6 +39,23 @@ RESULTS = Path(__file__).resolve().parents[2] / "results"
 def make_router() -> Router:
     client = redis.Redis.from_url("redis://127.0.0.1:6379/0")
     return Router(load_keys(Path(".env")), cache=RedisCache(client))
+
+
+EVIDENCE_DSN = "postgresql://vitalmesh@127.0.0.1:5432/vitalmesh"
+
+
+def build_evidence_sut() -> Sut:
+    from vitalmesh_evidence import EvidenceAgent, StoreRetriever
+    from vitalmesh_retrieval import Store
+    from vitalmesh_retrieval.embed import LocalEmbedder
+
+    from vitalmesh_evals.evidence_sut import EvidenceSut
+
+    embedder = LocalEmbedder()
+    agent = EvidenceAgent(
+        make_router(), StoreRetriever(Store(EVIDENCE_DSN, embedder.dim), embedder)
+    )
+    return EvidenceSut(agent, EVIDENCE_DSN)
 
 
 def with_judge_graders(case: EvalCase) -> EvalCase:
@@ -105,10 +123,20 @@ def main() -> None:
 
     if args.calibrate_judge:
         raise SystemExit(run_calibration())
-    cases = [c for c in all_cases() if not args.only or c.category in args.only]
+    # evidence cases need Postgres, the embedding model and a key: only with --only evidence
+    cases = [
+        c for c in all_cases() if (c.category in args.only if args.only else c.sut != "evidence")
+    ]
+    evidence_run = bool(args.only) and "evidence" in args.only
     if args.judge:
         cases = [with_judge_graders(c) for c in cases]
     label = args.explainer + ("+guard" if args.guard else "") + ("+judge" if args.judge else "")
+    suts: dict[str, Sut] = {}
+    config_extra = ""
+    if evidence_run:
+        label = "evidence"
+        suts["evidence"] = build_evidence_sut()
+        config_extra = EVIDENCE_PROMPT
     router = make_router() if (args.explainer == "llm" or args.judge) else None
     inner: Explainer = (
         LLMExplainer(router) if args.explainer == "llm" and router else TemplateExplainer()
@@ -124,9 +152,12 @@ def main() -> None:
     report = run_cases(
         label,
         cases,
-        {"t0": T0Sut(), "explain": explain},
+        {"t0": T0Sut(), "explain": explain, **suts},
         checkpoint=checkpoint,
-        config=f"{label}|{SYSTEM_PROMPT}|{JUDGE_SYSTEM if args.judge else ''}|{code_fingerprint()}",
+        config=(
+            f"{label}|{SYSTEM_PROMPT}|{JUDGE_SYSTEM if args.judge else ''}|{config_extra}"
+            f"|{code_fingerprint()}"
+        ),
         progress=print,
     )
     print(report.summary())

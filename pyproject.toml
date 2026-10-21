@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Event-driven multi-agent health recommendation platform (workspace root)"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
-dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evals"]
+dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evidence", "vitalmesh-evals"]
 
 [tool.uv.workspace]
-members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "evals"]
+members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "libs/evidence", "evals"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }
@@ -18,6 +18,7 @@ vitalmesh-api = { workspace = true }
 vitalmesh-kg = { workspace = true }
 vitalmesh-llm = { workspace = true }
 vitalmesh-retrieval = { workspace = true }
+vitalmesh-evidence = { workspace = true }
 vitalmesh-evals = { workspace = true }
 
 [dependency-groups]

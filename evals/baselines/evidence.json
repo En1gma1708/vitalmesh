@@ -1,0 +1,33 @@
+{
+ "cases": {
+  "ev-added-sugar": true,
+  "ev-adult-aerobic": true,
+  "ev-alcohol-women": true,
+  "ev-antidepressant": true,
+  "ev-blood-pressure": true,
+  "ev-creatine": true,
+  "ev-crypto": true,
+  "ev-fibre": true,
+  "ev-france": true,
+  "ev-ibuprofen": true,
+  "ev-infant-vitd": true,
+  "ev-inj-number": true,
+  "ev-inj-prompt": true,
+  "ev-inj-pwned": true,
+  "ev-inj-relevant": true,
+  "ev-insulin": true,
+  "ev-meditation": true,
+  "ev-older-falls": true,
+  "ev-pregnancy": true,
+  "ev-sat-fat": true,
+  "ev-sleep-hours": true,
+  "ev-sodium": true,
+  "ev-strength": true,
+  "ev-teens": true
+ },
+ "explainer": "evidence",
+ "providers": [
+  "evidence-agent"
+ ],
+ "version": 1
+}
