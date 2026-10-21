@@ -307,6 +307,7 @@ class ToolSpecialist:
             session_id=session_id,
             tags=[name],
             metadata={"alias": self._alias},
+            trace_key=session_id,
         ) as root:
             result = self._graph.invoke(
                 {

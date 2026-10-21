@@ -70,8 +70,8 @@ class FakeClient:
     def flush(self) -> None:
         self.flushed += 1
 
-    def get_current_observation_id(self) -> str | None:
-        return "current" if self.depth else None
+    def create_trace_id(self, *, seed: str) -> str:
+        return "trace-" + seed
 
 
 def make(fail_update: bool = False) -> tuple[LangfuseTracer, FakeClient, list[dict[str, Any]]]:
@@ -82,7 +82,7 @@ def make(fail_update: bool = False) -> tuple[LangfuseTracer, FakeClient, list[di
         propagated.append(attrs)
         yield
 
-    return LangfuseTracer(client, propagate), client, propagated
+    return LangfuseTracer(client, propagate, inside=lambda: client.depth > 0), client, propagated
 
 
 def test_a_run_is_an_agent_observation_with_hashed_user_and_tags() -> None:
@@ -193,3 +193,21 @@ def test_a_run_inside_a_trace_is_a_child_agent_and_does_not_rename_the_trace() -
     assert len(propagated) == 1 and propagated[0]["trace_name"] == "concierge-turn"
     assert [o.kwargs["name"] for o in client.observations] == ["concierge-turn", "advise-nutrition"]
     assert client.observations[1].kwargs["as_type"] == "agent"
+
+
+def test_runs_with_the_same_trace_key_share_one_trace_with_a_constant_name() -> None:
+    tracer, client, propagated = make()
+    with tracer.run("advise-nutrition", input="q", session_id="corr-1", trace_key="corr-1"):
+        pass
+    with tracer.run("synthesize", input="q", session_id="corr-1", trace_key="corr-1"):
+        pass
+    ctx = [o.kwargs["trace_context"] for o in client.observations]
+    assert ctx == [{"trace_id": "trace-corr-1"}] * 2
+    assert [a["trace_name"] for a in propagated] == ["t3-run", "t3-run"]
+
+
+def test_a_run_without_a_trace_key_starts_its_own_trace() -> None:
+    tracer, client, _ = make()
+    with tracer.run("answer-x", input="q"):
+        pass
+    assert "trace_context" not in client.observations[0].kwargs

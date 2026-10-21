@@ -61,13 +61,19 @@ class RecordingTracer:
         session_id: str | None = None,
         tags: Sequence[str] = (),
         metadata: Mapping[str, Any] | None = None,
+        trace_key: str | None = None,
     ) -> Iterator[Handle]:
         rec = Recorded(
             name,
             "run",
             self._stack[-1] if self._stack else None,  # a run inside a run is a child agent
             input,
-            {"user_id": user_id, "session_id": session_id, "tags": list(tags)},
+            {
+                "user_id": user_id,
+                "session_id": session_id,
+                "tags": list(tags),
+                "trace_key": trace_key,
+            },
         )
         yield from self._open(rec)
 

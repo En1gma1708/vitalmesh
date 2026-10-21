@@ -129,6 +129,7 @@ class Briefer:
             user_id=user_id,
             session_id=session_id,
             tags=["briefer"],
+            trace_key=session_id,
             metadata={"reasons": list(case.reasons)},
         ) as root:
             result = self._run(case)

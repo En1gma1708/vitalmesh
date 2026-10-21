@@ -24,7 +24,7 @@ import logging
 import os
 import re
 import subprocess
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -80,6 +80,7 @@ class Tracer(Protocol):
         session_id: str | None = None,
         tags: Sequence[str] = (),
         metadata: Mapping[str, Any] | None = None,
+        trace_key: str | None = None,
     ) -> contextlib.AbstractContextManager[Handle]: ...
 
     def observe(
@@ -157,12 +158,23 @@ class _LangfuseHandle:
             log.warning("langfuse update failed", exc_info=True)
 
 
+def _inside_trace() -> bool:
+    """Whether an observation is open in this context. Asked of OpenTelemetry directly: the
+    Langfuse accessor logs a "No active span" warning every time the answer is no."""
+    from opentelemetry import trace
+
+    return bool(trace.get_current_span().get_span_context().is_valid)
+
+
 class LangfuseTracer:
     enabled = True
 
-    def __init__(self, client: Any, propagate: Any) -> None:
+    def __init__(
+        self, client: Any, propagate: Any, inside: Callable[[], bool] | None = None
+    ) -> None:
         self._lf = client
         self._propagate = propagate
+        self._inside = inside or _inside_trace
 
     @contextlib.contextmanager
     def run(
@@ -174,8 +186,9 @@ class LangfuseTracer:
         session_id: str | None = None,
         tags: Sequence[str] = (),
         metadata: Mapping[str, Any] | None = None,
+        trace_key: str | None = None,
     ) -> Iterator[Handle]:
-        if self._lf.get_current_observation_id():
+        if self._inside():
             # already inside a trace: this agent is a child of the caller's agent. Opening a new
             # root here would overwrite the trace's name, tags and user (propagate_attributes).
             with self._lf.start_as_current_observation(
@@ -183,7 +196,15 @@ class LangfuseTracer:
             ) as obs:
                 yield _LangfuseHandle(obs)
             return
-        attrs: dict[str, Any] = {"trace_name": name, "tags": list(tags)}
+        # Agents run in separate processes, so a shared ``trace_key`` (the run's correlation id) is
+        # what puts all of one question's agents into ONE trace: the trace id is derived from it.
+        context: dict[str, str] | None = None
+        if trace_key:
+            context = {"trace_id": self._lf.create_trace_id(seed=trace_key)}
+            name_for_trace = "t3-run"  # one constant name: every agent of the run writes the same
+        else:
+            name_for_trace = name
+        attrs: dict[str, Any] = {"trace_name": name_for_trace, "tags": list(tags)}
         if user_id:
             attrs["user_id"] = pseudonym(user_id)
         if session_id:
@@ -192,7 +213,12 @@ class LangfuseTracer:
             attrs["metadata"] = {k: str(v)[:200] for k, v in metadata.items()}
         with (
             self._propagate(**attrs),
-            self._lf.start_as_current_observation(name=name, as_type="agent", input=input) as obs,
+            self._lf.start_as_current_observation(
+                name=name,
+                as_type="agent",
+                input=input,
+                **({"trace_context": context} if context else {}),
+            ) as obs,
         ):
             yield _LangfuseHandle(obs)
 

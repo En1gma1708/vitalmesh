@@ -223,6 +223,7 @@ class Checker:
             user_id=user_id,
             session_id=session_id,
             tags=["checker"],
+            trace_key=session_id,
             metadata={"alias": self._alias},
         ) as root:
             result: CheckResult = self._graph.invoke(

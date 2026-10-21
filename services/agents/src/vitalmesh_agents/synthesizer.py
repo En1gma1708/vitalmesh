@@ -280,6 +280,7 @@ class Synthesizer:
             user_id=user_id,
             session_id=session_id,
             tags=["synthesizer"],
+            trace_key=session_id,
             metadata={"alias": self._alias, "risk": inp.risk, "revision": bool(inp.problems)},
         ) as root:
             result: SynthResult = self._graph.invoke(
