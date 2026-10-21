@@ -44,7 +44,7 @@ from vitalmesh_agents.briefer import Briefer
 from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
 from vitalmesh_agents.cohort_handler import make_cohort_handler, make_fill_handler
-from vitalmesh_agents.cohortstore import CohortStore
+from vitalmesh_agents.cohortstore import CohortStore, InMemoryCohortStore
 from vitalmesh_agents.guardian_handler import make_guardian_handler
 from vitalmesh_agents.llmcall import RouterLike
 from vitalmesh_agents.release import ReleaseGate
@@ -153,8 +153,10 @@ def build_graph(wiring: Wiring) -> Bus:
             cohort=w.cohort,
         ),
     )
+    # the T1 / T0 consumer is always present: a shed run needs it even with no cache
+    store = w.cohort if w.cohort is not None else InMemoryCohortStore()
+    bus.subscribe(RUNS_PLANNED, make_cohort_handler(w.deps, store, serde, bus, w.clock))
     if w.cohort is not None:
-        bus.subscribe(RUNS_PLANNED, make_cohort_handler(w.deps, w.cohort, serde, bus, w.clock))
         bus.subscribe(RECOMMENDATIONS_RELEASED, make_fill_handler(w.deps, w.cohort))
     for kind in w.specialists:
         bus.subscribe(RUNS_PLANNED, make_specialist_handler(kind, w.deps, serde, bus, w.clock))

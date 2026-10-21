@@ -32,7 +32,8 @@ class Load(StrEnum):
     an input so the degradation rule is real and tested."""
 
     NORMAL = "normal"
-    HIGH = "high"
+    HIGH = "high"  # fewer specialists and calls
+    CRITICAL = "critical"  # a low-risk question is answered with no model at all (T0)
 
 
 def _words(*terms: str) -> re.Pattern[str]:
@@ -149,7 +150,7 @@ def plan_run(question: str, signals: Signals, load: Load = Load.NORMAL) -> Plan:
 
     degraded = False
     max_calls = DEFAULT_MAX_MODEL_CALLS
-    if load is Load.HIGH:
+    if load is not Load.NORMAL:
         degraded = True
         max_calls = DEGRADED_MAX_MODEL_CALLS
         rules.append("load.degraded")
@@ -164,6 +165,11 @@ def plan_run(question: str, signals: Signals, load: Load = Load.NORMAL) -> Plan:
             rules.append("load.fewer_specialists")
 
     tier = Tier.T2 if len(chosen) == 1 and risk is Risk.LOW else Tier.T3
+    # Shedding is only for questions whose safe answer is the user's own calculators: low risk,
+    # no condition review. Anything riskier keeps its checks and is merely degraded.
+    if load is Load.CRITICAL and risk is Risk.LOW and Specialist.CONDITION_MEDICATION not in chosen:
+        tier = Tier.T0
+        rules.append("load.shed_to_t0")
     return Plan(
         tier=tier,
         specialists=tuple(chosen),

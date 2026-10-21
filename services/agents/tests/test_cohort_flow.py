@@ -3,6 +3,7 @@ from __future__ import annotations
 from vitalmesh_agents.cohortstore import InMemoryCohortStore
 from vitalmesh_agents.inprocess import ask
 from vitalmesh_agents.testing import T0, world
+from vitalmesh_agents.triage import Load
 
 QUESTION = "How many calories should I eat?"
 
@@ -66,3 +67,24 @@ def test_a_vanished_entry_falls_back_to_a_full_run() -> None:
     assert store.stats()["personalise_failed"] == 1
     assert "advice.completed" in [s.meta.type for s in out.events]  # the full graph ran
     assert len(router.purposes) > 0
+
+
+def test_critical_load_sheds_a_low_risk_question_to_t0_with_no_model() -> None:
+    bus, router, _ = world(numeric=True, load=Load.CRITICAL)
+    out = ask(bus, "u-1", QUESTION, T0)
+    assert out.final == "released" and out.errors == ()
+    assert router.purposes == []  # not one model call
+    planned = next(s for s in out.events if s.meta.type == "run.planned")
+    assert planned.meta.tier is not None and planned.meta.tier.value == "T0"
+    assert "load.shed_to_t0" in list(planned.payload.rule_ids)
+    assert "kcal" in out.text
+    assert "advice.completed" not in [s.meta.type for s in out.events]
+
+
+def test_critical_load_never_sheds_a_run_that_needs_a_review() -> None:
+    bus, router, _ = world(numeric=True, load=Load.CRITICAL, conditions=["celiac_disease"])
+    out = ask(bus, "u-1", QUESTION, T0)
+    planned = next(s for s in out.events if s.meta.type == "run.planned")
+    assert planned.meta.tier is not None and planned.meta.tier.value == "T3"
+    assert "load.degraded" in list(planned.payload.rule_ids)
+    assert router.purposes.count("checker") == 1  # the independent review still runs

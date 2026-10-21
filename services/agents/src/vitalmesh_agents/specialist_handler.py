@@ -123,8 +123,8 @@ def make_specialist_handler(
     clock: Callable[[], datetime] = utcnow,
 ) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
-        if meta.type != INPUT_TYPE or meta.tier is Tier.T1:
-            return  # a cohort-cache run needs no specialist
+        if meta.type != INPUT_TYPE or meta.tier in (Tier.T0, Tier.T1):
+            return  # a cache or shed run needs no specialist
         if kind not in {specialist_from_proto(s) for s in payload.specialists}:
             return  # this run does not involve me
 

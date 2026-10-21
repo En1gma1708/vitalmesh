@@ -21,6 +21,7 @@ from vitalmesh_wellness.labs import interpret
 from vitalmesh_agents.cohortstore import CohortStore
 from vitalmesh_agents.inprocess import Bus, Wiring, build_graph
 from vitalmesh_agents.specialist_handler import SpecialistDeps
+from vitalmesh_agents.triage import Load
 
 TOOL_FIRST = {
     "nutrition-specialist": "get_energy_target",
@@ -99,6 +100,7 @@ def world(
     labs: bool = False,
     cohort: CohortStore | None = None,
     numeric: bool = False,
+    load: Load = Load.NORMAL,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
     profiles = InMemoryProfileStore()
     profiles.put(
@@ -165,6 +167,7 @@ def world(
             clock=clock,
             specialists=specialists,
             cohort=cohort,
+            load=load,
         )
     )
     return bus, router, clock

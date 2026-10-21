@@ -22,9 +22,11 @@ from typing import Any
 from vitalmesh.events.v1 import common_pb2, payloads_pb2
 from vitalmesh_common.envelope import EventMeta, Tier, utcnow
 from vitalmesh_common.processor import EventSerde, Handler, Publisher
-from vitalmesh_common.run import Specialist, risk_to_proto, specialist_from_proto
+from vitalmesh_common.run import Specialist, risk_from_proto, risk_to_proto, specialist_from_proto
 from vitalmesh_common.topics import RECOMMENDATIONS_DRAFTED, RUNS_PLANNED
 from vitalmesh_evidence import EvidenceAnswer
+from vitalmesh_specialists.movement import fallback_text as movement_notes
+from vitalmesh_specialists.nutrition import fallback_text as nutrition_notes
 from vitalmesh_specialists.tools import ToolResult
 
 from vitalmesh_agents.advice import claims_from_results
@@ -40,6 +42,7 @@ from vitalmesh_agents.cohortstore import CohortEntry, CohortStore
 from vitalmesh_agents.events import POST_BUNDLE_BUDGET_S, emit, next_meta
 from vitalmesh_agents.guardian_gate import T3_RULES_VERSION
 from vitalmesh_agents.specialist_handler import SpecialistDeps, build_tools
+from vitalmesh_agents.synthesizer import PartView, assemble
 from vitalmesh_agents.synthesizer_handler import recommendation_id
 from vitalmesh_agents.triage import plan_run, signals_for
 
@@ -126,10 +129,13 @@ def make_cohort_handler(
     clock: Callable[[], datetime] = utcnow,
 ) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
-        if meta.type != PLANNED_TYPE or meta.tier is not Tier.T1:
+        if meta.type != PLANNED_TYPE or meta.tier not in (Tier.T0, Tier.T1):
             return
         now = clock()
-        draft = _answer(deps, store, meta, payload, now)
+        if meta.tier is Tier.T0:
+            draft = _shed_answer(deps, meta, payload, now)
+        else:
+            draft = _answer(deps, store, meta, payload, now)
         if draft is None:
             store.count("personalise_failed")
             log.info("T1 fell back to a full run for %s", meta.correlation_id)
@@ -192,6 +198,43 @@ def _answer(
     for raw in entry.citations:
         draft.citations.append(payloads_pb2.Citation.FromString(raw))
     store.count("hit")
+    return draft
+
+
+def _shed_answer(
+    deps: SpecialistDeps, meta: EventMeta, payload: Any, now: datetime
+) -> payloads_pb2.RecommendationDrafted | None:
+    """T0 under load: the specialists' own deterministic notes from the user's calculators.
+    Same gate and release as every other answer; no model, no cache needed."""
+    record = deps.profiles.get(meta.user_id)
+    if record is None:
+        return None
+    kinds = [specialist_from_proto(s) for s in payload.specialists]
+    if not set(kinds) <= set(FILL_TOOLS):
+        return None
+    results: dict[Specialist, list[ToolResult]] = {}
+    for kind in kinds:
+        tools = build_tools(kind, deps, record, meta.user_id, now)
+        for name in FILL_TOOLS[kind]:
+            result = tools.call(name, "{}")
+            if not result.ok:
+                return None
+            results.setdefault(kind, []).append(result)
+    notes = {
+        Specialist.NUTRITION: nutrition_notes,
+        Specialist.MOVEMENT_RECOVERY: movement_notes,
+    }
+    parts = [PartView(k.value, "fallback", notes[k](results[k])) for k in kinds]
+    draft = payloads_pb2.RecommendationDrafted(
+        recommendation_id=recommendation_id(meta.correlation_id),
+        question=payload.question,
+        text=assemble(parts),
+        risk=risk_to_proto(risk_from_proto(payload.risk)),
+        partial=False,
+        revision=0,
+        used_fallback=True,
+    )
+    draft.claims.extend(claims_from_results([r for rs in results.values() for r in rs]))
     return draft
 
 
