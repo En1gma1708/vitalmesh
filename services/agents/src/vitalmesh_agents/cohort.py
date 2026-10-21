@@ -22,9 +22,10 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from vitalmesh_common.run import Risk, Specialist
 from vitalmesh_wellness.engine import Profile
 
-from vitalmesh_agents.triage import Signals
+from vitalmesh_agents.triage import Plan, Signals
 
 AGE_BAND_YEARS = 10
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -74,6 +75,24 @@ def cohort_eligible(signals: Signals) -> bool:
     return not (signals.has_conditions or signals.abnormal_labs or signals.marked_labs)
 
 
+CACHEABLE_SPECIALISTS = frozenset({Specialist.NUTRITION, Specialist.MOVEMENT_RECOVERY})
+
+
+def plan_key(
+    profile: Profile, signals: Signals, question: str, plan: Plan, rules_version: str
+) -> str | None:
+    """The cohort key of a planned run, or None when the run may never use the cache: only a
+    low-risk run for a user without constraints, answered by the nutrition and movement
+    specialists alone (the condition review is a safety constraint, never shared)."""
+    if plan.risk is not Risk.LOW or not cohort_eligible(signals):
+        return None
+    if not set(plan.specialists) <= CACHEABLE_SPECIALISTS:
+        return None
+    return cache_key(
+        question, archetype_of(profile), [s.value for s in plan.specialists], rules_version
+    )
+
+
 def normalise_question(question: str) -> str:
     """Case, spacing and punctuation do not make a different question; wording does."""
     return _SPACE.sub(" ", _PUNCT.sub(" ", question.casefold())).strip()
@@ -117,6 +136,12 @@ class Template:
 
 def _number(raw: str) -> float:
     return float(raw.replace(",", ""))
+
+
+def _same(claim_value: float, raw: str) -> bool:
+    """Whether prose wrote this claim's value, at the precision the prose used."""
+    decimals = len(raw.split(".")[1]) if "." in raw else 0
+    return round(claim_value, decimals) == _number(raw)
 
 
 def _style(raw: str) -> str:
@@ -164,7 +189,7 @@ def build_template(text: str, claims: Sequence[ClaimView]) -> Template | None:
         hits = [
             (metric, n)
             for metric, n, claim in computed
-            if claim.value is not None and round(claim.value, 1) == round(value, 1)
+            if claim.value is not None and _same(claim.value, raw)
         ]
         if len(hits) == 1:
             return f"{{{hits[0][0]}#{hits[0][1]}|{_style(raw)}}}"

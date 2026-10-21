@@ -70,6 +70,8 @@ class Aggregator:
     def handle(self, meta: EventMeta, payload: Any) -> None:
         cid = meta.correlation_id
         if meta.type == "run.planned":
+            if meta.tier is Tier.T1:
+                return  # answered from the cohort cache: no fan-in to wait for
             if meta.deadline_at is None:
                 raise ValueError("run.planned without a deadline: the run could never time out")
             expected = tuple(

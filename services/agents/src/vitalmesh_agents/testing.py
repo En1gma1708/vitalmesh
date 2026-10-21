@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 
 from vitalmesh_common.run import Specialist
@@ -17,6 +18,7 @@ from vitalmesh_stores import (
 from vitalmesh_wellness.engine import Profile
 from vitalmesh_wellness.labs import interpret
 
+from vitalmesh_agents.cohortstore import CohortStore
 from vitalmesh_agents.inprocess import Bus, Wiring, build_graph
 from vitalmesh_agents.specialist_handler import SpecialistDeps
 
@@ -46,9 +48,10 @@ class ScriptedRouter:
     Synthesizer writes a fixed reply; the Checker approves (or follows ``verdicts``); the Briefer
     writes one sentence. Counts calls per purpose."""
 
-    def __init__(self, verdicts: list[str] | None = None) -> None:
+    def __init__(self, verdicts: list[str] | None = None, numeric: bool = False) -> None:
         self.purposes: list[str] = []
         self._verdicts = list(verdicts or [])
+        self._numeric = numeric  # the Synthesizer restates the energy target it was given
 
     def complete(self, req: LLMRequest, max_wait_s: float = 0.0) -> LLMResponse:
         self.purposes.append(req.purpose)
@@ -57,6 +60,12 @@ class ScriptedRouter:
                 return reply("This follows your own targets.")
             return reply("", (ToolCall(id="c0", name=TOOL_FIRST[req.purpose], arguments="{}"),))
         if req.purpose == "synthesizer":
+            if self._numeric:
+                found = re.search(
+                    r"about (\d[\d,]*) kcal", " ".join(m.content or "" for m in req.messages)
+                )
+                if found:
+                    return reply(f"Aim for about {found.group(1)} kcal per day.")
             return reply("Here is a short plan that follows your own targets.")
         if req.purpose == "checker":
             verdict = self._verdicts.pop(0) if self._verdicts else "approve"
@@ -88,6 +97,8 @@ def world(
     verdicts: list[str] | None = None,
     specialists: frozenset[Specialist] = frozenset(Specialist),
     labs: bool = False,
+    cohort: CohortStore | None = None,
+    numeric: bool = False,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
     profiles = InMemoryProfileStore()
     profiles.put(
@@ -107,6 +118,24 @@ def world(
             recent_sleep_hours=tuple([8.0] * 14),
         )
     )
+    # a second user of the same archetype (same sex, age band, activity) but a different body
+    profiles.put(
+        ProfileRecord(
+            profile=Profile.model_validate(
+                {
+                    "user_id": "u-2",
+                    "sex": "female",
+                    "age_years": 34,
+                    "weight_kg": 80,
+                    "height_cm": 170,
+                    "activity": "moderate",
+                    "resting_hr_bpm": 58,
+                    "conditions": conditions or [],
+                }
+            ),
+            recent_sleep_hours=tuple([7.0] * 14),
+        )
+    )
     lab_store = InMemoryLabStore()
     if labs:
         lab_store.put(
@@ -119,7 +148,7 @@ def world(
                 reference_text="< 100",
             ),
         )
-    router, clock = ScriptedRouter(verdicts), Clock()
+    router, clock = ScriptedRouter(verdicts, numeric), Clock()
     deps = SpecialistDeps(
         router=router,
         evidence=NoEvidence(),
@@ -129,6 +158,13 @@ def world(
         sleep=lambda _s: None,
     )
     bus = build_graph(
-        Wiring(router=router, deps=deps, profiles=profiles, clock=clock, specialists=specialists)
+        Wiring(
+            router=router,
+            deps=deps,
+            profiles=profiles,
+            clock=clock,
+            specialists=specialists,
+            cohort=cohort,
+        )
     )
     return bus, router, clock

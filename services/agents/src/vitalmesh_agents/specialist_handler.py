@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from vitalmesh_common.envelope import EventMeta, utcnow
+from vitalmesh_common.envelope import EventMeta, Tier, utcnow
 from vitalmesh_common.processor import EventSerde, Handler, Publisher
 from vitalmesh_common.run import Specialist, specialist_from_proto
 from vitalmesh_common.topics import ADVICE_COMPLETED
@@ -123,8 +123,8 @@ def make_specialist_handler(
     clock: Callable[[], datetime] = utcnow,
 ) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
-        if meta.type != INPUT_TYPE:
-            return
+        if meta.type != INPUT_TYPE or meta.tier is Tier.T1:
+            return  # a cohort-cache run needs no specialist
         if kind not in {specialist_from_proto(s) for s in payload.specialists}:
             return  # this run does not involve me
 

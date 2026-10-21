@@ -9,17 +9,21 @@ closes the run with whatever arrived.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
 from vitalmesh.events.v1 import payloads_pb2
-from vitalmesh_common.envelope import EventMeta, utcnow
+from vitalmesh_common.envelope import EventMeta, Tier, utcnow
 from vitalmesh_common.processor import EventSerde, Handler, Publisher
 from vitalmesh_common.run import risk_to_proto, specialist_to_proto
 from vitalmesh_common.topics import RUNS_PLANNED
 from vitalmesh_stores import LabStore, ProfileStore
 
+from vitalmesh_agents.cohort import plan_key
+from vitalmesh_agents.cohortstore import CohortStore
 from vitalmesh_agents.events import emit, next_meta
+from vitalmesh_agents.guardian_gate import T3_RULES_VERSION
 from vitalmesh_agents.triage import Load, Plan, plan_run, signals_for
 
 INPUT_TYPE = "question.asked"
@@ -51,6 +55,7 @@ def make_triage_handler(
     load: Callable[[], Load] = lambda: Load.NORMAL,
     clock: Callable[[], datetime] = utcnow,
     run_deadline_s: float = DEFAULT_RUN_DEADLINE_S,
+    cohort: CohortStore | None = None,
 ) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
         if meta.type != INPUT_TYPE:
@@ -61,6 +66,16 @@ def make_triage_handler(
         profile = record.profile
         signals = signals_for(profile.conditions, profile.medications, labs.list(meta.user_id))
         plan = plan_run(payload.question, signals, load())
+        if cohort is not None:
+            key = plan_key(profile, signals, payload.question, plan, T3_RULES_VERSION)
+            if key is not None:
+                if cohort.get(key) is not None:
+                    # the answer comes from the cohort cache: no specialist and no model call
+                    plan = replace(
+                        plan, tier=Tier.T1, rule_ids=(*plan.rule_ids, "cache.cohort_hit")
+                    )
+                else:
+                    cohort.count("miss")
 
         now = clock()
         out_meta = next_meta(

@@ -50,6 +50,7 @@ from vitalmesh_common.topics import (
     DRAFTS_CLEARED,
     QUESTIONS_ASKED,
     RECOMMENDATIONS_DRAFTED,
+    RECOMMENDATIONS_RELEASED,
     REVIEWS_COMPLETED,
     REVIEWS_DECIDED,
     RUNS_PLANNED,
@@ -65,6 +66,8 @@ from vitalmesh_agents.aggregator import Aggregator
 from vitalmesh_agents.briefer import Briefer
 from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
+from vitalmesh_agents.cohort_handler import DisabledEvidence, make_cohort_handler, make_fill_handler
+from vitalmesh_agents.cohortstore import RedisCohortStore
 from vitalmesh_agents.guardian_handler import make_guardian_handler
 from vitalmesh_agents.release import ReleaseGate
 from vitalmesh_agents.release_handler import make_release_handler
@@ -88,6 +91,8 @@ INPUTS: dict[str, tuple[str, ...]] = {
     "guardian": (RECOMMENDATIONS_DRAFTED,),
     "checker": (DRAFTS_CLEARED,),
     "release": (DRAFTS_CLEARED, REVIEWS_COMPLETED, REVIEWS_DECIDED),
+    "cohort": (RUNS_PLANNED,),
+    "cachefill": (RECOMMENDATIONS_RELEASED,),
 }
 _SPECIALISTS = {
     "nutrition": Specialist.NUTRITION,
@@ -139,9 +144,28 @@ class Runtime:
     def handler(self, role: str) -> Handler:
         profiles = RedisProfileStore(self.redis)
         if role == "triage":
+            # Triage may only plan T1 when the cohort role is running: opt in explicitly.
+            use_cohort = os.environ.get("VITALMESH_COHORT_CACHE", "") == "1"
             return make_triage_handler(
-                profiles, RedisLabStore(self.redis), self.serde, self.publisher
+                profiles,
+                RedisLabStore(self.redis),
+                self.serde,
+                self.publisher,
+                cohort=RedisCohortStore(self.redis) if use_cohort else None,
             )
+        if role in ("cohort", "cachefill"):
+            deps = SpecialistDeps(
+                router=self.router,  # never called: the T1 roles use deterministic tools only
+                evidence=DisabledEvidence(),
+                profiles=profiles,
+                labs=RedisLabStore(self.redis),
+                history=RedisHistoryStore(self.redis),
+                tracer=self.tracer,
+            )
+            store = RedisCohortStore(self.redis)
+            if role == "cohort":
+                return make_cohort_handler(deps, store, self.serde, self.publisher)
+            return make_fill_handler(deps, store)
         if role in _SPECIALISTS:
             return make_specialist_handler(
                 _SPECIALISTS[role], self._specialist_deps(profiles), self.serde, self.publisher

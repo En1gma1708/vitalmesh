@@ -31,6 +31,7 @@ from vitalmesh_common.topics import (
     DRAFTS_CLEARED,
     QUESTIONS_ASKED,
     RECOMMENDATIONS_DRAFTED,
+    RECOMMENDATIONS_RELEASED,
     REVIEWS_COMPLETED,
     REVIEWS_DECIDED,
     RUNS_PLANNED,
@@ -42,6 +43,8 @@ from vitalmesh_agents.aggregator import Aggregator
 from vitalmesh_agents.briefer import Briefer
 from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
+from vitalmesh_agents.cohort_handler import make_cohort_handler, make_fill_handler
+from vitalmesh_agents.cohortstore import CohortStore
 from vitalmesh_agents.guardian_handler import make_guardian_handler
 from vitalmesh_agents.llmcall import RouterLike
 from vitalmesh_agents.release import ReleaseGate
@@ -117,6 +120,7 @@ class Wiring:
     load: Load = Load.NORMAL
     run_deadline_s: float = 90.0
     specialists: frozenset[Specialist] = frozenset(Specialist)
+    cohort: CohortStore | None = None  # the T1 cache; None = every run is a full run
 
 
 def build_graph(wiring: Wiring) -> Bus:
@@ -146,8 +150,12 @@ def build_graph(wiring: Wiring) -> Bus:
             load=lambda: w.load,
             clock=w.clock,
             run_deadline_s=w.run_deadline_s,
+            cohort=w.cohort,
         ),
     )
+    if w.cohort is not None:
+        bus.subscribe(RUNS_PLANNED, make_cohort_handler(w.deps, w.cohort, serde, bus, w.clock))
+        bus.subscribe(RECOMMENDATIONS_RELEASED, make_fill_handler(w.deps, w.cohort))
     for kind in w.specialists:
         bus.subscribe(RUNS_PLANNED, make_specialist_handler(kind, w.deps, serde, bus, w.clock))
     bus.subscribe(RUNS_PLANNED, aggregator.handle)
