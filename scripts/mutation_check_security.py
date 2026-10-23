@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from vitalmesh_accounts import Claims
+from vitalmesh_accounts import Claims, TokenError
 from vitalmesh_api import app as app_module
 from vitalmesh_api import security
 
@@ -45,7 +45,7 @@ def authenticate_ignoring_revocation(self: security.Auth, request: Any) -> Claim
         return None
     try:
         return self.issuer.verify_access(token, self.clock())
-    except security.TokenError:
+    except TokenError:
         return None
 
 
