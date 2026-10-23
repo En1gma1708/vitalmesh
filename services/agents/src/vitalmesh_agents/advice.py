@@ -56,7 +56,11 @@ def claims_from_results(results: Sequence[ToolResult]) -> list[payloads_pb2.Reco
             )
         if r.name == "get_meal_plan":
             for day in r.payload.get("days", []):
-                meals = ", ".join(f"{m['meal']}: {m['title']}" for m in day["meals"])
+                # each meal's kcal is a number the tool produced and the model may repeat, so it
+                # must be in the claim text or the gate rightly calls it ungrounded
+                meals = ", ".join(
+                    f"{m['meal']}: {m['title']} ({m['kcal']} kcal)" for m in day["meals"]
+                )
                 text = f"{day['day']}: {meals} (about {day['total_kcal']} kcal)."
                 out.append(
                     _computed("planned_day_energy", day["total_kcal"], "kcal", text, PLAN_SOURCE)

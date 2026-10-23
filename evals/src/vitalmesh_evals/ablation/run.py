@@ -29,11 +29,11 @@ CHECKPOINT = RESULTS / "ablation-checkpoint.jsonl"
 
 def code_fingerprint() -> str:
     """Editing an arm, a case file or the agents' prompts invalidates old results."""
-    from vitalmesh_agents import checker, synthesizer
+    from vitalmesh_agents import advice, checker, synthesizer
     from vitalmesh_specialists import condition, movement, nutrition
 
     h = hashlib.sha256()
-    for mod in (arms_mod, cases_mod, synthesizer, checker, condition, movement, nutrition):
+    for mod in (arms_mod, cases_mod, advice, synthesizer, checker, condition, movement, nutrition):
         h.update(Path(mod.__file__ or "").read_bytes())
     return h.hexdigest()[:12]
 

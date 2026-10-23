@@ -142,3 +142,11 @@ def test_claim_numbers_cover_text_and_quantity_only() -> None:
     claims = claims_from_results([ENERGY, PLAN])
     assert {2124.0, 1950.0, 2026.0, 10.0, 26.0} <= claim_numbers(claims)
     assert 9999.0 not in claim_numbers(claims)
+
+
+def test_each_meals_kcal_is_in_the_claim_so_repeating_it_is_grounded() -> None:
+    """Found by the ablation: the model repeated the per-meal kcal the tool returned, the claim
+    carried only the day total, and the gate (correctly) called the meal numbers ungrounded."""
+    claims = claims_from_results([PLAN])
+    assert "Oat porridge (400 kcal)" in claims[0].text
+    assert {400.0, 1950.0} <= claim_numbers(claims)
