@@ -59,7 +59,7 @@ from vitalmesh_common.topics import (
 from vitalmesh_llm import Router
 from vitalmesh_llm.cache import RedisCache
 from vitalmesh_llm.providers import load_keys
-from vitalmesh_stores import RedisHistoryStore, RedisLabStore, RedisProfileStore
+from vitalmesh_stores import RedisHistoryStore, RedisLabStore, RedisProfileStore, RedisRunLog
 from vitalmesh_tracing import tracer_from_env
 
 from vitalmesh_agents.aggregator import Aggregator
@@ -76,6 +76,7 @@ from vitalmesh_agents.runstore import RedisRunStore
 from vitalmesh_agents.specialist_handler import SpecialistDeps, make_specialist_handler
 from vitalmesh_agents.synthesizer import Synthesizer
 from vitalmesh_agents.synthesizer_handler import make_synthesizer_handler
+from vitalmesh_agents.tracker import TRACKED_TOPICS, make_tracker_handler
 from vitalmesh_agents.triage_handler import make_triage_handler
 
 log = logging.getLogger("vitalmesh.agents")
@@ -94,6 +95,7 @@ INPUTS: dict[str, tuple[str, ...]] = {
     "release": (DRAFTS_CLEARED, REVIEWS_COMPLETED, REVIEWS_DECIDED),
     "cohort": (RUNS_PLANNED,),
     "cachefill": (RECOMMENDATIONS_RELEASED,),
+    "tracker": TRACKED_TOPICS,
 }
 _SPECIALISTS = {
     "nutrition": Specialist.NUTRITION,
@@ -156,6 +158,8 @@ class Runtime:
                 monitor=RedisLoadMonitor(self.redis) if use_cohort else None,
                 tiers=RedisTierCounter(self.redis),
             )
+        if role == "tracker":
+            return make_tracker_handler(RedisRunLog(self.redis))
         if role in ("cohort", "cachefill"):
             deps = SpecialistDeps(
                 router=self.router,  # never called: the T1 roles use deterministic tools only

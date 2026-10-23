@@ -37,7 +37,7 @@ from vitalmesh_common.topics import (
     RUNS_PLANNED,
 )
 from vitalmesh_llm.types import Alias
-from vitalmesh_stores import ProfileStore
+from vitalmesh_stores import ProfileStore, RunLog
 
 from vitalmesh_agents.aggregator import Aggregator
 from vitalmesh_agents.briefer import Briefer
@@ -53,6 +53,7 @@ from vitalmesh_agents.runstore import InMemoryRunStore
 from vitalmesh_agents.specialist_handler import SpecialistDeps, make_specialist_handler
 from vitalmesh_agents.synthesizer import Synthesizer
 from vitalmesh_agents.synthesizer_handler import make_synthesizer_handler
+from vitalmesh_agents.tracker import TRACKED_TOPICS, make_tracker_handler
 from vitalmesh_agents.triage import Load
 from vitalmesh_agents.triage_handler import make_triage_handler
 
@@ -121,6 +122,7 @@ class Wiring:
     run_deadline_s: float = 90.0
     specialists: frozenset[Specialist] = frozenset(Specialist)
     cohort: CohortStore | None = None  # the T1 cache; None = every run is a full run
+    runlog: RunLog | None = None  # when set, the tracker records every event for the app view
 
 
 def build_graph(wiring: Wiring) -> Bus:
@@ -171,6 +173,10 @@ def build_graph(wiring: Wiring) -> Bus:
     release = make_release_handler(gate)
     for topic in (DRAFTS_CLEARED, REVIEWS_COMPLETED, REVIEWS_DECIDED):
         bus.subscribe(topic, release)
+    if w.runlog is not None:
+        tracker = make_tracker_handler(w.runlog)
+        for topic in TRACKED_TOPICS:
+            bus.subscribe(topic, tracker)
     bus.sweep = aggregator.sweep
     return bus
 

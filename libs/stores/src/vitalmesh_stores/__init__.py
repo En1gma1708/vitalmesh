@@ -9,12 +9,14 @@ from vitalmesh_stores.profiles import (
     ProfileStore,
     RedisProfileStore,
 )
+from vitalmesh_stores.runlog import InMemoryRunLog, RedisRunLog, RunLog, RunRecord
 
 __all__ = [
     "HistoryStore",
     "InMemoryHistoryStore",
     "InMemoryLabStore",
     "InMemoryProfileStore",
+    "InMemoryRunLog",
     "LabStore",
     "Point",
     "ProfileRecord",
@@ -22,4 +24,7 @@ __all__ = [
     "RedisHistoryStore",
     "RedisLabStore",
     "RedisProfileStore",
+    "RedisRunLog",
+    "RunLog",
+    "RunRecord",
 ]

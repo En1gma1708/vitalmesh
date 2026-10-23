@@ -19,14 +19,15 @@ from __future__ import annotations
 
 import math
 import re
+import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta, utcnow
@@ -36,6 +37,7 @@ from vitalmesh_common.topics import QUESTIONS_ASKED, USER_EVENTS
 from vitalmesh_concierge.screen import REFUSALS, screen_question
 from vitalmesh_processor.history import HistoryStore
 from vitalmesh_processor.labstore import LabStore
+from vitalmesh_stores import RunLog
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
 from vitalmesh_wellness.calculators import OutOfRange
@@ -46,6 +48,8 @@ from vitalmesh_wellness.labs import LabError, interpret
 from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
+
+from vitalmesh_api.runview import RunView, view_of
 
 STATIC = Path(__file__).parent / "static"
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -217,6 +221,11 @@ _BASIS = {
 }
 
 
+def sse(event: str, data: str) -> str:
+    """One server-sent event frame."""
+    return f"event: {event}\ndata: {data}\n\n"
+
+
 def validate_measurement(m: MeasurementIn, now: datetime) -> None:
     spec = METRICS.get(m.metric_type)
     if spec is None:
@@ -240,6 +249,9 @@ def create_app(
     labs: LabStore | None = None,
     history: HistoryStore | None = None,
     ops: Callable[[], dict[str, dict[str, int]]] | None = None,
+    runs: RunLog | None = None,
+    stream_poll_s: float = 0.3,
+    stream_max_s: float = 300.0,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -482,6 +494,53 @@ def create_app(
         except Exception as exc:  # broker or registry down: tell the client to retry
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return QuestionOut(status="accepted", correlation_id=correlation_id)
+
+    def _run_entries(user_id: str, correlation_id: str) -> list[dict[str, Any]]:
+        if runs is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        record = runs.read(correlation_id)
+        if record is None or record.user_id != user_id:
+            raise HTTPException(status_code=404, detail="no such run")  # not another user's run
+        return record.entries
+
+    @app.get("/v1/users/{user_id}/runs/{correlation_id}", response_model=RunView)
+    def get_run(user_id: str, correlation_id: str) -> RunView:
+        return view_of(_run_entries(user_id, correlation_id))
+
+    @app.get("/v1/users/{user_id}/runs/{correlation_id}/stream")
+    def stream_run(user_id: str, correlation_id: str) -> StreamingResponse:
+        _run_entries(user_id, correlation_id)  # 404 before the stream opens
+
+        def events() -> Iterator[str]:
+            sent, waited = 0, 0.0
+            while waited <= stream_max_s:
+                entries = _run_entries(user_id, correlation_id)
+                view = view_of(entries)
+                for step in view.steps[sent:]:
+                    yield sse("step", step.model_dump_json())
+                sent = len(view.steps)
+                if view.status in ("released", "blocked") or (
+                    view.status == "needs_review" and sent
+                ):
+                    yield sse("done", view.model_dump_json())
+                    return
+                time.sleep(stream_poll_s)
+                waited += stream_poll_s
+            yield sse("timeout", "{}")
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    @app.get("/v1/ops/runs/{correlation_id}")
+    def ops_run(correlation_id: str) -> dict[str, Any]:
+        """Operator view: the run's events with their internals (opt in with ``ops``)."""
+        if ops is None or runs is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        record = runs.read(correlation_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="no such run")
+        return {"correlation_id": correlation_id, "entries": record.entries}
 
     @app.get("/v1/ops/tiers", response_model=OpsTiersOut)
     def ops_tiers() -> OpsTiersOut:

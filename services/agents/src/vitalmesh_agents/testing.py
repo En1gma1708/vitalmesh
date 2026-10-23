@@ -14,6 +14,7 @@ from vitalmesh_stores import (
     InMemoryLabStore,
     InMemoryProfileStore,
     ProfileRecord,
+    RunLog,
 )
 from vitalmesh_wellness.engine import Profile
 from vitalmesh_wellness.labs import interpret
@@ -102,6 +103,7 @@ def world(
     numeric: bool = False,
     load: Load = Load.NORMAL,
     extra_users: int = 0,
+    runlog: RunLog | None = None,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
     profiles = InMemoryProfileStore()
     profiles.put(
@@ -189,6 +191,7 @@ def world(
             specialists=specialists,
             cohort=cohort,
             load=load,
+            runlog=runlog,
         )
     )
     return bus, router, clock
