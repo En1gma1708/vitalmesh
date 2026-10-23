@@ -87,7 +87,7 @@ class Auth:
         limiter: RateLimiter,
         profile_cache: ProfileStore,
         *,
-        purge: Callable[[str], None] = lambda _uid: None,
+        purge: Callable[[str], object] = lambda _uid: None,
         export_extra: Callable[[str], dict[str, Any]] = lambda _uid: {},
         secure_cookies: bool = False,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),

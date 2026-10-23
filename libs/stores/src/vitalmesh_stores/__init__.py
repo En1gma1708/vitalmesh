@@ -10,6 +10,7 @@ from vitalmesh_stores.profiles import (
     RedisProfileStore,
 )
 from vitalmesh_stores.runlog import InMemoryRunLog, RedisRunLog, RunLog, RunRecord
+from vitalmesh_stores.userdata import export_user, purge_user
 
 __all__ = [
     "HistoryStore",
@@ -27,4 +28,6 @@ __all__ = [
     "RedisRunLog",
     "RunLog",
     "RunRecord",
+    "export_user",
+    "purge_user",
 ]

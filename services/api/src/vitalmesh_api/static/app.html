@@ -77,7 +77,22 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
   <header>
     <h1>Your health, at a glance</h1>
     <span class="sub" id="who"></span>
+    <span id="account-bar" hidden>
+      <button type="button" class="ghost" id="export-btn">Download my data</button>
+      <button type="button" class="ghost" id="delete-btn">Delete account</button>
+      <button type="button" class="ghost" id="signout-btn">Sign out</button>
+    </span>
   </header>
+  <form id="delete-form" class="card" hidden>
+    <h2>Delete your account</h2>
+    <p class="sub">This removes your account, profile and health data for good. Type your password to confirm.</p>
+    <div class="row">
+      <input type="password" id="delete-password" autocomplete="current-password" aria-label="Your password" required>
+      <button type="submit">Delete everything</button>
+      <button type="button" class="ghost" id="delete-cancel">Cancel</button>
+    </div>
+    <div class="msg err" id="delete-msg" role="alert"></div>
+  </form>
   <div class="grid">
     <section class="card wide" id="ask-card">
       <h2>Ask about your health</h2>
@@ -112,8 +127,25 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
   <footer>General wellness information, not medical advice. Demo data.</footer>
 </main>
 <script>
-const uid = decodeURIComponent(location.pathname.split("/").pop());
-document.getElementById("who").textContent = uid;
+// Signed in: the page is /app and who you are comes from your session. The older /app/<id> form
+// (no accounts) still reads the id from the address.
+let uid = decodeURIComponent(location.pathname.split("/").pop());
+const csrf = () => (document.cookie.match(/(?:^|; )vm_csrf=([^;]+)/) || [])[1] || "";
+const jsonHeaders = () => ({ "content-type": "application/json", "x-csrf-token": csrf() });
+async function boot() {
+  if (location.pathname === "/app") {
+    const r = await fetch("/v1/me");
+    if (!r.ok) { location.href = "/"; return false; }
+    const me = await r.json();
+    if (!me.has_profile) { location.href = "/"; return false; }
+    uid = me.user_id;
+    document.getElementById("account-bar").hidden = false;
+    document.getElementById("who").textContent = me.email;
+  } else {
+    document.getElementById("who").textContent = uid;
+  }
+  return true;
+}
 const NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
 const get = async (path) => { const r = await fetch(path); return r.ok ? r.json() : null; };
@@ -255,7 +287,7 @@ async function main() {
     ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${m.meal}</b>${m.title}<div class="sub">${m.kcal} kcal &middot; ${m.protein_g} g protein &middot; portion ${m.portion}</div></div>`).join("")}</div>`
     : '<div class="empty">No meal plan is available right now.</div>';
 }
-main();
+boot().then((ok) => { if (ok) main(); });
 
 // ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
 const SAMPLES = ["How many calories should I eat?", "How much should I sleep?", "What should I eat and how should I train this week?"];
@@ -305,7 +337,7 @@ $("ask-form").addEventListener("submit", async (ev) => {
   let live = false;  // while a stream is open the button stays disabled
   try {
     const r = await fetch(`/v1/users/${encodeURIComponent(uid)}/questions`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: q }),
+      method: "POST", headers: jsonHeaders(), body: JSON.stringify({ question: q }),
     });
     if (!r.ok) { addStep(r.status === 404 ? "I don't have a profile for you yet." : "That didn't work. Please try again."); return; }
     const out = await r.json();
@@ -340,7 +372,7 @@ $("log-form").addEventListener("submit", async (ev) => {
   $("log-btn").disabled = true;
   try {
     const r = await fetch("/v1/measurements", {
-      method: "POST", headers: { "content-type": "application/json" },
+      method: "POST", headers: jsonHeaders(),
       body: JSON.stringify({
         user_id: uid, metric_type: metric, value: Number($("value").value), unit: METRICS[metric][1],
         measured_at: new Date().toISOString(), client_event_id: `app-${metric}-${Date.now()}`,
@@ -359,6 +391,28 @@ $("log-form").addEventListener("submit", async (ev) => {
     msg.className = "msg err"; msg.textContent = "Couldn't reach the service. Please try again.";
   }
   $("log-btn").disabled = false;
+});
+
+// ---- Account: sign out, download everything held about you, delete the account.
+$("signout-btn").addEventListener("click", async () => {
+  await fetch("/v1/auth/logout", { method: "POST", headers: jsonHeaders() });
+  location.href = "/";
+});
+$("export-btn").addEventListener("click", async () => {
+  const r = await fetch("/v1/me/export");
+  if (!r.ok) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(await r.json(), null, 2)], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "my-vitalmesh-data.json"; a.click();
+  URL.revokeObjectURL(url);
+});
+$("delete-btn").addEventListener("click", () => { $("delete-form").hidden = false; });
+$("delete-cancel").addEventListener("click", () => { $("delete-form").hidden = true; });
+$("delete-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const r = await fetch("/v1/me", { method: "DELETE", headers: jsonHeaders(), body: JSON.stringify({ password: $("delete-password").value }) });
+  if (r.ok) { location.href = "/"; return; }
+  $("delete-msg").textContent = "That password is not right.";
 });
 </script>
 </body>

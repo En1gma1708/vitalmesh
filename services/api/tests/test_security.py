@@ -374,3 +374,36 @@ def test_api_responses_are_not_cached(w: World) -> None:
 def test_there_is_no_cors_so_other_sites_cannot_read_responses(w: World) -> None:
     r = w.client().get("/v1/auth/choices", headers={"origin": "https://evil.example"})
     assert "access-control-allow-origin" not in r.headers
+
+
+# ------------------------------------------------------------------------------------ pages
+def test_pages_carry_the_response_nonce_that_the_policy_allows(w: World) -> None:
+    c = w.client()
+    for path in ("/", "/app"):
+        r = c.get(path)
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+        nonce = r.headers["content-security-policy"].split("'nonce-")[1].split("'")[0]
+        assert f'<script nonce="{nonce}">' in r.text and f'<style nonce="{nonce}">' in r.text
+        assert "<script>" not in r.text and "<style>" not in r.text
+
+
+def test_the_old_id_in_the_url_form_redirects_to_the_session_based_page(w: World) -> None:
+    r = w.client().get("/app/demo-1", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/app"
+
+
+def test_the_pages_show_no_internals_to_a_person(w: World) -> None:
+    c = w.client()
+    for path in ("/", "/app"):
+        page = c.get(path).text.lower()
+        for internal in ("guardian", "tier", "kafka", "agent", "provenance", "rules_version"):
+            assert internal not in page, (path, internal)
+
+
+def test_the_welcome_page_offers_exactly_the_closed_lists(w: World) -> None:
+    data = w.client().get("/v1/auth/choices").json()
+    assert data["consent_version"] == CONSENT_VERSION
+    assert set(data["choices"]) == {
+        "sex", "activity", "goal", "diet", "allergens", "conditions", "medications",
+    }  # fmt: skip
+    assert "egg" in data["choices"]["allergens"] and "cardiac" in data["choices"]["conditions"]
