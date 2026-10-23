@@ -127,3 +127,36 @@ def test_a_provider_outage_is_flagged_so_it_is_never_saved_as_a_result() -> None
     with contextlib.suppress(AllProvidersFailed):
         counting.complete(object(), 0.0)  # type: ignore[arg-type]
     assert counting.outages == 1
+
+
+def test_multi_suite_cases_are_well_formed_and_do_not_change_the_core_fingerprint() -> None:
+    from vitalmesh_evals.ablation.cases_multi import MULTI_CASES
+    from vitalmesh_evals.ablation.run import code_fingerprint
+
+    assert len({c.id for c in MULTI_CASES}) == len(MULTI_CASES) == 3
+    assert code_fingerprint("core") != code_fingerprint("multi")
+    outage = next(c for c in MULTI_CASES if c.outage)
+    assert set(outage.outage) == {"single", "t2", "t3"}  # every arm loses ONE agent role
+
+
+def test_fault_router_injects_only_chosen_purposes_and_separates_real_outages() -> None:
+    from types import SimpleNamespace
+
+    import pytest
+    from vitalmesh_evals.ablation.run import FaultRouter
+    from vitalmesh_llm import AllProvidersFailed
+
+    class Inner:
+        def complete(self, req, max_wait_s=0.0):  # type: ignore[no-untyped-def]
+            if req.purpose == "real-outage":
+                raise AllProvidersFailed(["down"])
+            return "ok"
+
+    fault = FaultRouter(Inner(), ("movement-specialist",))
+    assert fault.complete(SimpleNamespace(purpose="nutrition-specialist")) == "ok"
+    with pytest.raises(AllProvidersFailed):
+        fault.complete(SimpleNamespace(purpose="movement-specialist"))
+    assert fault.injected == 1 and fault.real_outages == 0
+    with pytest.raises(AllProvidersFailed):
+        fault.complete(SimpleNamespace(purpose="real-outage"))
+    assert fault.real_outages == 1

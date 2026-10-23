@@ -15,26 +15,55 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+from vitalmesh_llm import AllProvidersFailed
 
 from vitalmesh_evals.ablation import arms as arms_mod
 from vitalmesh_evals.ablation import cases as cases_mod
+from vitalmesh_evals.ablation import cases_multi as cases_multi_mod
 from vitalmesh_evals.ablation import metrics
 from vitalmesh_evals.ablation.arms import ARMS, ArmResult
 from vitalmesh_evals.ablation.cases import CASES
+from vitalmesh_evals.ablation.cases_multi import MULTI_CASES, MultiCase
 from vitalmesh_evals.runner import _append_line
+
+
+class FaultRouter:
+    """Fails the requests of chosen purposes the way a provider outage would (fault-isolation
+    cases) and tells those apart from real outages, which still void a result."""
+
+    def __init__(self, inner: Any, purposes: tuple[str, ...]) -> None:
+        self._inner, self._purposes = inner, purposes
+        self.injected = 0
+        self.real_outages = 0
+
+    def complete(self, req: Any, max_wait_s: float = 0.0) -> Any:
+        if req.purpose in self._purposes:
+            self.injected += 1
+            raise AllProvidersFailed(["injected outage (ablation fault case)"])
+        try:
+            return self._inner.complete(req, max_wait_s=max_wait_s)
+        except AllProvidersFailed:
+            self.real_outages += 1
+            raise
+
 
 RESULTS = Path("evals/results")
 CHECKPOINT = RESULTS / "ablation-checkpoint.jsonl"
 
 
-def code_fingerprint() -> str:
-    """Editing an arm, a case file or the agents' prompts invalidates old results."""
+def code_fingerprint(suite: str = "core") -> str:
+    """Editing an arm, a case file or the agents' prompts invalidates old results. The second
+    suite adds its own case file, so the core suite's keys do not change."""
     from vitalmesh_agents import advice, checker, synthesizer
     from vitalmesh_specialists import condition, movement, nutrition
 
     h = hashlib.sha256()
     for mod in (arms_mod, cases_mod, advice, synthesizer, checker, condition, movement, nutrition):
         h.update(Path(mod.__file__ or "").read_bytes())
+    if suite == "multi":
+        h.update(Path(cases_multi_mod.__file__ or "").read_bytes())
     return h.hexdigest()[:12]
 
 
@@ -62,13 +91,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="vitalmesh_evals.ablation.run")
     ap.add_argument("--arms", nargs="*", default=list(ARMS), choices=list(ARMS))
     ap.add_argument("--cases", nargs="*", help="case ids (default: all)")
+    ap.add_argument("--suite", choices=["core", "multi"], default="core")
     ap.add_argument("--fresh", action="store_true")
     ap.add_argument("--no-save", action="store_true")
     args = ap.parse_args()
 
-    chosen = [c for c in CASES if not args.cases or c.id in args.cases]
+    pool: tuple[Any, ...] = CASES if args.suite == "core" else MULTI_CASES
+    chosen = [c for c in pool if not args.cases or c.id in args.cases]
     done = {} if args.fresh else load_checkpoint()
-    code = code_fingerprint()
+    code = code_fingerprint(args.suite)
 
     from vitalmesh_evidence import EvidenceAgent, StoreRetriever
     from vitalmesh_retrieval import Store
@@ -87,7 +118,12 @@ def main() -> None:
             if key in done:
                 result, tag = done[key], "resumed"
             else:
-                result, tag = ARMS[arm](case, router, evidence), "ran"
+                outage = case.outage.get(arm, ()) if isinstance(case, MultiCase) else ()
+                arm_router = FaultRouter(router, outage) if outage else router
+                result, tag = ARMS[arm](case, arm_router, evidence), "ran"
+                injected_only = isinstance(arm_router, FaultRouter) and not arm_router.real_outages
+                if outage and injected_only and result.infra_error:
+                    result = result.model_copy(update={"infra_error": ""})  # injected only
                 if result.infra_error:
                     tag = "PROVIDER OUTAGE (not saved)"
                 elif not args.no_save:
