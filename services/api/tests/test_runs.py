@@ -106,3 +106,7 @@ def test_stream_of_an_unfinished_run_times_out_politely() -> None:
 def test_ops_view_has_the_internals() -> None:
     body = client(RELEASED_RUN).get("/v1/ops/runs/run-1").json()
     assert any(en.get("rules") == ["route.nutrition_terms"] for en in body["entries"])
+
+
+def test_stream_of_a_run_that_never_appears_is_a_404_after_a_short_wait() -> None:
+    assert client(RELEASED_RUN).get("/v1/users/u-1/runs/never/stream").status_code == 404

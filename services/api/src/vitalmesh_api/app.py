@@ -252,6 +252,7 @@ def create_app(
     runs: RunLog | None = None,
     stream_poll_s: float = 0.3,
     stream_max_s: float = 300.0,
+    stream_appear_s: float = 5.0,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -511,7 +512,17 @@ def create_app(
 
     @app.get("/v1/users/{user_id}/runs/{correlation_id}/stream")
     def stream_run(user_id: str, correlation_id: str) -> StreamingResponse:
-        _run_entries(user_id, correlation_id)  # 404 before the stream opens
+        # The tracker records the first event a moment after the question is accepted, so a run
+        # that does not exist YET is waited for briefly; one that never appears is a 404.
+        appear_by = time.monotonic() + stream_appear_s
+        while True:
+            try:
+                _run_entries(user_id, correlation_id)
+                break
+            except HTTPException:
+                if time.monotonic() >= appear_by:
+                    raise
+                time.sleep(stream_poll_s)
 
         def events() -> Iterator[str]:
             sent, waited = 0, 0.0

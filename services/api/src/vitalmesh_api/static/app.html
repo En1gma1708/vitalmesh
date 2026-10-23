@@ -52,6 +52,23 @@ ul.plain li { margin: 4px 0; }
 .meal { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .meal b { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+form.row { display: flex; gap: 8px; flex-wrap: wrap; }
+input, select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; min-width: 0; }
+input.grow { flex: 1 1 240px; }
+button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+button.ghost { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; font-size: 13px; padding: 5px 10px; }
+button:disabled { opacity: .6; cursor: progress; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
+ol.steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+ol.steps li { padding-left: 22px; position: relative; font-size: 14px; color: var(--muted); }
+ol.steps li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+ol.steps li.last { color: var(--fg); }
+.answer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.answer .text { font-size: 16px; margin: 0 0 8px; }
+.note { color: var(--warn); font-size: 14px; margin: 6px 0; }
+.answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.msg { font-size: 14px; margin-top: 8px; }
+.msg.err { color: var(--warn); }
 footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
 </style>
 </head>
@@ -62,6 +79,27 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
     <span class="sub" id="who"></span>
   </header>
   <div class="grid">
+    <section class="card wide" id="ask-card">
+      <h2>Ask about your health</h2>
+      <form class="row" id="ask-form">
+        <input class="grow" id="q" maxlength="500" required autocomplete="off"
+               aria-label="Your question" placeholder="e.g. How many calories should I eat?">
+        <button id="ask-btn" type="submit">Ask</button>
+      </form>
+      <div class="chips" id="chips"></div>
+      <ol class="steps" id="steps" aria-live="polite"></ol>
+      <div id="answer" class="answer" hidden></div>
+    </section>
+    <section class="card wide" id="log-card">
+      <h2>Log something</h2>
+      <form class="row" id="log-form">
+        <select id="metric" aria-label="What to log"></select>
+        <input id="value" type="number" step="any" required aria-label="Value" placeholder="Value">
+        <span class="sub" id="unit" style="align-self:center"></span>
+        <button id="log-btn" type="submit">Save</button>
+      </form>
+      <div class="msg" id="log-msg" role="status"></div>
+    </section>
     <section class="card wide"><h2>This week</h2><div class="rings" id="rings"></div></section>
     <section class="card"><h2>Weight</h2><div id="weight"></div></section>
     <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
@@ -218,6 +256,110 @@ async function main() {
     : '<div class="empty">No meal plan is available right now.</div>';
 }
 main();
+
+// ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
+const SAMPLES = ["How many calories should I eat?", "How much should I sleep?", "What should I eat and how should I train this week?"];
+const BLOCKED = "I can't give an answer to this one. A doctor or dietitian can help.";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let stream = null;
+
+SAMPLES.forEach((s) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ghost"; b.textContent = s;
+  b.onclick = () => { $("q").value = s; $("ask-form").requestSubmit(); };
+  $("chips").appendChild(b);
+});
+
+function addStep(text) {
+  const ol = $("steps");
+  ol.querySelectorAll("li.last").forEach((li) => li.classList.remove("last"));
+  const li = document.createElement("li");
+  li.className = "last"; li.textContent = text;
+  ol.appendChild(li);
+}
+
+function showAnswer(view) {
+  const box = $("answer");
+  box.hidden = false;
+  if (view.status === "blocked") { box.innerHTML = `<p class="text">${esc(BLOCKED)}</p>`; return; }
+  if (view.status === "needs_review") {
+    box.innerHTML = '<p class="text">A clinician needs to look at this before you see an answer. You will be told when it is ready.</p>';
+    return;
+  }
+  const a = view.answer;
+  if (!a) return;
+  const items = a.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("");
+  const sources = a.sources.map((s) => `<li>${esc(s.document)} ${esc(s.locator)} <span class="sub">(${esc(s.licence)})</span>${/^https:\/\//.test(s.url) ? ` <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">open</a>` : ""}</li>`).join("");
+  box.innerHTML = `<p class="text">${esc(a.text)}</p>`
+    + (a.partial_note ? `<p class="note">${esc(a.partial_note)}</p>` : "")
+    + (items ? `<h2>Why</h2><ul>${items}</ul>` : "")
+    + (sources ? `<h2 style="margin-top:12px">Sources</h2><ul>${sources}</ul>` : "");
+}
+
+$("ask-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  if (stream) { stream.close(); stream = null; }
+  $("steps").innerHTML = ""; $("answer").hidden = true; $("ask-btn").disabled = true;
+  let live = false;  // while a stream is open the button stays disabled
+  try {
+    const r = await fetch(`/v1/users/${encodeURIComponent(uid)}/questions`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: q }),
+    });
+    if (!r.ok) { addStep(r.status === 404 ? "I don't have a profile for you yet." : "That didn't work. Please try again."); return; }
+    const out = await r.json();
+    if (out.status === "declined") { addStep(out.message); return; }
+    addStep("Sending your question.");
+    live = true;
+    stream = new EventSource(`/v1/users/${encodeURIComponent(uid)}/runs/${out.correlation_id}/stream`);
+    stream.addEventListener("step", (e) => addStep(JSON.parse(e.data).text));
+    stream.addEventListener("done", (e) => { showAnswer(JSON.parse(e.data)); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.addEventListener("timeout", () => { addStep("This is taking longer than expected. Please try again in a minute."); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.onerror = () => { if (stream) { addStep("Lost the connection to the live updates."); stream.close(); stream = null; $("ask-btn").disabled = false; } };
+  } catch (err) {
+    addStep("Couldn't reach the service. Please try again.");
+  } finally {
+    if (!live) $("ask-btn").disabled = false;
+  }
+});
+
+// ---- Log: one measurement through the same validated ingress the devices use.
+const METRICS = {
+  body_weight: ["Weight", "kg"], sleep_duration: ["Sleep last night", "h"], step_count: ["Steps today", "count"],
+  active_minutes: ["Active minutes today", "min"], resting_heart_rate: ["Resting heart rate", "bpm"], energy_intake: ["Calories eaten today", "kcal"],
+};
+Object.entries(METRICS).forEach(([k, [label]]) => { const o = document.createElement("option"); o.value = k; o.textContent = label; $("metric").appendChild(o); });
+const showUnit = () => { $("unit").textContent = METRICS[$("metric").value][1]; };
+$("metric").addEventListener("change", showUnit); showUnit();
+
+$("log-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const metric = $("metric").value, msg = $("log-msg");
+  msg.className = "msg"; msg.textContent = "";
+  $("log-btn").disabled = true;
+  try {
+    const r = await fetch("/v1/measurements", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        user_id: uid, metric_type: metric, value: Number($("value").value), unit: METRICS[metric][1],
+        measured_at: new Date().toISOString(), client_event_id: `app-${metric}-${Date.now()}`,
+      }),
+    });
+    if (r.ok) {
+      msg.textContent = "Saved. Your charts update in a moment.";
+      $("value").value = "";
+      setTimeout(main, 2500);
+    } else {
+      const body = await r.json().catch(() => ({}));
+      msg.className = "msg err";
+      msg.textContent = typeof body.detail === "string" ? body.detail : "That value was not accepted.";
+    }
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = "Couldn't reach the service. Please try again.";
+  }
+  $("log-btn").disabled = false;
+});
 </script>
 </body>
 </html>
