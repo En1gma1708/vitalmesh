@@ -28,6 +28,19 @@ jobs:
       - name: Unit tests
         run: uv run pytest -m "not integration" -q
 
+  security:
+    name: dependency and code scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Known-vulnerable dependencies (locked set)
+        run: |
+          uv export --frozen --no-hashes --no-emit-workspace -o requirements-audit.txt
+          uvx pip-audit==2.10.1 -r requirements-audit.txt --no-deps --disable-pip
+      - name: Static scan (medium severity and above)
+        run: uvx bandit==1.9.4 -q -r libs services scripts -x "*/tests/*,*/test_*" -ll
+
   integration:
     name: integration tests (Kafka, Schema Registry, Redis)
     runs-on: ubuntu-latest

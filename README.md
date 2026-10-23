@@ -13,7 +13,7 @@ An event-driven, multi-agent health recommendation platform built on **Kafka + L
 - **Phase 5b, accounts and security (built, not finished):** sign-up and sign-in (argon2id passwords, short-lived signed tokens, single-use refresh tokens whose reuse ends the session, lockout and rate limits), a deny-by-default gate so a person reaches only their own data, an onboarding profile built from fixed lists because the safety rules depend on them, consent, data export and account deletion that reach every store, security headers with a per-response script nonce, CSRF protection and a per-person question limit. The tests that guard these rules were checked by breaking each rule on purpose. Not done: Google Calendar connection, password reset by email, dependency scanning in CI, a written threat model, the clinician and engineering consoles.
 - **Next:** Google Calendar OAuth and the Scheduler, the security review, the clinician and engineering consoles, the live Phase 4 checks at scale, a health app and engineering console, and cloud deployment and load tests on Azure (planned, not done). The 1M-user figure is a design target, not a measurement.
 
-Design docs: [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Agents](docs/AGENTS.md), [Event backbone](docs/EVENT_BACKBONE.md).
+Design docs: [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Agents](docs/AGENTS.md), [Event backbone](docs/EVENT_BACKBONE.md), [Threat model](docs/THREAT_MODEL.md).
 
 ## Quick start
 ```bash

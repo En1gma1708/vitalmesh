@@ -126,6 +126,8 @@ Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its 
 - **Calendar:** the Scheduler can publish a tokenized read-only iCal feed (no OAuth write scope held by us), with Calendar MCP write as the opt-in upgrade.
 
 ## 13b. Accounts and security (Phase 5b, D75)
+
+The written threat model, with each defence tied to its test and the known gaps, is in [THREAT_MODEL.md](THREAT_MODEL.md); CI scans the locked dependencies (`pip-audit`) and the code (`bandit`) on every push.
 * **Identity:** `libs/accounts` (users, sessions, profiles, consent, audit in Postgres; an in-memory twin for tests). A person's id is random (`u-` + 16 hex) and the session, never the URL, says who they are.
 * **Gate:** `services/api/security.py` refuses every `/v1` route without a valid session except a short public list; `/v1/users/{id}/...` needs the session's own id (others get 404), operator routes need the operator role (an operator sees internals, not a person's health data), and a route nobody wrote a rule for is refused.
 * **Sessions:** the access token (HS256, algorithm pinned) lives 15 minutes; the refresh token is random, stored only as a hash, single use, and replaying a used one revokes the session; logout revokes at once, server-side.

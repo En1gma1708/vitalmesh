@@ -27,7 +27,7 @@ KS = (1, 3, 5)
 def gold_ids(conn: psycopg.Connection, must: list[str]) -> set[tuple[str, int]]:
     clause = " AND ".join("text ILIKE %s" for _ in must)
     rows = conn.execute(
-        f"SELECT doc_id, ordinal FROM chunks WHERE {clause}",
+        f"SELECT doc_id, ordinal FROM chunks WHERE {clause}",  # nosec B608 - clause built from fixed ILIKE placeholders
         [f"%{p}%" for p in must],
     ).fetchall()
     return {(r[0], r[1]) for r in rows}

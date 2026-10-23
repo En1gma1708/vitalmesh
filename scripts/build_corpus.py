@@ -32,7 +32,7 @@ def fetch(url: str, dest: Path) -> Path:
     if not dest.exists():
         agent = {"User-Agent": "Mozilla/5.0 (vitalmesh corpus build)"}
         req = urllib.request.Request(url, headers=agent)
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:  # nosec B310 - https URLs from our own manifest, build time only
             dest.write_bytes(r.read())
     return dest
 

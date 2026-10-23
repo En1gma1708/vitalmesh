@@ -290,7 +290,7 @@ class PostgresAccountStore:
         uid = new_user_id()
         try:
             row = self._one(
-                f"INSERT INTO users (user_id, email, pw_hash, role) VALUES (%s,%s,%s,%s) "
+                f"INSERT INTO users (user_id, email, pw_hash, role) VALUES (%s,%s,%s,%s) "  # nosec B608 - constant column list, values are bound parameters
                 f"RETURNING {self._USER}",
                 (uid, email, pw_hash, role),
             )
@@ -299,16 +299,16 @@ class PostgresAccountStore:
         return _user(row)
 
     def by_email(self, email: str) -> User | None:
-        row = self._one(f"SELECT {self._USER} FROM users WHERE email=%s", (email,))
+        row = self._one(f"SELECT {self._USER} FROM users WHERE email=%s", (email,))  # nosec B608 - constant column list, values are bound parameters
         return _user(row) if row else None
 
     def by_id(self, user_id: str) -> User | None:
-        row = self._one(f"SELECT {self._USER} FROM users WHERE user_id=%s", (user_id,))
+        row = self._one(f"SELECT {self._USER} FROM users WHERE user_id=%s", (user_id,))  # nosec B608 - constant column list, values are bound parameters
         return _user(row) if row else None
 
     def record_failure(self, user_id: str, now: datetime) -> User:
         row = self._one(
-            f"UPDATE users SET failed_logins = failed_logins + 1, "
+            f"UPDATE users SET failed_logins = failed_logins + 1, "  # nosec B608 - constant column list, values are bound parameters
             f"locked_until = CASE WHEN failed_logins + 1 >= %s THEN %s ELSE locked_until END "
             f"WHERE user_id=%s RETURNING {self._USER}",
             (MAX_FAILURES, now + LOCK_FOR, user_id),
@@ -325,14 +325,14 @@ class PostgresAccountStore:
 
     def create_session(self, user_id: str, refresh_hash: str, expires_at: datetime) -> Session:
         row = self._one(
-            f"INSERT INTO sessions (session_id, user_id, refresh_hash, expires_at) "
+            f"INSERT INTO sessions (session_id, user_id, refresh_hash, expires_at) "  # nosec B608 - constant column list, values are bound parameters
             f"VALUES (%s,%s,%s,%s) RETURNING {self._SESSION}",
             (str(uuid.uuid4()), user_id, refresh_hash, expires_at),
         )
         return _session(row)
 
     def session(self, session_id: str) -> Session | None:
-        row = self._one(f"SELECT {self._SESSION} FROM sessions WHERE session_id=%s", (session_id,))
+        row = self._one(f"SELECT {self._SESSION} FROM sessions WHERE session_id=%s", (session_id,))  # nosec B608 - constant column list, values are bound parameters
         return _session(row) if row else None
 
     def rotate(
@@ -340,14 +340,14 @@ class PostgresAccountStore:
     ) -> Rotation:
         with self._pool.connection() as conn, conn.transaction():
             reused = conn.execute(
-                f"UPDATE sessions SET revoked=true WHERE previous_hash=%s "
+                f"UPDATE sessions SET revoked=true WHERE previous_hash=%s "  # nosec B608 - constant column list, values are bound parameters
                 f"RETURNING {self._SESSION}",
                 (presented_hash,),
             ).fetchone()
             if reused:
                 return Rotation("reuse", _session(reused))
             row = conn.execute(
-                f"SELECT {self._SESSION} FROM sessions WHERE refresh_hash=%s FOR UPDATE",
+                f"SELECT {self._SESSION} FROM sessions WHERE refresh_hash=%s FOR UPDATE",  # nosec B608 - constant column list, values are bound parameters
                 (presented_hash,),
             ).fetchone()
             if row is None:
@@ -358,7 +358,7 @@ class PostgresAccountStore:
             if current.expires_at <= now:
                 return Rotation("expired", current)
             updated = conn.execute(
-                f"UPDATE sessions SET refresh_hash=%s, previous_hash=%s, expires_at=%s "
+                f"UPDATE sessions SET refresh_hash=%s, previous_hash=%s, expires_at=%s "  # nosec B608 - constant column list, values are bound parameters
                 f"WHERE session_id=%s RETURNING {self._SESSION}",
                 (new_hash, presented_hash, new_expiry, current.session_id),
             ).fetchone()
