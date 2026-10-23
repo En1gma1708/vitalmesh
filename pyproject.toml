@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Event-driven multi-agent health recommendation platform (workspace root)"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
-dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-tracing", "vitalmesh-concierge", "vitalmesh-stores", "vitalmesh-agents", "vitalmesh-knowledge-mcp", "vitalmesh-evals"]
+dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-tracing", "vitalmesh-concierge", "vitalmesh-stores", "vitalmesh-agents", "vitalmesh-knowledge-mcp", "vitalmesh-accounts", "vitalmesh-evals"]
 
 [tool.uv.workspace]
-members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "libs/evidence", "libs/specialists", "libs/tracing", "libs/concierge", "libs/stores", "services/agents", "services/knowledge_mcp", "evals"]
+members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "libs/evidence", "libs/specialists", "libs/tracing", "libs/concierge", "libs/stores", "services/agents", "services/knowledge_mcp", "libs/accounts", "evals"]
 
 [tool.uv.sources]
 vitalmesh-common = { workspace = true }
@@ -25,6 +25,7 @@ vitalmesh-concierge = { workspace = true }
 vitalmesh-stores = { workspace = true }
 vitalmesh-agents = { workspace = true }
 vitalmesh-knowledge-mcp = { workspace = true }
+vitalmesh-accounts = { workspace = true }
 vitalmesh-evals = { workspace = true }
 
 [dependency-groups]
