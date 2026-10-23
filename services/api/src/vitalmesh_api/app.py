@@ -26,8 +26,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta, utcnow
@@ -50,6 +50,7 @@ from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 
 from vitalmesh_api.runview import RunView, view_of
+from vitalmesh_api.security import Auth, install, require_self
 
 STATIC = Path(__file__).parent / "static"
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -253,16 +254,20 @@ def create_app(
     stream_poll_s: float = 0.3,
     stream_max_s: float = 300.0,
     stream_appear_s: float = 5.0,
+    auth: Auth | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
+    if auth is not None:
+        install(app, auth)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.post("/v1/measurements", status_code=202, response_model=Accepted)
-    def post_measurement(m: MeasurementIn) -> Accepted:
+    def post_measurement(m: MeasurementIn, request: Request) -> Accepted:
+        require_self(request, m.user_id)
         try:
             validate_measurement(m, clock())
         except ValueError as exc:
@@ -299,7 +304,8 @@ def create_app(
         return Accepted(event_id=event_id, correlation_id=correlation_id)
 
     @app.post("/v1/labs", status_code=202, response_model=Accepted)
-    def post_lab(m: LabIn) -> Accepted:
+    def post_lab(m: LabIn, request: Request) -> Accepted:
+        require_self(request, m.user_id)
         now = clock()
         try:
             if m.collected_at.tzinfo is not None and m.collected_at > now + MAX_FUTURE:
@@ -415,11 +421,31 @@ def create_app(
             weekly_goal=WEEKLY_ACTIVE_MINUTES_GOAL if metric == "active_minutes" else None,
         )
 
-    @app.get("/app/{user_id}", response_class=HTMLResponse)
-    def health_app(user_id: str) -> HTMLResponse:
+    def page(request: Request, name: str) -> HTMLResponse:
+        """A static page with this response's script and style nonce filled in (the security
+        policy allows only code that carries it)."""
+        nonce = getattr(request.state, "nonce", "")
+        html = (STATIC / name).read_text(encoding="utf-8")
+        html = html.replace("<script>", f'<script nonce="{nonce}">')
+        return HTMLResponse(html.replace("<style>", f'<style nonce="{nonce}">'))
+
+    if auth is not None:
+
+        @app.get("/", response_class=HTMLResponse)
+        def welcome(request: Request) -> HTMLResponse:
+            return page(request, "welcome.html")
+
+        @app.get("/app", response_class=HTMLResponse)
+        def my_app(request: Request) -> HTMLResponse:
+            return page(request, "app.html")  # who you are comes from your session, not the URL
+
+    @app.get("/app/{user_id}", response_class=HTMLResponse, response_model=None)
+    def health_app(user_id: str, request: Request) -> HTMLResponse | RedirectResponse:
         if not USER_ID.match(user_id):
             raise HTTPException(status_code=422, detail="invalid user id")
-        return HTMLResponse((STATIC / "app.html").read_text(encoding="utf-8"))
+        if auth is not None:
+            return RedirectResponse("/app", status_code=303)
+        return page(request, "app.html")
 
     @app.get("/v1/users/{user_id}/mealplan", response_model=MealPlanOut)
     def get_mealplan(user_id: str, start: date | None = None, days: int = 7) -> MealPlanOut:
@@ -472,6 +498,9 @@ def create_app(
             raise HTTPException(status_code=422, detail="invalid user id")
         if profiles.get(user_id) is None:
             raise HTTPException(status_code=404, detail="no profile for this user")
+        if auth is not None and not auth.limiter.hit(f"ask:{user_id}", 20, 3600):
+            # each question can spend model quota: the scarcest thing in the system
+            raise HTTPException(status_code=429, detail="you have asked a lot this hour; try later")
         category = screen_question(q.question)
         if category is not None:
             response.status_code = 200  # answered, not accepted for processing
