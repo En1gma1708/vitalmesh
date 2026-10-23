@@ -352,3 +352,25 @@ def test_question_broker_failure_is_503() -> None:
     client, _, user = make(fail_flush=True)
     r = client.post(f"/v1/users/{user}/questions", json={"question": "What should I eat?"})
     assert r.status_code == 503 and "broker" not in r.text.lower()
+
+
+def test_ops_tiers_reports_the_mix_and_shares() -> None:
+    profile, sleep = synthetic_user(3, 1)
+    profiles = InMemoryProfileStore()
+    profiles.put(ProfileRecord(profile=profile, recent_sleep_hours=tuple(sleep)))
+    app = create_app(
+        profiles,
+        PlainSerde(),
+        RecordingPublisher(),
+        ops=lambda: {"tiers": {"T1": 3, "T2": 1}, "cohort": {"hit": 3, "miss": 1}},
+    )
+    r = TestClient(app).get("/v1/ops/tiers")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["planned"] == 4 and body["cache_hit_share"] == 0.75
+    assert body["no_model_share"] == 0.75 and body["cohort"]["hit"] == 3
+
+
+def test_ops_tiers_is_off_unless_enabled() -> None:
+    client, _, _ = make()
+    assert client.get("/v1/ops/tiers").status_code == 404

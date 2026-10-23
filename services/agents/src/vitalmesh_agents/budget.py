@@ -29,6 +29,42 @@ DEFAULT_HIGH_RUNS = 30
 DEFAULT_CRITICAL_RUNS = 60
 
 
+TIER_COUNT_KEY = "tiers:count"
+
+
+class TierCounter(Protocol):
+    def add(self, tier: str) -> None: ...
+
+    def counts(self) -> dict[str, int]: ...
+
+
+class InMemoryTierCounter:
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def add(self, tier: str) -> None:
+        self._counts[tier] = self._counts.get(tier, 0) + 1
+
+    def counts(self) -> dict[str, int]:
+        return dict(self._counts)
+
+
+class RedisTierCounter:
+    """How many runs Triage planned at each tier (the live tier mix; the API ops route reads it)."""
+
+    def __init__(self, client: redis.Redis, key: str = TIER_COUNT_KEY) -> None:
+        self._r, self._key = client, key
+
+    def add(self, tier: str) -> None:
+        self._r.hincrby(self._key, tier, 1)
+
+    def counts(self) -> dict[str, int]:
+        return {
+            (k.decode() if isinstance(k, bytes) else str(k)): int(v)
+            for k, v in self._r.hgetall(self._key).items()
+        }
+
+
 class LoadMonitor(Protocol):
     def record(self) -> None: ...
 

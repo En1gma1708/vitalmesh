@@ -64,7 +64,7 @@ from vitalmesh_tracing import tracer_from_env
 
 from vitalmesh_agents.aggregator import Aggregator
 from vitalmesh_agents.briefer import Briefer
-from vitalmesh_agents.budget import RedisLoadMonitor
+from vitalmesh_agents.budget import RedisLoadMonitor, RedisTierCounter
 from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
 from vitalmesh_agents.cohort_handler import DisabledEvidence, make_cohort_handler, make_fill_handler
@@ -154,6 +154,7 @@ class Runtime:
                 self.publisher,
                 cohort=RedisCohortStore(self.redis) if use_cohort else None,
                 monitor=RedisLoadMonitor(self.redis) if use_cohort else None,
+                tiers=RedisTierCounter(self.redis),
             )
         if role in ("cohort", "cachefill"):
             deps = SpecialistDeps(

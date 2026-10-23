@@ -139,6 +139,14 @@ class QuestionOut(BaseModel):
     message: str | None = None
 
 
+class OpsTiersOut(BaseModel):
+    tiers: dict[str, int]
+    cohort: dict[str, int]
+    planned: int
+    cache_hit_share: float | None  # T1 runs / all planned runs
+    no_model_share: float | None  # (T0 + T1) / all planned runs
+
+
 class Accepted(BaseModel):
     event_id: str
     correlation_id: str
@@ -231,6 +239,7 @@ def create_app(
     clock: Callable[[], datetime] = utcnow,
     labs: LabStore | None = None,
     history: HistoryStore | None = None,
+    ops: Callable[[], dict[str, dict[str, int]]] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -473,6 +482,24 @@ def create_app(
         except Exception as exc:  # broker or registry down: tell the client to retry
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return QuestionOut(status="accepted", correlation_id=correlation_id)
+
+    @app.get("/v1/ops/tiers", response_model=OpsTiersOut)
+    def ops_tiers() -> OpsTiersOut:
+        """Operator view of how runs were planned (read-only, counts only, no user data)."""
+        if ops is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        data = ops()
+        tiers, cohort = data.get("tiers", {}), data.get("cohort", {})
+        planned = sum(tiers.values())
+        return OpsTiersOut(
+            tiers=tiers,
+            cohort=cohort,
+            planned=planned,
+            cache_hit_share=round(tiers.get("T1", 0) / planned, 3) if planned else None,
+            no_model_share=(
+                round((tiers.get("T0", 0) + tiers.get("T1", 0)) / planned, 3) if planned else None
+            ),
+        )
 
     @app.get("/v1/users/{user_id}/recommendation", response_model=RecommendationOut)
     def get_recommendation(user_id: str) -> RecommendationOut:

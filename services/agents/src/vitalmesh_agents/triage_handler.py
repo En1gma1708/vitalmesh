@@ -20,7 +20,7 @@ from vitalmesh_common.run import risk_to_proto, specialist_to_proto
 from vitalmesh_common.topics import RUNS_PLANNED
 from vitalmesh_stores import LabStore, ProfileStore
 
-from vitalmesh_agents.budget import LoadMonitor
+from vitalmesh_agents.budget import LoadMonitor, TierCounter
 from vitalmesh_agents.cohort import plan_key
 from vitalmesh_agents.cohortstore import CohortStore
 from vitalmesh_agents.events import emit, next_meta
@@ -58,6 +58,7 @@ def make_triage_handler(
     run_deadline_s: float = DEFAULT_RUN_DEADLINE_S,
     cohort: CohortStore | None = None,
     monitor: LoadMonitor | None = None,
+    tiers: TierCounter | None = None,
 ) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
         if meta.type != INPUT_TYPE:
@@ -79,6 +80,8 @@ def make_triage_handler(
                 else:
                     cohort.count("miss")
 
+        if tiers is not None:
+            tiers.add(plan.tier.value)
         if monitor is not None and plan.tier in (Tier.T2, Tier.T3):
             monitor.record()  # only model-backed runs are load
         now = clock()

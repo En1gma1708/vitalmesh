@@ -16,6 +16,13 @@ from vitalmesh_t0.profiles import RedisProfileStore
 from vitalmesh_api.app import create_app
 
 
+def _counts(client: redis.Redis, key: str) -> dict[str, int]:
+    return {
+        (k.decode() if isinstance(k, bytes) else str(k)): int(v)
+        for k, v in client.hgetall(key).items()
+    }
+
+
 def build_app() -> FastAPI:
     settings = KafkaSettings.from_env()
     ensure_topics(settings)
@@ -26,6 +33,10 @@ def build_app() -> FastAPI:
         KafkaPublisher(settings, client_id="api"),
         labs=RedisLabStore(client),
         history=RedisHistoryStore(client),
+        ops=lambda: {
+            "tiers": _counts(client, "tiers:count"),
+            "cohort": _counts(client, "cohort:stats"),
+        },
     )
 
 
