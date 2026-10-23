@@ -18,8 +18,10 @@ numbers are quoted.
 
 from __future__ import annotations
 
+import statistics
 import sys
-from collections import Counter
+import time
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from vitalmesh_agents.cohortstore import InMemoryCohortStore
@@ -35,6 +37,7 @@ class ArmResult:
     model_calls: int
     texts: dict[tuple[str, str], str]
     errors: int
+    millis: dict[str, list[float]]  # wall time per run, by tier
 
 
 def run_arm(users: int, cache: bool, rounds: int = 2) -> ArmResult:
@@ -43,15 +46,20 @@ def run_arm(users: int, cache: bool, rounds: int = 2) -> ArmResult:
     tiers: Counter[str] = Counter()
     texts: dict[tuple[str, str], str] = {}
     errors = 0
+    millis: dict[str, list[float]] = defaultdict(list)
     for _ in range(rounds):
         for i in range(users):
             for question in QUESTIONS:
+                started = time.perf_counter()
                 out = ask(bus, f"b-{i}", question, T0)
+                elapsed = (time.perf_counter() - started) * 1000
                 errors += len(out.errors) + (out.final != "released")
                 planned = next(s for s in out.events if s.meta.type == "run.planned")
-                tiers[planned.meta.tier.value if planned.meta.tier else "?"] += 1
+                tier = planned.meta.tier.value if planned.meta.tier else "?"
+                tiers[tier] += 1
+                millis[tier].append(elapsed)
                 texts[(f"b-{i}", question)] = out.text
-    return ArmResult(tiers, len(router.purposes), texts, errors)
+    return ArmResult(tiers, len(router.purposes), texts, errors, dict(millis))
 
 
 def main(argv: list[str]) -> None:
@@ -68,6 +76,14 @@ def main(argv: list[str]) -> None:
     print(f"cache hits: {hits} of {total} runs ({100 * hits / total:.0f}%)")
     print(f"staleness: {stale} of {len(on.texts)} answers differ from the full run's answer")
     print(f"errors: off {off.errors}, on {on.errors}")
+    for name, arm in (("cache off", off), ("cache on ", on)):
+        for tier, values in sorted(arm.millis.items()):
+            ordered = sorted(values)
+            p95 = ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))]
+            print(
+                f"{name} {tier}: n={len(values)}, p50 {statistics.median(values):.1f} ms, "
+                f"p95 {p95:.1f} ms (in-process handlers, scripted model, no network)"
+            )
     print("scripted model: counts the mechanism, not real tokens, latency or quality")
 
 

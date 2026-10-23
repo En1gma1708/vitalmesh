@@ -83,7 +83,7 @@ def make_triage_handler(
         if tiers is not None:
             tiers.add(plan.tier.value)
         if monitor is not None and plan.tier in (Tier.T2, Tier.T3):
-            monitor.record()  # only model-backed runs are load
+            monitor.record(plan.tier.value)  # only model-backed runs cost tokens
         now = clock()
         out_meta = next_meta(
             meta,
