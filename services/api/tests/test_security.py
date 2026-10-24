@@ -12,6 +12,7 @@ from vitalmesh_accounts import (
     Claims,
     InMemoryAccountStore,
     InMemoryRateLimiter,
+    OutboxMailer,
     TokenIssuer,
     hash_password,
 )
@@ -42,7 +43,9 @@ PROFILE: dict[str, Any] = {
 
 
 class World:
-    def __init__(self) -> None:
+    def __init__(self, require_verified: bool = False) -> None:
+        self.now = datetime.now(UTC)
+        self.mailer = OutboxMailer()
         self.store = InMemoryAccountStore()
         self.cache = InMemoryProfileStore()
         self.limiter = InMemoryRateLimiter()
@@ -56,6 +59,9 @@ class World:
             self.cache,
             purge=self.purged.append,
             export_extra=lambda uid: {"measurements": 0},
+            clock=lambda: self.now,
+            mailer=self.mailer,
+            require_verified=require_verified,
         )
         self.app = create_app(
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
@@ -394,7 +400,7 @@ def test_the_old_id_in_the_url_form_redirects_to_the_session_based_page(w: World
 
 def test_the_pages_show_no_internals_to_a_person(w: World) -> None:
     c = w.client()
-    for path in ("/", "/app"):
+    for path in ("/", "/app", "/reset", "/verify"):
         page = c.get(path).text.lower()
         for internal in ("guardian", "tier", "kafka", "agent", "provenance", "rules_version"):
             assert internal not in page, (path, internal)
@@ -407,3 +413,183 @@ def test_the_welcome_page_offers_exactly_the_closed_lists(w: World) -> None:
         "sex", "activity", "goal", "diet", "allergens", "conditions", "medications",
     }  # fmt: skip
     assert "egg" in data["choices"]["allergens"] and "cardiac" in data["choices"]["conditions"]
+
+
+# --------------------------------------------------------- email links: verify and reset (D78)
+def link_token(w: World, index: int = -1) -> str:
+    """The token in the fragment of the link in a sent message (what the person would click)."""
+    body = w.mailer.sent[index].body
+    assert "#token=" in body
+    return body.split("#token=")[1].split()[0]
+
+
+def test_signup_sends_a_verification_link_and_the_address_is_confirmed_by_using_it(
+    w: World,
+) -> None:
+    c = w.client()
+    uid = w.signup(c)
+    assert [m.to for m in w.mailer.sent] == ["a@example.com"]
+    assert "/verify#token=" in w.mailer.sent[0].body and PASSWORD not in w.mailer.sent[0].body
+    assert c.get("/v1/me").json()["email_verified"] is False
+    token = link_token(w)
+    assert c.post("/v1/auth/verify/confirm", json={"token": token}).status_code == 200
+    assert c.get("/v1/me").json()["email_verified"] is True
+    again = c.post("/v1/auth/verify/confirm", json={"token": token})
+    assert again.status_code == 400  # a link works once
+    user = w.store.by_id(uid)
+    assert user is not None and user.email_verified
+
+
+def test_a_garbage_or_wrong_purpose_token_confirms_nothing(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    assert c.post("/v1/auth/verify/confirm", json={"token": "x" * 30}).status_code == 400
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    reset_token = link_token(w)  # a reset link must not verify an email
+    assert c.post("/v1/auth/verify/confirm", json={"token": reset_token}).status_code == 400
+    assert c.get("/v1/me").json()["email_verified"] is False
+
+
+def test_a_verification_link_expires(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    w.now += timedelta(hours=25)
+    assert c.post("/v1/auth/verify/confirm", json={"token": link_token(w)}).status_code == 400
+
+
+def test_questions_need_a_confirmed_email_when_the_check_is_on() -> None:
+    w = World(require_verified=True)
+    c = w.client()
+    uid = w.signup(c)
+    assert c.put("/v1/me/profile", json=PROFILE, headers=csrf(c)).status_code == 200
+    ask = {"question": "What should I eat after training?"}
+    denied = c.post(f"/v1/users/{uid}/questions", json=ask, headers=csrf(c))
+    assert denied.status_code == 403 and "email" in denied.json()["detail"]
+    assert w.publisher.sent == []  # nothing reached the model's queue
+    c.post("/v1/auth/verify/confirm", json={"token": link_token(w)})
+    assert c.post(f"/v1/users/{uid}/questions", json=ask, headers=csrf(c)).status_code == 202
+
+
+def test_resending_the_verification_link_is_limited_and_replaces_the_old_link(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    first = link_token(w)
+    assert c.post("/v1/me/verify/resend", headers=csrf(c)).status_code == 202
+    assert len(w.mailer.sent) == 2 and link_token(w) != first
+    assert c.post("/v1/auth/verify/confirm", json={"token": first}).status_code == 400
+    assert c.post("/v1/me/verify/resend", headers=csrf(c)).status_code == 202
+    assert c.post("/v1/me/verify/resend", headers=csrf(c)).status_code == 202
+    assert c.post("/v1/me/verify/resend", headers=csrf(c)).status_code == 429
+    assert c.post("/v1/me/verify/resend").status_code == 403  # state change: CSRF applies
+
+
+def test_reset_request_answers_the_same_for_known_and_unknown_addresses(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    sent_before = len(w.mailer.sent)
+    known = c.post("/v1/auth/reset/request", json={"email": "A@example.com"})
+    unknown = c.post("/v1/auth/reset/request", json={"email": "nobody@example.com"})
+    assert known.status_code == unknown.status_code == 202 and known.json() == unknown.json()
+    assert [m.to for m in w.mailer.sent[sent_before:]] == ["a@example.com"]  # only the real one
+
+
+def test_reset_requests_are_limited_per_address_and_per_source(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    for _ in range(5):
+        assert c.post("/v1/auth/reset/request", json={"email": "a@example.com"}).status_code == 202
+    resets = [m for m in w.mailer.sent if "Reset" in m.subject]
+    assert len(resets) == 3  # a mailbox cannot be flooded; the answer still looks the same
+    limited = [
+        c.post("/v1/auth/reset/request", json={"email": f"x{i}@example.com"}).status_code
+        for i in range(8)
+    ]
+    assert limited[-1] == 429  # one source, many addresses: stopped after 10 in an hour
+
+
+def test_a_reset_changes_the_password_ends_every_session_and_clears_a_lockout(w: World) -> None:
+    c, thief = w.client(), w.client()
+    uid = w.signup(c)
+    thief.post("/v1/auth/login", json={"email": "a@example.com", "password": PASSWORD})
+    for _ in range(MAX_FAILURES):
+        w.client().post(
+            "/v1/auth/login", json={"email": "a@example.com", "password": "wrong-one-1"}
+        )
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    new = "a different long passphrase"
+    ok = w.client().post(
+        "/v1/auth/reset/confirm", json={"token": link_token(w), "new_password": new}
+    )
+    assert ok.status_code == 200
+    assert c.get("/v1/me").status_code == 401 and thief.get("/v1/me").status_code == 401
+    fresh = w.client()
+    old = fresh.post("/v1/auth/login", json={"email": "a@example.com", "password": PASSWORD})
+    assert old.status_code == 401
+    assert (
+        fresh.post("/v1/auth/login", json={"email": "a@example.com", "password": new}).status_code
+        == 200
+    )  # the lockout was cleared too
+    actions = [e["action"] for e in w.store.audit_entries(uid)]
+    assert "password_reset" in actions and "reset_requested" in actions
+    assert all(link_token(w) not in str(e) for e in w.store.audit_entries(uid))
+
+
+def test_a_reset_link_works_once_and_expires(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    token = link_token(w)
+    body = {"token": token, "new_password": "first new passphrase"}
+    assert c.post("/v1/auth/reset/confirm", json=body).status_code == 200
+    again = {"token": token, "new_password": "second new passphrase"}
+    assert c.post("/v1/auth/reset/confirm", json=again).status_code == 400
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    stale = link_token(w)
+    w.now += timedelta(minutes=31)
+    late = {"token": stale, "new_password": "third new passphrase"}
+    assert c.post("/v1/auth/reset/confirm", json=late).status_code == 400
+
+
+def test_a_newer_reset_link_replaces_the_older_one(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    older = link_token(w)
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    body = {"token": older, "new_password": "some new passphrase"}
+    assert c.post("/v1/auth/reset/confirm", json=body).status_code == 400
+    assert (
+        c.post("/v1/auth/reset/confirm", json={**body, "token": link_token(w)}).status_code == 200
+    )
+
+
+def test_a_weak_new_password_is_refused_without_using_up_the_link(w: World) -> None:
+    c = w.client()
+    w.signup(c)
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    token = link_token(w)
+    for weak in ("short", "password1234", "a@example.com"):
+        r = c.post("/v1/auth/reset/confirm", json={"token": token, "new_password": weak})
+        assert r.status_code == 422, weak
+    good = {"token": token, "new_password": "a strong new passphrase"}
+    assert c.post("/v1/auth/reset/confirm", json=good).status_code == 200
+
+
+def test_a_reset_proves_the_inbox_so_it_also_confirms_the_email(w: World) -> None:
+    c = w.client()
+    uid = w.signup(c)
+    c.post("/v1/auth/reset/request", json={"email": "a@example.com"})
+    c.post(
+        "/v1/auth/reset/confirm",
+        json={"token": link_token(w), "new_password": "a strong new passphrase"},
+    )
+    user = w.store.by_id(uid)
+    assert user is not None and user.email_verified
+
+
+def test_the_link_pages_are_served_and_hold_no_token_server_side(w: World) -> None:
+    c = w.client()
+    for path in ("/reset", "/verify"):
+        r = c.get(f"{path}#token=abc")
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+        assert "default-src 'none'" in r.headers["content-security-policy"]

@@ -38,6 +38,7 @@ legend { font-size: 13px; color: var(--muted); padding: 0 6px; }
 button.primary { width: 100%; margin-top: 18px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 11px; cursor: pointer; }
 button:disabled { opacity: .6; cursor: progress; }
 .notice { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-top: 16px; }
+a { color: var(--accent); }
 .err { color: var(--warn); font-size: 14px; margin-top: 10px; min-height: 1.2em; }
 [hidden] { display: none !important; }
 </style>
@@ -59,6 +60,7 @@ button:disabled { opacity: .6; cursor: progress; }
       <input id="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
       <p class="sub" id="password-hint">At least 10 characters. A few ordinary words together is a good password.</p>
       <button class="primary" id="auth-btn" type="submit">Create account</button>
+      <p class="sub" id="forgot" hidden><a href="/reset">Forgot your password?</a></p>
       <div class="err" id="auth-err" role="alert"></div>
     </form>
   </section>
@@ -66,6 +68,7 @@ button:disabled { opacity: .6; cursor: progress; }
   <section class="card" id="onboarding-card" hidden>
     <h2 style="margin-top:0">Tell us about you</h2>
     <p class="sub">Your answers shape your food, training and safety guidance. You can change them later.</p>
+    <p class="notice">We sent a link to your email. Open it to confirm your address; until then you can fill this in, but not ask questions.</p>
     <form id="onboarding-form" novalidate>
       <div class="grid2">
         <div><label for="sex">Sex</label><select id="sex"></select></div>
@@ -109,6 +112,7 @@ function showMode(next) {
   $("auth-btn").textContent = next === "signup" ? "Create account" : "Sign in";
   $("password").autocomplete = next === "signup" ? "new-password" : "current-password";
   $("password-hint").hidden = next !== "signup";
+  $("forgot").hidden = next !== "login";
   $("auth-err").textContent = "";
 }
 $("tab-signup").addEventListener("click", () => showMode("signup"));

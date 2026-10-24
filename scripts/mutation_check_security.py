@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 import pytest
-from vitalmesh_accounts import Claims, TokenError
+from vitalmesh_accounts import Claims, InMemoryAccountStore, TokenError
 from vitalmesh_api import app as app_module
 from vitalmesh_api import security
 
@@ -69,12 +70,73 @@ def _no_headers() -> Callable[[], None]:
     return patch(security, "_secured", lambda request, response, auth: response)
 
 
+def consume_without_marking_used(
+    self: InMemoryAccountStore, token_hash: str, purpose: str, now: datetime
+) -> str | None:
+    entry = self._tokens.get(token_hash)  # a link that can be used again
+    return entry[0] if entry and entry[1] == purpose and entry[2] > now else None
+
+
+def consume_ignoring_expiry(
+    self: InMemoryAccountStore, token_hash: str, purpose: str, now: datetime
+) -> str | None:
+    entry = self._tokens.get(token_hash)
+    if entry is None or entry[1] != purpose or entry[3]:
+        return None
+    self._tokens[token_hash] = (entry[0], entry[1], entry[2], True)
+    return entry[0]
+
+
+def consume_ignoring_purpose(
+    self: InMemoryAccountStore, token_hash: str, purpose: str, now: datetime
+) -> str | None:
+    entry = self._tokens.get(token_hash)
+    if entry is None or entry[3] or entry[2] <= now:
+        return None
+    self._tokens[token_hash] = (entry[0], entry[1], entry[2], True)
+    return entry[0]
+
+
+def add_keeping_older_links(
+    self: InMemoryAccountStore, user_id: str, purpose: str, token_hash: str, expires_at: datetime
+) -> None:
+    self._tokens[token_hash] = (user_id, purpose, expires_at, False)
+
+
 MUTATIONS = [
     Mutation("any user can read any user's data", _no_authorise),
     Mutation("CSRF check always passes", _csrf_always_ok),
     Mutation("body user id is not compared with the session", _no_body_user_check),
     Mutation("logout does not revoke the session", _no_revocation),
     Mutation("responses carry no security headers", _no_headers),
+    Mutation(
+        "a reset or verify link can be used twice",
+        lambda: patch(InMemoryAccountStore, "consume_action_token", consume_without_marking_used),
+    ),
+    Mutation(
+        "a link works after it expired",
+        lambda: patch(InMemoryAccountStore, "consume_action_token", consume_ignoring_expiry),
+    ),
+    Mutation(
+        "a reset link can verify an email (purpose ignored)",
+        lambda: patch(InMemoryAccountStore, "consume_action_token", consume_ignoring_purpose),
+    ),
+    Mutation(
+        "an older link still works after a newer one is sent",
+        lambda: patch(InMemoryAccountStore, "add_action_token", add_keeping_older_links),
+    ),
+    Mutation(
+        "a password reset leaves existing sessions signed in",
+        lambda: patch(InMemoryAccountStore, "revoke_all", lambda self, user_id: None),
+    ),
+    Mutation(
+        "unconfirmed emails may ask questions",
+        lambda: patch(security.Auth, "verified", lambda self, user_id: True),
+    ),
+    Mutation(
+        "the password policy is not applied",
+        lambda: patch(security, "check_password", lambda password, email: []),
+    ),
 ]
 
 

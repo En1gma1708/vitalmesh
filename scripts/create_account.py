@@ -41,6 +41,7 @@ def main() -> None:
     store = PostgresAccountStore(DB_DSN)
     try:
         user = store.create_user(email, hash_password(password), role=args.role)
+        store.mark_email_verified(user.user_id)  # created by an operator at the command line
     except EmailTaken:
         sys.exit("that email is already registered")
     finally:

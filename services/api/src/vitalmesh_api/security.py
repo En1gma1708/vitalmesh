@@ -23,7 +23,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
@@ -32,6 +32,8 @@ from vitalmesh_accounts import (
     AccountStore,
     Claims,
     EmailTaken,
+    LogMailer,
+    Mailer,
     RateLimiter,
     TokenError,
     TokenIssuer,
@@ -41,6 +43,8 @@ from vitalmesh_accounts import (
     needs_rehash,
     new_refresh_token,
     normalise_email,
+    reset_message,
+    verification_message,
     verify_password,
 )
 from vitalmesh_accounts.tokens import hash_refresh
@@ -60,10 +64,16 @@ PUBLIC = {
     "/v1/auth/refresh",
     "/v1/auth/logout",
     "/v1/auth/choices",
+    "/v1/auth/reset/request",
+    "/v1/auth/reset/confirm",
+    "/v1/auth/verify/confirm",
 }
 _USER_PATH = re.compile(r"^/v1/users/([^/]+)(?:/|$)")
 _ME_PATH = re.compile(r"^/v1/me(?:/|$)")
 GENERIC_LOGIN_FAILURE = "That email and password do not match."
+VERIFY_TTL = timedelta(hours=24)
+RESET_TTL = timedelta(minutes=30)
+BAD_LINK = "This link is not valid any more. Ask for a new one."
 
 
 class Credentials(BaseModel):
@@ -71,6 +81,25 @@ class Credentials(BaseModel):
 
     email: str = Field(max_length=320)
     password: str = Field(max_length=256)
+
+
+class EmailOnly(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(max_length=320)
+
+
+class TokenOnly(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=20, max_length=200)
+
+
+class ResetConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(max_length=256)
 
 
 class DeleteAccount(BaseModel):
@@ -91,10 +120,38 @@ class Auth:
         export_extra: Callable[[str], dict[str, Any]] = lambda _uid: {},
         secure_cookies: bool = False,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        mailer: Mailer | None = None,
+        base_url: str = "http://127.0.0.1:8000",
+        require_verified: bool = False,
     ) -> None:
         self.store, self.issuer, self.limiter = store, issuer, limiter
         self.profile_cache, self.purge, self.export_extra = profile_cache, purge, export_extra
         self.secure, self.clock = secure_cookies, clock
+        self.mailer: Mailer = mailer or LogMailer()
+        self.base_url = base_url.rstrip("/")
+        self.require_verified = require_verified
+
+    # ------------------------------------------------------------- one-time email links
+    def send_verification(self, user_id: str, email: str) -> None:
+        raw, hashed = new_refresh_token()
+        self.store.add_action_token(user_id, "verify", hashed, self.clock() + VERIFY_TTL)
+        self.mailer.send(
+            verification_message(email, self.base_url, raw, int(VERIFY_TTL.total_seconds() // 3600))
+        )
+
+    def send_reset(self, user_id: str, email: str) -> None:
+        raw, hashed = new_refresh_token()
+        self.store.add_action_token(user_id, "reset", hashed, self.clock() + RESET_TTL)
+        self.mailer.send(
+            reset_message(email, self.base_url, raw, int(RESET_TTL.total_seconds() // 60))
+        )
+
+    def verified(self, user_id: str) -> bool:
+        """True when questions are allowed: the check is off, or the email is confirmed."""
+        if not self.require_verified:
+            return True
+        user = self.store.by_id(user_id)
+        return user is not None and user.email_verified
 
     # ------------------------------------------------------------------ session plumbing
     def authenticate(self, request: Request) -> Claims | None:
@@ -185,7 +242,9 @@ def install(app: FastAPI, auth: Auth) -> None:
         return {"choices": CHOICES, "consent_version": CONSENT_VERSION}
 
     @app.post("/v1/auth/signup", status_code=201)
-    def signup(body: Credentials, request: Request, response: Response) -> dict[str, Any]:
+    def signup(
+        body: Credentials, request: Request, response: Response, background: BackgroundTasks
+    ) -> dict[str, Any]:
         ip = auth.ip_of(request)
         if not auth.limiter.hit(f"signup:{ip}", 10, 3600):
             raise HTTPException(status_code=429, detail="too many sign-ups from here; try later")
@@ -202,6 +261,7 @@ def install(app: FastAPI, auth: Auth) -> None:
             ) from None
         auth._start_session(user.user_id, user.role, response)
         auth.audit(request, user.user_id, "signup")
+        background.add_task(auth.send_verification, user.user_id, user.email)
         return {"user_id": user.user_id, "needs_onboarding": True}
 
     @app.post("/v1/auth/login")
@@ -230,6 +290,54 @@ def install(app: FastAPI, auth: Auth) -> None:
             "user_id": user.user_id,
             "needs_onboarding": auth.store.get_profile(user.user_id) is None,
         }
+
+    # ------------------------------------------------------ email links: verify and reset
+    @app.post("/v1/auth/reset/request", status_code=202)
+    def reset_request(
+        body: EmailOnly, request: Request, background: BackgroundTasks
+    ) -> dict[str, str]:
+        """Always the same answer, whether or not the address is registered (no account list)."""
+        ip, email = auth.ip_of(request), normalise_email(body.email)
+        if not auth.limiter.hit(f"reset-ip:{ip}", 10, 3600):
+            raise HTTPException(status_code=429, detail="too many requests; try again later")
+        user = auth.store.by_email(email)
+        if user is not None and auth.limiter.hit(f"reset-email:{email}", 3, 3600):
+            auth.audit(request, user.user_id, "reset_requested")
+            background.add_task(auth.send_reset, user.user_id, user.email)
+        return {"status": "If that address has an account, a reset link is on its way."}
+
+    @app.post("/v1/auth/reset/confirm")
+    def reset_confirm(body: ResetConfirm, request: Request) -> dict[str, str]:
+        if not auth.limiter.hit(f"reset-confirm:{auth.ip_of(request)}", 20, 3600):
+            raise HTTPException(status_code=429, detail="too many attempts; try again later")
+        if problems := check_password(body.new_password, ""):
+            # checked first so a weak password does not use up the link
+            raise HTTPException(status_code=422, detail="; ".join(problems))
+        hashed = hash_refresh(body.token)
+        user_id = auth.store.consume_action_token(hashed, "reset", auth.clock())
+        user = auth.store.by_id(user_id) if user_id else None
+        if user is None:
+            raise HTTPException(status_code=400, detail=BAD_LINK)
+        if problems := check_password(body.new_password, user.email):
+            auth.store.add_action_token(user.user_id, "reset", hashed, auth.clock() + RESET_TTL)
+            raise HTTPException(status_code=422, detail="; ".join(problems))
+        auth.store.set_hash(user.user_id, hash_password(body.new_password))
+        auth.store.clear_failures(user.user_id)
+        auth.store.revoke_all(user.user_id)  # whoever had a session (maybe a thief) is out
+        auth.store.mark_email_verified(user.user_id)  # the link reached their inbox
+        auth.audit(request, user.user_id, "password_reset")
+        return {"status": "Your password is changed. Sign in with the new one."}
+
+    @app.post("/v1/auth/verify/confirm")
+    def verify_confirm(body: TokenOnly, request: Request) -> dict[str, str]:
+        if not auth.limiter.hit(f"verify-confirm:{auth.ip_of(request)}", 20, 3600):
+            raise HTTPException(status_code=429, detail="too many attempts; try again later")
+        user_id = auth.store.consume_action_token(hash_refresh(body.token), "verify", auth.clock())
+        if user_id is None:
+            raise HTTPException(status_code=400, detail=BAD_LINK)
+        auth.store.mark_email_verified(user_id)
+        auth.audit(request, user_id, "email_verified")
+        return {"status": "Your email is confirmed."}
 
     @app.post("/v1/auth/refresh")
     def refresh(request: Request, response: Response) -> dict[str, str]:
@@ -279,7 +387,22 @@ def install(app: FastAPI, auth: Auth) -> None:
             "role": user.role,
             "has_profile": auth.store.get_profile(user.user_id) is not None,
             "consent_version": auth.store.consent(user.user_id),
+            "email_verified": user.email_verified,
+            "verification_required": auth.require_verified,
         }
+
+    @app.post("/v1/me/verify/resend", status_code=202)
+    def resend_verification(request: Request, background: BackgroundTasks) -> dict[str, str]:
+        c = me(request)
+        user = auth.store.by_id(c.user_id)
+        if user is None:
+            raise HTTPException(status_code=401, detail="sign in to continue")
+        if user.email_verified:
+            return {"status": "Your email is already confirmed."}
+        if not auth.limiter.hit(f"verify-resend:{c.user_id}", 3, 3600):
+            raise HTTPException(status_code=429, detail="too many requests; try again later")
+        background.add_task(auth.send_verification, user.user_id, user.email)
+        return {"status": "A new link is on its way."}
 
     @app.get("/v1/me/profile")
     def get_profile(request: Request) -> dict[str, Any]:

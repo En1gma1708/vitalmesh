@@ -69,6 +69,7 @@ ol.steps li.last { color: var(--fg); }
 .answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
 .msg { font-size: 14px; margin-top: 8px; }
 .msg.err { color: var(--warn); }
+.banner { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
 </style>
 </head>
@@ -83,6 +84,11 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
       <button type="button" class="ghost" id="signout-btn">Sign out</button>
     </span>
   </header>
+  <div class="banner" id="verify-banner" hidden role="status">
+    <span>Confirm your email to ask questions. We sent you a link.</span>
+    <button type="button" class="ghost" id="resend-btn">Send it again</button>
+    <span class="sub" id="resend-msg"></span>
+  </div>
   <form id="delete-form" class="card" hidden>
     <h2>Delete your account</h2>
     <p class="sub">This removes your account, profile and health data for good. Type your password to confirm.</p>
@@ -141,6 +147,15 @@ async function boot() {
     uid = me.user_id;
     document.getElementById("account-bar").hidden = false;
     document.getElementById("who").textContent = me.email;
+    if (me.verification_required && !me.email_verified) {
+      document.getElementById("verify-banner").hidden = false;
+      document.getElementById("resend-btn").addEventListener("click", async () => {
+        const out = document.getElementById("resend-msg");
+        const r = await fetch("/v1/me/verify/resend", { method: "POST", headers: jsonHeaders() });
+        const b = await r.json().catch(() => ({}));
+        out.textContent = typeof b.status === "string" ? b.status : (typeof b.detail === "string" ? b.detail : "Please try later.");
+      });
+    }
   } else {
     document.getElementById("who").textContent = uid;
   }
@@ -339,7 +354,7 @@ $("ask-form").addEventListener("submit", async (ev) => {
     const r = await fetch(`/v1/users/${encodeURIComponent(uid)}/questions`, {
       method: "POST", headers: jsonHeaders(), body: JSON.stringify({ question: q }),
     });
-    if (!r.ok) { addStep(r.status === 404 ? "I don't have a profile for you yet." : "That didn't work. Please try again."); return; }
+    if (!r.ok) { addStep(r.status === 404 ? "I don't have a profile for you yet." : r.status === 403 ? "Please confirm your email first: use the link we sent you." : "That didn't work. Please try again."); return; }
     const out = await r.json();
     if (out.status === "declined") { addStep(out.message); return; }
     addStep("Sending your question.");

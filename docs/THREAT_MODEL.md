@@ -46,10 +46,11 @@ Scope: the web application (accounts, onboarding, questions, runs), the Kafka ag
 | T12 | SQL injection | All values are bound parameters; the only string-built SQL uses constant column lists (annotated for the scanner) | bandit, review |
 | T13 | Secrets in the repository | `.env` ignored; key-pattern scan and `git ls-files` check before every push; no real data from `private/` anywhere tracked | pre-push checks |
 | T14 | Sensitive data in logs or traces | Tokens, cookies and passwords are never logged; traces contain synthetic or public text only | review; D65 |
+| T15 | Account takeover through the email links, or enumeration of registered addresses | Reset and verify links are 32 random bytes, stored only as SHA-256, single use (atomic consume), expire (30 min and 24 h), tied to a purpose, and a newer link replaces the older; the token travels in the URL fragment so it never reaches a server log or Referer; the reset request answers identically for unknown addresses and sends mail in the background; weak passwords do not burn the link; a reset revokes every session | 7 of the 12 mutation-check rules, `test_security.py` |
 
 ## 5. Known gaps (stated, not hidden)
 
-- **No email verification or password reset yet.** Until a mail service exists, an account can be created with an address the person does not own. Planned next (link written to the log for demos).
+- **Email verification and password reset exist, but there is no mail service.** The local build writes the links to the server log, so a real person cannot receive one; a deployment needs an SMTP or mail-API sender, and `LogMailer` (which puts a token in a log) must not run with real users. Timing of the reset answer is equalised by sending in the background, not measured.
 - **No multi-factor authentication.**
 - **Local-only transport.** Cookies are `Secure` only when `VITALMESH_SECURE_COOKIES=1`; real HTTPS and a secret store (Azure Key Vault) arrive with the cloud phase.
 - **The input screen is weak** (a blocklist). The real defence is that the model cannot act: its output is verified and gated.

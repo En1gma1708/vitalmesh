@@ -435,6 +435,11 @@ def create_app(
         def welcome(request: Request) -> HTMLResponse:
             return page(request, "welcome.html")
 
+        @app.get("/reset", response_class=HTMLResponse)
+        @app.get("/verify", response_class=HTMLResponse)
+        def account_link(request: Request) -> HTMLResponse:
+            return page(request, "account.html")  # the token is in the #fragment, read by the page
+
         @app.get("/app", response_class=HTMLResponse)
         def my_app(request: Request) -> HTMLResponse:
             return page(request, "app.html")  # who you are comes from your session, not the URL
@@ -498,6 +503,8 @@ def create_app(
             raise HTTPException(status_code=422, detail="invalid user id")
         if profiles.get(user_id) is None:
             raise HTTPException(status_code=404, detail="no profile for this user")
+        if auth is not None and not auth.verified(user_id):
+            raise HTTPException(status_code=403, detail="confirm your email address first")
         if auth is not None and not auth.limiter.hit(f"ask:{user_id}", 20, 3600):
             # each question can spend model quota: the scarcest thing in the system
             raise HTTPException(status_code=429, detail="you have asked a lot this hour; try later")

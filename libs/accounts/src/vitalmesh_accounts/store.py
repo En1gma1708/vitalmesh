@@ -9,6 +9,8 @@ API layer stays thin and the security rules are testable without HTTP:
 * a refresh token is single-use; presenting an already-rotated one is REUSE (theft or a replayed
   copy) and revokes the whole session;
 * repeated failed logins lock the account for a while (``record_failure``);
+* a one-time link token (email verification, password reset) is stored only as a hash, expires,
+  can be used once, and a newer one for the same person and purpose replaces the older one;
 * the audit log is append-only from the application's side and holds no secrets, no passwords and
   no health data: who did what, when, from which address.
 """
@@ -28,6 +30,7 @@ from psycopg_pool import ConnectionPool
 
 MAX_FAILURES = 5
 LOCK_FOR = timedelta(minutes=15)
+PURPOSES = ("verify", "reset")
 
 
 class EmailTaken(Exception):
@@ -43,6 +46,7 @@ class User:
     failed_logins: int = 0
     locked_until: datetime | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    email_verified: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,11 @@ class AccountStore(Protocol):
     def audit(self, user_id: str | None, action: str, ip: str, detail: dict[str, Any]) -> None: ...
     def audit_entries(self, user_id: str) -> list[dict[str, Any]]: ...
     def delete_user(self, user_id: str) -> None: ...
+    def add_action_token(
+        self, user_id: str, purpose: str, token_hash: str, expires_at: datetime
+    ) -> None: ...
+    def consume_action_token(self, token_hash: str, purpose: str, now: datetime) -> str | None: ...
+    def mark_email_verified(self, user_id: str) -> None: ...
 
 
 # --------------------------------------------------------------------------------- in memory
@@ -101,6 +110,8 @@ class InMemoryAccountStore:
         self._profiles: dict[str, dict[str, Any]] = {}
         self._consent: dict[str, str] = {}
         self._audit: list[dict[str, Any]] = []
+        # token_hash -> (user_id, purpose, expires_at, used)
+        self._tokens: dict[str, tuple[str, str, datetime, bool]] = {}
 
     def create_user(self, email: str, pw_hash: str, role: str = "user") -> User:
         with self._lock:
@@ -211,8 +222,34 @@ class InMemoryAccountStore:
                 del self._sessions[sid]
             self._profiles.pop(user_id, None)
             self._consent.pop(user_id, None)
+            self._tokens = {h: t for h, t in self._tokens.items() if t[0] != user_id}
             # the audit trail keeps the fact of deletion but no longer identifies the account's data
             self._audit = [e for e in self._audit if e["user_id"] != user_id]
+
+    def add_action_token(
+        self, user_id: str, purpose: str, token_hash: str, expires_at: datetime
+    ) -> None:
+        with self._lock:
+            self._tokens = {
+                h: t for h, t in self._tokens.items() if not (t[0] == user_id and t[1] == purpose)
+            }
+            self._tokens[token_hash] = (user_id, purpose, expires_at, False)
+
+    def consume_action_token(self, token_hash: str, purpose: str, now: datetime) -> str | None:
+        with self._lock:
+            entry = self._tokens.get(token_hash)
+            if entry is None:
+                return None
+            user_id, kind, expires_at, used = entry
+            if kind != purpose or used or expires_at <= now:
+                return None
+            self._tokens[token_hash] = (user_id, kind, expires_at, True)
+            return user_id
+
+    def mark_email_verified(self, user_id: str) -> None:
+        with self._lock:
+            if user_id in self._users:
+                self._users[user_id] = replace(self._users[user_id], email_verified=True)
 
 
 # ----------------------------------------------------------------------------------- postgres
@@ -225,6 +262,14 @@ CREATE TABLE IF NOT EXISTS users (
   failed_logins int NOT NULL DEFAULT 0,
   locked_until timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
+CREATE TABLE IF NOT EXISTS action_tokens (
+  token_hash text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  purpose text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  used boolean NOT NULL DEFAULT false
 );
 CREATE TABLE IF NOT EXISTS sessions (
   session_id text PRIMARY KEY,
@@ -259,7 +304,7 @@ CREATE INDEX IF NOT EXISTS audit_user ON audit (user_id, at);
 
 
 def _user(row: Any) -> User:
-    return User(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
+    return User(row[0], row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]))
 
 
 def _session(row: Any) -> Session:
@@ -283,7 +328,10 @@ class PostgresAccountStore:
         with self._pool.connection() as conn:
             conn.execute(sql, args)
 
-    _USER = "user_id, email, pw_hash, role, failed_logins, locked_until, created_at"
+    _USER = (
+        "user_id, email, pw_hash, role, failed_logins, locked_until, created_at, "
+        "email_verified_at IS NOT NULL"
+    )
     _SESSION = "session_id, user_id, refresh_hash, previous_hash, expires_at, revoked"
 
     def create_user(self, email: str, pw_hash: str, role: str = "user") -> User:
@@ -419,6 +467,35 @@ class PostgresAccountStore:
         with self._pool.connection() as conn, conn.transaction():
             conn.execute("DELETE FROM audit WHERE user_id=%s", (user_id,))
             conn.execute("DELETE FROM users WHERE user_id=%s", (user_id,))  # cascades the rest
+
+    def add_action_token(
+        self, user_id: str, purpose: str, token_hash: str, expires_at: datetime
+    ) -> None:
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute(
+                "DELETE FROM action_tokens WHERE user_id=%s AND purpose=%s", (user_id, purpose)
+            )
+            conn.execute(
+                "INSERT INTO action_tokens (token_hash, user_id, purpose, expires_at) "
+                "VALUES (%s,%s,%s,%s)",
+                (token_hash, user_id, purpose, expires_at),
+            )
+
+    def consume_action_token(self, token_hash: str, purpose: str, now: datetime) -> str | None:
+        # one atomic statement: two simultaneous uses cannot both succeed
+        row = self._one(
+            "UPDATE action_tokens SET used=true WHERE token_hash=%s AND purpose=%s "
+            "AND NOT used AND expires_at > %s RETURNING user_id",
+            (token_hash, purpose, now),
+        )
+        return str(row[0]) if row else None
+
+    def mark_email_verified(self, user_id: str) -> None:
+        self._run(
+            "UPDATE users SET email_verified_at=COALESCE(email_verified_at, now()) "
+            "WHERE user_id=%s",
+            (user_id,),
+        )
 
 
 __all__ = [

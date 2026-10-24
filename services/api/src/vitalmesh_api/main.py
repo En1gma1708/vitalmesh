@@ -76,7 +76,11 @@ def build_app() -> FastAPI:
             purge=lambda uid: purge_user(client, uid),
             export_extra=lambda uid: export_user(client, uid),
             secure_cookies=os.environ.get("VITALMESH_SECURE_COOKIES", "") == "1",
+            base_url=os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000"),
+            # on by default: a person must confirm their email before questions spend model quota
+            require_verified=os.environ.get("VITALMESH_REQUIRE_VERIFIED", "1") != "0",
         )
+        log.warning("email links are written to this log (dev mailer); no mail service is set up")
     return create_app(
         profiles,
         SchemaRegistrySerde(settings),

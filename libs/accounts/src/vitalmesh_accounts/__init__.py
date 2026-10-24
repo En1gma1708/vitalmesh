@@ -1,5 +1,13 @@
 """Accounts and authentication (D75)."""
 
+from vitalmesh_accounts.mail import (
+    LogMailer,
+    Mailer,
+    Message,
+    OutboxMailer,
+    reset_message,
+    verification_message,
+)
 from vitalmesh_accounts.passwords import (
     check_email,
     check_password,
@@ -12,6 +20,7 @@ from vitalmesh_accounts.ratelimit import InMemoryRateLimiter, RateLimiter, Redis
 from vitalmesh_accounts.store import (
     LOCK_FOR,
     MAX_FAILURES,
+    PURPOSES,
     AccountStore,
     EmailTaken,
     InMemoryAccountStore,
@@ -36,6 +45,7 @@ __all__ = [
     "ACCESS_TTL_S",
     "LOCK_FOR",
     "MAX_FAILURES",
+    "PURPOSES",
     "REFRESH_TTL_S",
     "ROLES",
     "AccountStore",
@@ -43,6 +53,10 @@ __all__ = [
     "EmailTaken",
     "InMemoryAccountStore",
     "InMemoryRateLimiter",
+    "LogMailer",
+    "Mailer",
+    "Message",
+    "OutboxMailer",
     "PostgresAccountStore",
     "RateLimiter",
     "RedisRateLimiter",
@@ -58,6 +72,8 @@ __all__ = [
     "needs_rehash",
     "new_refresh_token",
     "normalise_email",
+    "reset_message",
     "secret_from_env",
+    "verification_message",
     "verify_password",
 ]

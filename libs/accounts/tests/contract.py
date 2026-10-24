@@ -75,7 +75,36 @@ def check_profile_consent_audit_delete(store: AccountStore) -> None:
     assert store.rotate("z1", "z2", NOW, NOW).status == "unknown"
 
 
+def check_action_tokens(store: AccountStore) -> None:
+    u = store.create_user("g@example.com", "h")
+    other = store.create_user("h@example.com", "h")
+    assert u.email_verified is False
+    exp = NOW + timedelta(minutes=30)
+    store.add_action_token(u.user_id, "reset", "t1", exp)
+    assert store.consume_action_token("t1", "verify", NOW) is None  # wrong purpose
+    assert store.consume_action_token("t1", "reset", NOW + timedelta(minutes=31)) is None  # expired
+    assert store.consume_action_token("t1", "reset", NOW) == u.user_id
+    assert store.consume_action_token("t1", "reset", NOW) is None  # single use
+    assert store.consume_action_token("never-issued", "reset", NOW) is None
+    # a newer link for the same person and purpose replaces the older one; others are untouched
+    store.add_action_token(u.user_id, "reset", "t2", exp)
+    store.add_action_token(u.user_id, "reset", "t3", exp)
+    store.add_action_token(other.user_id, "reset", "t4", exp)
+    assert store.consume_action_token("t2", "reset", NOW) is None
+    assert store.consume_action_token("t3", "reset", NOW) == u.user_id
+    assert store.consume_action_token("t4", "reset", NOW) == other.user_id
+    store.mark_email_verified(u.user_id)
+    store.mark_email_verified(u.user_id)  # idempotent
+    after, untouched = store.by_id(u.user_id), store.by_id(other.user_id)
+    assert after is not None and after.email_verified is True
+    assert untouched is not None and untouched.email_verified is False
+    store.add_action_token(u.user_id, "verify", "t5", exp)
+    store.delete_user(u.user_id)
+    assert store.consume_action_token("t5", "verify", NOW) is None  # gone with the account
+
+
 CHECKS = [
+    check_action_tokens,
     check_users,
     check_lockout,
     check_refresh_rotation,

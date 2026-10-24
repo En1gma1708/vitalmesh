@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>VitalMesh account</title>
+<style>
+:root {
+  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #66756d; --line: #dfe5e0;
+  --accent: #1f8a5b; --accent-soft: #d8efe3; --warn: #b4481a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+    --accent: #4cc38a; --accent-soft: #1f3a2d; --warn: #e8894a; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 480px; margin: 0 auto; padding: 32px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0 0 6px; }
+p { margin: 6px 0; }
+.sub { color: var(--muted); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-top: 18px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+input { width: 100%; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { width: 100%; margin-top: 18px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 11px; cursor: pointer; }
+button:disabled { opacity: .6; cursor: progress; }
+a { color: var(--accent); }
+.notice { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-top: 16px; }
+.err { color: var(--warn); font-size: 14px; margin-top: 10px; min-height: 1.2em; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>VitalMesh</h1>
+
+  <section class="card" id="verify" hidden>
+    <h2>Confirm your email</h2>
+    <p class="sub">One tap and your account can ask questions.</p>
+    <button class="primary" id="verify-btn" type="button">Confirm my email</button>
+    <div class="err" id="verify-err" role="alert"></div>
+  </section>
+
+  <section class="card" id="ask-reset" hidden>
+    <h2>Reset your password</h2>
+    <p class="sub">Enter your email. If it has an account, we send a link that works once for 30 minutes.</p>
+    <form id="ask-form" novalidate>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <button class="primary" id="ask-btn" type="submit">Send the link</button>
+      <div class="err" id="ask-err" role="alert"></div>
+    </form>
+  </section>
+
+  <section class="card" id="new-password" hidden>
+    <h2>Choose a new password</h2>
+    <p class="sub">At least 10 characters. A few ordinary words together is a good password. Using the link signs you out everywhere.</p>
+    <form id="new-form" novalidate>
+      <label for="pw1">New password</label>
+      <input id="pw1" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+      <label for="pw2">Repeat it</label>
+      <input id="pw2" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+      <button class="primary" id="new-btn" type="submit">Change password</button>
+      <div class="err" id="new-err" role="alert"></div>
+    </form>
+  </section>
+
+  <div class="notice" id="done" hidden role="status"><span id="done-text"></span> <a id="done-link" href="/">Continue</a></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const post = (path, body) => fetch(path, {
+  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+});
+function errorText(body, fallback) {
+  if (body && typeof body.detail === "string") return body.detail;
+  if (body && Array.isArray(body.detail) && body.detail[0]) return String(body.detail[0].msg || fallback).replace(/^Value error, /, "");
+  return fallback;
+}
+function finish(text, href, label) {
+  for (const id of ["verify", "ask-reset", "new-password"]) $(id).hidden = true;
+  $("done-text").textContent = text;
+  $("done-link").href = href; $("done-link").textContent = label;
+  $("done").hidden = false;
+}
+
+// The token lives in the #fragment: it never reaches the server or a Referer header by itself.
+const token = (location.hash.match(/token=([A-Za-z0-9_-]+)/) || [])[1] || "";
+if (token) history.replaceState(null, "", location.pathname);
+const verifying = location.pathname === "/verify";
+
+if (verifying) {
+  $("verify").hidden = false;
+  if (!token) { $("verify-btn").disabled = true; $("verify-err").textContent = "This link is incomplete. Open the whole link from the email."; }
+} else if (token) {
+  $("new-password").hidden = false;
+} else {
+  $("ask-reset").hidden = false;
+}
+
+$("verify-btn").addEventListener("click", async () => {
+  $("verify-err").textContent = ""; $("verify-btn").disabled = true;
+  try {
+    const r = await post("/v1/auth/verify/confirm", { token });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) { finish(body.status || "Your email is confirmed.", "/app", "Open the app"); return; }
+    $("verify-err").textContent = errorText(body, "That did not work."); $("verify-btn").disabled = false;
+  } catch (e) {
+    $("verify-err").textContent = "Could not reach the service. Please try again."; $("verify-btn").disabled = false;
+  }
+});
+
+$("ask-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("ask-err").textContent = ""; $("ask-btn").disabled = true;
+  try {
+    const r = await post("/v1/auth/reset/request", { email: $("email").value });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) { finish(body.status, "/", "Back to sign in"); return; }
+    $("ask-err").textContent = errorText(body, "That did not work."); $("ask-btn").disabled = false;
+  } catch (e) {
+    $("ask-err").textContent = "Could not reach the service. Please try again."; $("ask-btn").disabled = false;
+  }
+});
+
+$("new-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("new-err").textContent = "";
+  if ($("pw1").value !== $("pw2").value) { $("new-err").textContent = "The two passwords are not the same."; return; }
+  $("new-btn").disabled = true;
+  try {
+    const r = await post("/v1/auth/reset/confirm", { token, new_password: $("pw1").value });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) { $("pw1").value = ""; $("pw2").value = ""; finish(body.status, "/", "Sign in"); return; }
+    $("new-err").textContent = errorText(body, "That did not work."); $("new-btn").disabled = false;
+  } catch (e) {
+    $("new-err").textContent = "Could not reach the service. Please try again."; $("new-btn").disabled = false;
+  }
+});
+</script>
+</body>
+</html>
