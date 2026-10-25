@@ -26,7 +26,7 @@ from vitalmesh_accounts import (
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde, ensure_topics
 from vitalmesh_processor.history import RedisHistoryStore
 from vitalmesh_processor.labstore import RedisLabStore
-from vitalmesh_stores import RedisRunLog, export_user, purge_user
+from vitalmesh_stores import RedisPendingImports, RedisRunLog, export_user, purge_user
 from vitalmesh_t0.profiles import RedisProfileStore
 
 from vitalmesh_api.app import create_app
@@ -88,6 +88,7 @@ def build_app() -> FastAPI:
         labs=RedisLabStore(client),
         history=RedisHistoryStore(client),
         runs=RedisRunLog(client),
+        imports=RedisPendingImports(client),
         ops=lambda: {
             "tiers": _counts(client, "tiers:count"),
             "cohort": _counts(client, "cohort:stats"),

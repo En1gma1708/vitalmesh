@@ -18,6 +18,7 @@ PROFILE_PREFIX = "t0:profile"
 LABS_PREFIX = "labs"
 HISTORY_PREFIX = "hist"
 RUN_PREFIX = "run"
+PENDING_PREFIX = "pending-import"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -35,6 +36,7 @@ def purge_user(client: redis.Redis, user_id: str) -> int:
     _check(user_id)
     keys = [f"{PROFILE_PREFIX}:{user_id}", f"{LABS_PREFIX}:{user_id}"]
     keys += [_decode(k) for k in client.scan_iter(match=f"{HISTORY_PREFIX}:{user_id}:*")]
+    keys += [_decode(k) for k in client.scan_iter(match=f"{PENDING_PREFIX}:{user_id}:*")]
     return int(client.delete(*keys)) if keys else 0
 
 

@@ -18,13 +18,18 @@ from typing import Any
 import pytest
 from vitalmesh_accounts import Claims, InMemoryAccountStore, TokenError
 from vitalmesh_api import app as app_module
-from vitalmesh_api import security
+from vitalmesh_api import healthimport, security
+from vitalmesh_stores import InMemoryPendingImports
 
-TESTS = "services/api/tests/test_security.py"
+TESTS = [
+    "services/api/tests/test_security.py",
+    "services/api/tests/test_imports_api.py",
+    "services/api/tests/test_healthimport.py",
+]
 
 
 def run_tests() -> int:
-    return int(pytest.main(["-q", "-x", "-p", "no:cacheprovider", TESTS]))
+    return int(pytest.main(["-q", "-x", "-p", "no:cacheprovider", *TESTS]))
 
 
 class Mutation:
@@ -103,6 +108,21 @@ def add_keeping_older_links(
     self._tokens[token_hash] = (user_id, purpose, expires_at, False)
 
 
+def pending_ignoring_owner(self: Any, user_id: str, import_id: str) -> Any:
+    return next((v[1] for (_u, i), v in self._items.items() if i == import_id), None)
+
+
+def uncapped_read(self: Any, n: int = -1) -> bytes:
+    data: bytes = self._raw.read(n)
+    return data
+
+
+def _stdlib_iterparse() -> Callable[[], None]:
+    import xml.etree.ElementTree as stdlib
+
+    return patch(healthimport, "SafeET", stdlib)
+
+
 MUTATIONS = [
     Mutation("any user can read any user's data", _no_authorise),
     Mutation("CSRF check always passes", _csrf_always_ok),
@@ -132,6 +152,19 @@ MUTATIONS = [
     Mutation(
         "unconfirmed emails may ask questions",
         lambda: patch(security.Auth, "verified", lambda self, user_id: True),
+    ),
+    Mutation(
+        "another person can confirm my import",
+        lambda: patch(InMemoryPendingImports, "get", pending_ignoring_owner),
+    ),
+    Mutation("the XML parser expands entities", _stdlib_iterparse),
+    Mutation(
+        "a small zip may expand without limit",
+        lambda: patch(healthimport._Capped, "read", uncapped_read),
+    ),
+    Mutation(
+        "implausible imported values are not rejected",
+        lambda: patch(app_module, "validate_measurement", lambda m, now: None),
     ),
     Mutation(
         "the password policy is not applied",

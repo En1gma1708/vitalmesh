@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import re
+import secrets
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -29,6 +30,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
@@ -37,7 +39,7 @@ from vitalmesh_common.topics import QUESTIONS_ASKED, USER_EVENTS
 from vitalmesh_concierge.screen import REFUSALS, screen_question
 from vitalmesh_processor.history import HistoryStore
 from vitalmesh_processor.labstore import LabStore
-from vitalmesh_stores import RunLog
+from vitalmesh_stores import InMemoryPendingImports, PendingImports, RunLog
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
 from vitalmesh_wellness.calculators import OutOfRange
@@ -49,10 +51,18 @@ from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 
+from vitalmesh_api.healthimport import (
+    MAX_UPLOAD_BYTES,
+    ImportRefused,
+    parse_upload,
+    summarise,
+)
 from vitalmesh_api.runview import RunView, view_of
 from vitalmesh_api.security import Auth, install, require_self
 
 STATIC = Path(__file__).parent / "static"
+IMPORT_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+MAX_IMPORT_EVENTS = 2000
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_FUTURE = timedelta(minutes=5)
 _NAMESPACE = uuid.UUID("0c4e6d1a-3b2f-4f7a-9d58-2a1b7c9e4f10")
@@ -255,6 +265,7 @@ def create_app(
     stream_max_s: float = 300.0,
     stream_appear_s: float = 5.0,
     auth: Auth | None = None,
+    imports: PendingImports | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -272,7 +283,10 @@ def create_app(
             validate_measurement(m, clock())
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return emit_measurement(m)
 
+    def emit_measurement(m: MeasurementIn, flush: bool = True) -> Accepted:
+        """Publish one validated measurement (shared by the form and the file import)."""
         correlation_id = str(uuid.uuid4())
         event_id = (
             str(uuid.uuid5(_NAMESPACE, f"{m.user_id}:{m.client_event_id}"))
@@ -296,12 +310,113 @@ def create_app(
         try:
             data = serde.serialize_event(USER_EVENTS, meta, payload)
             publisher.publish(USER_EVENTS, m.user_id, data)
-            publisher.flush()
+            if flush:
+                publisher.flush()
         except EnvelopeError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:  # broker or registry down: tell the client to retry
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return Accepted(event_id=event_id, correlation_id=correlation_id)
+
+    if auth is not None:
+        pending: PendingImports = imports if imports is not None else InMemoryPendingImports()
+
+        def own_id(request: Request) -> str:
+            return str(request.state.claims.user_id)
+
+        @app.post("/v1/me/imports", status_code=201)
+        async def start_import(request: Request) -> dict[str, Any]:
+            """Read an uploaded health export and show what it holds. Stores nothing as data."""
+            user_id = own_id(request)
+            if not auth.limiter.hit(f"import:{user_id}", 5, 3600):
+                raise HTTPException(status_code=429, detail="too many uploads; try again later")
+            try:
+                declared = int(request.headers.get("content-length", "0"))
+            except ValueError:
+                declared = 0
+            if declared > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="that file is bigger than 50 MB")
+            body = bytearray()
+            async for chunk in request.stream():
+                body += chunk
+                if len(body) > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="that file is bigger than 50 MB")
+            now = clock()
+            try:
+                parsed = await run_in_threadpool(
+                    parse_upload, bytes(body), request.headers.get("x-filename", "")[:200], now
+                )
+            except ImportRefused as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            usable, rejected = [], 0
+            for r in parsed.readings:
+                candidate = MeasurementIn(
+                    user_id=user_id, metric_type=r.metric, value=r.value, unit=r.unit,
+                    measured_at=r.measured_at,
+                )  # fmt: skip
+                try:
+                    validate_measurement(candidate, now)
+                    usable.append(r)
+                except ValueError:
+                    rejected += 1  # implausible: never clamped, never stored
+            if not usable:
+                raise HTTPException(
+                    status_code=422, detail="I found no usable readings in that file and period."
+                )
+            if len(usable) > MAX_IMPORT_EVENTS:
+                raise HTTPException(status_code=422, detail="too many readings; send fewer days")
+            import_id = secrets.token_urlsafe(12)
+            pending.put(
+                user_id,
+                import_id,
+                {
+                    "source": parsed.source,
+                    "readings": [
+                        {"metric": r.metric, "day": r.day.isoformat(), "value": r.value,
+                         "unit": r.unit, "at": r.measured_at.isoformat()}
+                        for r in usable
+                    ],
+                },
+            )  # fmt: skip
+            return {
+                "import_id": import_id,
+                "source": parsed.source,
+                "total": len(usable),
+                "summary": summarise(usable),
+                "rejected": rejected,
+                "skipped": parsed.skipped,
+            }
+
+        @app.post("/v1/me/imports/{import_id}/confirm", status_code=202)
+        def confirm_import(import_id: str, request: Request) -> dict[str, int]:
+            user_id = own_id(request)
+            item = pending.get(user_id, import_id) if IMPORT_ID.match(import_id) else None
+            if item is None:
+                raise HTTPException(status_code=404, detail="that import expired; upload again")
+            sent = 0
+            for r in item["readings"]:
+                m = MeasurementIn(
+                    user_id=user_id, metric_type=r["metric"], value=r["value"], unit=r["unit"],
+                    measured_at=datetime.fromisoformat(r["at"]),
+                    # the same day and value always give the same id, so importing a file twice
+                    # does not double anything; a corrected value is a new reading
+                    client_event_id=f"imp:{r['metric']}:{r['day']}:{r['value']}",
+                )  # fmt: skip
+                validate_measurement(m, clock())
+                emit_measurement(m, flush=False)
+                sent += 1
+            try:
+                publisher.flush()
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
+            pending.delete(user_id, import_id)
+            return {"imported": sent}
+
+        @app.delete("/v1/me/imports/{import_id}")
+        def cancel_import(import_id: str, request: Request) -> dict[str, str]:
+            if IMPORT_ID.match(import_id):
+                pending.delete(own_id(request), import_id)
+            return {"status": "cancelled"}
 
     @app.post("/v1/labs", status_code=202, response_model=Accepted)
     def post_lab(m: LabIn, request: Request) -> Accepted:

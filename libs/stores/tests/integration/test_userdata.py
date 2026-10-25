@@ -10,6 +10,7 @@ from vitalmesh_stores import (
     ProfileRecord,
     RedisHistoryStore,
     RedisLabStore,
+    RedisPendingImports,
     RedisProfileStore,
     export_user,
     purge_user,
@@ -35,6 +36,7 @@ def seed(client: redis.Redis, uid: str) -> None:
     RedisProfileStore(client).put(ProfileRecord(profile=profile))
     now = datetime.now(UTC)
     RedisHistoryStore(client).add(uid, "body_weight", Point(now, 65.0, "kg"))
+    RedisPendingImports(client).put(uid, "abcdefgh1234", {"source": "csv", "readings": []})
     RedisLabStore(client).put(
         uid, interpret("LDL Cholesterol", now, value=128, unit="mg/dL", reference_text="< 100")
     )
@@ -48,8 +50,10 @@ def test_export_returns_what_is_held_and_purge_removes_only_that_person(
     seed(redis_client, b)
     held = export_user(redis_client, a)
     assert len(held["labs"]) == 1 and list(held["history"]) == ["body_weight"]
-    assert purge_user(redis_client, a) == 3  # profile, labs, one history series
+    assert purge_user(redis_client, a) == 4  # profile, labs, one history series, a pending import
     assert export_user(redis_client, a) == {"labs": [], "history": {}}
+    assert RedisPendingImports(redis_client).get(a, "abcdefgh1234") is None
+    assert RedisPendingImports(redis_client).get(b, "abcdefgh1234") is not None
     assert RedisProfileStore(redis_client).get(a) is None
     assert RedisProfileStore(redis_client).get(b) is not None  # the other person is untouched
     purge_user(redis_client, b)

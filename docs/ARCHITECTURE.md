@@ -127,6 +127,8 @@ Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its 
 
 ## 13b. Accounts and security (Phase 5b, D75)
 
+Health data can be brought in from a file (Apple Health export or CSV): the file is parsed to one value per metric per day, shown to the person, and stored only after they confirm (D79).
+
 The written threat model, with each defence tied to its test and the known gaps, is in [THREAT_MODEL.md](THREAT_MODEL.md); CI scans the locked dependencies (`pip-audit`) and the code (`bandit`) on every push.
 * **Identity:** `libs/accounts` (users, sessions, profiles, consent, audit in Postgres; an in-memory twin for tests). A person's id is random (`u-` + 16 hex) and the session, never the URL, says who they are.
 * **Gate:** `services/api/security.py` refuses every `/v1` route without a valid session except a short public list; `/v1/users/{id}/...` needs the session's own id (others get 404), operator routes need the operator role (an operator sees internals, not a person's health data), and a route nobody wrote a rule for is refused.

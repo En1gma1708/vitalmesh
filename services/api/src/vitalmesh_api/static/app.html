@@ -121,6 +121,23 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
       </form>
       <div class="msg" id="log-msg" role="status"></div>
     </section>
+    <section class="card wide" id="import-card" hidden>
+      <h2>Bring in your health data</h2>
+      <p class="sub">Choose an Apple Health export (export.zip) or a CSV. You see what is in it before anything is saved.</p>
+      <form class="row" id="import-form">
+        <input type="file" id="import-file" accept=".zip,.xml,.csv,.txt" aria-label="Health export file" required>
+        <button id="import-btn" type="submit">Read the file</button>
+      </form>
+      <div id="import-preview" hidden>
+        <table id="import-table"></table>
+        <p class="sub" id="import-note"></p>
+        <div class="row">
+          <button type="button" id="import-confirm">Save these readings</button>
+          <button type="button" class="ghost" id="import-cancel">Cancel</button>
+        </div>
+      </div>
+      <div class="msg" id="import-msg" role="status"></div>
+    </section>
     <section class="card wide"><h2>This week</h2><div class="rings" id="rings"></div></section>
     <section class="card"><h2>Weight</h2><div id="weight"></div></section>
     <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
@@ -146,6 +163,7 @@ async function boot() {
     if (!me.has_profile) { location.href = "/"; return false; }
     uid = me.user_id;
     document.getElementById("account-bar").hidden = false;
+    document.getElementById("import-card").hidden = false;
     document.getElementById("who").textContent = me.email;
     if (me.verification_required && !me.email_verified) {
       document.getElementById("verify-banner").hidden = false;
@@ -379,6 +397,50 @@ const METRICS = {
 Object.entries(METRICS).forEach(([k, [label]]) => { const o = document.createElement("option"); o.value = k; o.textContent = label; $("metric").appendChild(o); });
 const showUnit = () => { $("unit").textContent = METRICS[$("metric").value][1]; };
 $("metric").addEventListener("change", showUnit); showUnit();
+
+// ---- bring in a health export: read it, show it, save only on confirmation
+let pendingImport = null;
+const METRIC_NAMES = { body_weight: "Weight", resting_heart_rate: "Resting heart rate", sleep_duration: "Sleep", step_count: "Steps", active_minutes: "Active minutes", energy_intake: "Calories eaten" };
+function importDone(text) { pendingImport = null; $("import-preview").hidden = true; $("import-msg").textContent = text; }
+$("import-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const file = $("import-file").files[0], msg = $("import-msg");
+  msg.className = "msg"; msg.textContent = "";
+  if (!file) return;
+  $("import-btn").disabled = true; msg.textContent = "Reading the file. A big export can take half a minute.";
+  try {
+    const r = await fetch("/v1/me/imports", { method: "POST", headers: { "x-csrf-token": csrf(), "x-filename": file.name, "content-type": "application/octet-stream" }, body: file });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.className = "msg err"; msg.textContent = typeof body.detail === "string" ? body.detail : "That file could not be read."; return; }
+    pendingImport = body.import_id;
+    const table = $("import-table"); table.replaceChildren();
+    const head = table.insertRow(); for (const h of ["What", "Days", "From", "To", "Latest"]) { const c = document.createElement("th"); c.textContent = h; head.appendChild(c); }
+    for (const [metric, s] of Object.entries(body.summary)) {
+      const row = table.insertRow();
+      for (const v of [METRIC_NAMES[metric] || metric, s.days, s.from, s.to, `${s.latest} ${s.unit}`]) row.insertCell().textContent = String(v);
+    }
+    const skipped = Object.values(body.skipped).reduce((a, b) => a + b, 0);
+    $("import-note").textContent = `${body.total} daily readings found.` + (body.rejected ? ` ${body.rejected} looked implausible and will be left out.` : "") + (skipped ? ` ${skipped} other records were not used.` : "") + " Several devices that count the same thing are not added together.";
+    $("import-preview").hidden = false; msg.textContent = "";
+  } catch (e) {
+    msg.className = "msg err"; msg.textContent = "Could not reach the service. Please try again.";
+  } finally { $("import-btn").disabled = false; }
+});
+$("import-confirm").addEventListener("click", async () => {
+  if (!pendingImport) return;
+  $("import-confirm").disabled = true;
+  try {
+    const r = await fetch(`/v1/me/imports/${encodeURIComponent(pendingImport)}/confirm`, { method: "POST", headers: { "x-csrf-token": csrf() } });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) { importDone(`Saved ${body.imported} readings. Your charts update in a few seconds.`); setTimeout(main, 4000); }
+    else { $("import-msg").className = "msg err"; $("import-msg").textContent = typeof body.detail === "string" ? body.detail : "That did not work."; }
+  } catch (e) { $("import-msg").className = "msg err"; $("import-msg").textContent = "Could not reach the service. Please try again."; }
+  finally { $("import-confirm").disabled = false; }
+});
+$("import-cancel").addEventListener("click", async () => {
+  if (pendingImport) await fetch(`/v1/me/imports/${encodeURIComponent(pendingImport)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
+  importDone("Nothing was saved.");
+});
 
 $("log-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();

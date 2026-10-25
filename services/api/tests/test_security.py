@@ -20,7 +20,7 @@ from vitalmesh_api.app import create_app
 from vitalmesh_api.onboarding import CONSENT_VERSION
 from vitalmesh_api.security import CSRF_COOKIE, Auth
 from vitalmesh_common.testing import PlainSerde, RecordingPublisher
-from vitalmesh_stores import InMemoryRunLog
+from vitalmesh_stores import InMemoryPendingImports, InMemoryRunLog
 from vitalmesh_t0.profiles import InMemoryProfileStore
 
 SECRET = b"s" * 32
@@ -46,6 +46,8 @@ class World:
     def __init__(self, require_verified: bool = False) -> None:
         self.now = datetime.now(UTC)
         self.mailer = OutboxMailer()
+        self.mono = 0.0
+        self.imports = InMemoryPendingImports(clock=lambda: self.mono)
         self.store = InMemoryAccountStore()
         self.cache = InMemoryProfileStore()
         self.limiter = InMemoryRateLimiter()
@@ -65,7 +67,7 @@ class World:
         )
         self.app = create_app(
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
-            ops=lambda: {"tiers": {}, "cohort": {}},
+            imports=self.imports, ops=lambda: {"tiers": {}, "cohort": {}},
         )  # fmt: skip
 
     def client(self) -> TestClient:

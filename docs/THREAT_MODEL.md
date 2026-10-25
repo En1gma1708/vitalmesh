@@ -47,6 +47,7 @@ Scope: the web application (accounts, onboarding, questions, runs), the Kafka ag
 | T13 | Secrets in the repository | `.env` ignored; key-pattern scan and `git ls-files` check before every push; no real data from `private/` anywhere tracked | pre-push checks |
 | T14 | Sensitive data in logs or traces | Tokens, cookies and passwords are never logged; traces contain synthetic or public text only | review; D65 |
 | T15 | Account takeover through the email links, or enumeration of registered addresses | Reset and verify links are 32 random bytes, stored only as SHA-256, single use (atomic consume), expire (30 min and 24 h), tied to a purpose, and a newer link replaces the older; the token travels in the URL fragment so it never reaches a server log or Referer; the reset request answers identically for unknown addresses and sends mail in the background; weak passwords do not burn the link; a reset revokes every session | 7 of the 12 mutation-check rules, `test_security.py` |
+| T16 | A hostile uploaded file (XML entity bomb, file-reading entity, zip bomb, huge file) or a poisoned value | `defusedxml` refuses entities and external references; upload 50 MB, decompressed 400 MB, 3,000,000 records and 200,000 CSV rows caps; every value passes the same range checks as manual entry (rejected, never clamped); nothing is stored until the owner confirms, and the preview is readable only by its owner for 15 minutes | 4 of the 16 mutation-check rules, `test_healthimport.py`, `test_imports_api.py` |
 
 ## 5. Known gaps (stated, not hidden)
 
