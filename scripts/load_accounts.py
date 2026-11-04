@@ -31,6 +31,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import redis
@@ -194,15 +195,19 @@ def http_load(
         print(f"  !! {errors} non-200 answers of {len(lat)}")
 
 
-HELLO = "from fastapi import FastAPI\napp = FastAPI()\n@app.get('/healthz')\ndef h():\n    return {'status': 'ok'}\n"
+HELLO = (
+    "from fastapi import FastAPI\napp = FastAPI()\n"
+    "@app.get('/healthz')\ndef h():\n    return {'status': 'ok'}\n"
+)
 
 
 def ceiling(args: argparse.Namespace) -> None:
     """The generator against a do-nothing FastAPI app: the most any server here could show."""
     with tempfile.TemporaryDirectory() as tmp:
-        open(os.path.join(tmp, "hello_app.py"), "w", encoding="utf-8").write(HELLO)
+        Path(tmp, "hello_app.py").write_text(HELLO, encoding="utf-8")
+        command = [sys.executable, "-m", "uvicorn", "hello_app:app", "--port", "8001"]
         srv = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "hello_app:app", "--port", "8001", "--log-level", "error"],
+            [*command, "--log-level", "error"],
             cwd=tmp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )  # fmt: skip
         try:
