@@ -127,6 +127,8 @@ Studied from a real app (Mealie, AGPL-3.0, via runtime and static analysis; its 
 
 ## 13b. Accounts and security (Phase 5b, D75)
 
+A signed-in person can connect Google Calendar (one narrow permission, token encrypted at rest) and have workout times proposed around their events by deterministic code; events are written only after the person confirms (D80). Account-layer capacity was measured and sped up (D81, D82).
+
 Health data can be brought in from a file (Apple Health export or CSV): the file is parsed to one value per metric per day, shown to the person, and stored only after they confirm (D79).
 
 The written threat model, with each defence tied to its test and the known gaps, is in [THREAT_MODEL.md](THREAT_MODEL.md); CI scans the locked dependencies (`pip-audit`) and the code (`bandit`) on every push.

@@ -54,7 +54,7 @@ Scope: the web application (accounts, onboarding, questions, runs), the Kafka ag
 
 - **Email verification and password reset exist, but there is no mail service.** The local build writes the links to the server log, so a real person cannot receive one; a deployment needs an SMTP or mail-API sender, and `LogMailer` (which puts a token in a log) must not run with real users. Timing of the reset answer is equalised by sending in the background, not measured.
 - **No multi-factor authentication.**
-- **Google Calendar was tested against a simulated Google only;** PKCE for a web client and the revoke endpoint are used as documented but not yet confirmed live. In Testing mode Google expires the permission after 7 days and shows an unverified-app warning.
+- **Google Calendar was verified live once** (connect with PKCE and event creation worked against the real Google); the revoke endpoint on Disconnect and the expiry paths are not yet exercised live. In Testing mode Google expires the permission after 7 days and shows an unverified-app warning.
 - **Local-only transport.** Cookies are `Secure` only when `VITALMESH_SECURE_COOKIES=1`; real HTTPS and a secret store (Azure Key Vault) arrive with the cloud phase.
 - **The input screen is weak** (a blocklist). The real defence is that the model cannot act: its output is verified and gated.
 - **No penetration test or external review.** The mutation check proves our tests notice five removed rules; it does not prove there are no other holes.
