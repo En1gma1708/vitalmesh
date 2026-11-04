@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import jwt
 import pytest
@@ -132,3 +133,15 @@ def test_rate_limiter_allows_the_limit_then_blocks_until_the_window_passes() -> 
     assert rl.hit("k", 3, 60)
     rl.reset("k")
     assert rl.hit("k", 1, 60)
+
+
+def test_the_signing_secret_is_also_read_from_the_local_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VITALMESH_AUTH_SECRET", raising=False)
+    lines = ["OTHER=1", 'VITALMESH_AUTH_SECRET="' + "k" * 40 + '"']
+    (tmp_path / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert secret_from_env() == b"k" * 40  # the same secret every start, so sessions survive
+    monkeypatch.setenv("VITALMESH_AUTH_SECRET", "e" * 40)
+    assert secret_from_env() == b"e" * 40  # the real environment wins over the file

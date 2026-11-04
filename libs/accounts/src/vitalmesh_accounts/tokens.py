@@ -20,6 +20,7 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import jwt
 
@@ -44,9 +45,23 @@ class Claims:
     session_id: str
 
 
+def _dotenv_value(key: str, path: Path = Path(".env")) -> str:
+    """One value from the gitignored local ``.env`` (the other settings already read it)."""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            name, sep, value = line.partition("=")
+            if sep and name.strip() == key:
+                return value.strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
+
+
 def secret_from_env(env: dict[str, str] | None = None) -> bytes:
     source = os.environ if env is None else env
     raw = source.get("VITALMESH_AUTH_SECRET", "")
+    if not raw and env is None:
+        raw = _dotenv_value("VITALMESH_AUTH_SECRET")  # the real environment wins, then .env
     if raw:
         if len(raw.encode()) < MIN_SECRET_BYTES:
             raise ValueError(f"VITALMESH_AUTH_SECRET must be at least {MIN_SECRET_BYTES} bytes")
