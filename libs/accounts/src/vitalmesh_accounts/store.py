@@ -60,6 +60,15 @@ class Session:
 
 
 @dataclass(frozen=True)
+class AccountSummary:
+    """What the app's 'who am I' call needs, fetched in ONE query instead of four."""
+
+    user: User
+    has_profile: bool
+    consent_version: str | None
+
+
+@dataclass(frozen=True)
 class Connection:
     """A person's link to an outside service. The token is stored encrypted; this module never
     sees the plain text (the caller encrypts before ``put_connection``)."""
@@ -87,6 +96,7 @@ class AccountStore(Protocol):
     def create_user(self, email: str, pw_hash: str, role: str = "user") -> User: ...
     def by_email(self, email: str) -> User | None: ...
     def by_id(self, user_id: str) -> User | None: ...
+    def account_summary(self, user_id: str) -> AccountSummary | None: ...
     def record_failure(self, user_id: str, now: datetime) -> User: ...
     def clear_failures(self, user_id: str) -> None: ...
     def set_hash(self, user_id: str, pw_hash: str) -> None: ...
@@ -144,6 +154,12 @@ class InMemoryAccountStore:
 
     def by_id(self, user_id: str) -> User | None:
         return self._users.get(user_id)
+
+    def account_summary(self, user_id: str) -> AccountSummary | None:
+        user = self._users.get(user_id)
+        if user is None:
+            return None
+        return AccountSummary(user, user_id in self._profiles, self._consent.get(user_id))
 
     def record_failure(self, user_id: str, now: datetime) -> User:
         with self._lock:
@@ -392,6 +408,18 @@ class PostgresAccountStore:
         row = self._one(f"SELECT {self._USER} FROM users WHERE user_id=%s", (user_id,))  # nosec B608 - constant column list, values are bound parameters
         return _user(row) if row else None
 
+    def account_summary(self, user_id: str) -> AccountSummary | None:
+        row = self._one(
+            "SELECT u.user_id, u.email, u.pw_hash, u.role, u.failed_logins, u.locked_until, "
+            "u.created_at, u.email_verified_at IS NOT NULL, p.user_id IS NOT NULL, c.version "
+            "FROM users u LEFT JOIN profiles p ON p.user_id = u.user_id "
+            "LEFT JOIN consents c ON c.user_id = u.user_id WHERE u.user_id = %s",
+            (user_id,),
+        )
+        if row is None:
+            return None
+        return AccountSummary(_user(row), bool(row[8]), None if row[9] is None else str(row[9]))
+
     def record_failure(self, user_id: str, now: datetime) -> User:
         row = self._one(
             f"UPDATE users SET failed_logins = failed_logins + 1, "  # nosec B608 - constant column list, values are bound parameters
@@ -557,6 +585,7 @@ class PostgresAccountStore:
 
 __all__ = [
     "AccountStore",
+    "AccountSummary",
     "Connection",
     "EmailTaken",
     "InMemoryAccountStore",

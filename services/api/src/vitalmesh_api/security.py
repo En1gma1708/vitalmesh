@@ -27,6 +27,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
 from vitalmesh_accounts import (
     REFRESH_TTL_S,
     AccountStore,
@@ -220,23 +221,7 @@ def install(app: FastAPI, auth: Auth) -> None:
     """Add the account routes and the gate."""
 
     # ---------------------------------------------------------------------- the gate
-    @app.middleware("http")
-    async def gate(request: Request, call_next: Callable[[Request], Any]) -> Response:
-        request.state.nonce = secrets.token_urlsafe(16)
-        path, method = request.url.path, request.method
-        request.state.claims = None
-        if path.startswith("/v1/") and path not in PUBLIC:
-            claims = await run_in_threadpool(auth.authenticate, request)
-            if claims is None:
-                return _secured(request, sse_safe_error(401, "sign in to continue"), auth)
-            request.state.claims = claims
-            if method in UNSAFE and not _csrf_ok(request):
-                return _secured(request, sse_safe_error(403, "missing or wrong CSRF token"), auth)
-            denial = _authorise(path, claims)
-            if denial is not None:
-                return _secured(request, sse_safe_error(*denial), auth)
-        response: Response = await call_next(request)
-        return _secured(request, response, auth)
+    app.add_middleware(Gate, auth=auth)
 
     # --------------------------------------------------------------------- public routes
     @app.get("/v1/auth/choices")
@@ -380,15 +365,16 @@ def install(app: FastAPI, auth: Auth) -> None:
     @app.get("/v1/me")
     def get_me(request: Request) -> dict[str, Any]:
         c = me(request)
-        user = auth.store.by_id(c.user_id)
-        if user is None:
+        summary = auth.store.account_summary(c.user_id)  # one query, not four
+        if summary is None:
             raise HTTPException(status_code=401, detail="sign in to continue")
+        user = summary.user
         return {
             "user_id": user.user_id,
             "email": user.email,
             "role": user.role,
-            "has_profile": auth.store.get_profile(user.user_id) is not None,
-            "consent_version": auth.store.consent(user.user_id),
+            "has_profile": summary.has_profile,
+            "consent_version": summary.consent_version,
             "email_verified": user.email_verified,
             "verification_required": auth.require_verified,
         }
@@ -487,22 +473,70 @@ def require_self(request: Request, user_id: str) -> None:
         raise HTTPException(status_code=403, detail="you can only change your own data")
 
 
-def _secured(request: Request, response: Response, auth: Auth) -> Response:
-    nonce = getattr(request.state, "nonce", "")
-    h = response.headers
-    h["X-Content-Type-Options"] = "nosniff"
-    h["Referrer-Policy"] = "no-referrer"
-    h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
-    h["Cross-Origin-Opener-Policy"] = "same-origin"
-    h["Cross-Origin-Resource-Policy"] = "same-origin"
-    h["Content-Security-Policy"] = (
-        "default-src 'none'; "
-        f"script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; style-src-attr 'unsafe-inline'; "
-        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; "
-        "frame-ancestors 'none'"
-    )
-    if request.url.path.startswith("/v1/") or request.url.path.startswith("/app"):
+def security_headers(path: str, nonce: str, secure: bool) -> dict[str, str]:
+    """The headers every response carries; a page's script and style nonce is per response."""
+    h = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Security-Policy": (
+            "default-src 'none'; "
+            f"script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+            "style-src-attr 'unsafe-inline'; "
+            "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; "
+            "frame-ancestors 'none'"
+        ),
+    }
+    if path.startswith("/v1/") or path.startswith("/app"):
         h["Cache-Control"] = "no-store"
-    if auth.secure:
+    if secure:
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
+    return h
+
+
+class Gate:
+    """The deny-by-default gate as a plain ASGI middleware (D82).
+
+    Same rules as before, without the per-request wrapping that FastAPI's decorator middleware
+    adds: authenticate every non-public ``/v1`` route, check CSRF on state changes, apply the
+    authorisation policy, and put the security headers on every response (including the refusals
+    it writes itself). Streaming responses pass straight through."""
+
+    def __init__(self, app: Any, auth: Auth) -> None:
+        self.app, self.auth = app, auth
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        state = scope.setdefault("state", {})
+        nonce = secrets.token_urlsafe(16)
+        state["nonce"], state["claims"] = nonce, None
+        path, method = scope["path"], scope["method"]
+        headers = security_headers(path, nonce, self.auth.secure)
+
+        async def send_with_headers(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                out = MutableHeaders(scope=message)
+                for name, value in headers.items():
+                    out[name] = value
+            await send(message)
+
+        if path.startswith("/v1/") and path not in PUBLIC:
+            request = Request(scope, receive)
+            claims = await run_in_threadpool(self.auth.authenticate, request)
+            denial: tuple[int, str] | None = None
+            if claims is None:
+                denial = (401, "sign in to continue")
+            else:
+                state["claims"] = claims
+                if method in UNSAFE and not _csrf_ok(request):
+                    denial = (403, "missing or wrong CSRF token")
+                else:
+                    denial = _authorise(path, claims)
+            if denial is not None:
+                await sse_safe_error(*denial)(scope, receive, send_with_headers)
+                return
+        await self.app(scope, receive, send_with_headers)

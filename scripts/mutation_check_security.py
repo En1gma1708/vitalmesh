@@ -74,7 +74,7 @@ def _no_revocation() -> Callable[[], None]:
 
 
 def _no_headers() -> Callable[[], None]:
-    return patch(security, "_secured", lambda request, response, auth: response)
+    return patch(security, "security_headers", lambda path, nonce, secure: {})
 
 
 def consume_without_marking_used(

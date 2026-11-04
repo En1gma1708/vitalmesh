@@ -120,7 +120,22 @@ def check_connections(store: AccountStore) -> None:
     assert store.get_connection(u.user_id, "google") is None  # gone with the account
 
 
+def check_account_summary(store: AccountStore) -> None:
+    u = store.create_user("k@example.com", "h")
+    assert store.account_summary("u-nobody") is None
+    first = store.account_summary(u.user_id)
+    assert first is not None and first.user == store.by_id(u.user_id)
+    assert first.has_profile is False and first.consent_version is None
+    store.put_profile(u.user_id, {"sex": "female"})
+    store.put_consent(u.user_id, "v9", NOW)
+    store.mark_email_verified(u.user_id)
+    after = store.account_summary(u.user_id)
+    assert after is not None and after.has_profile is True and after.consent_version == "v9"
+    assert after.user.email_verified is True
+
+
 CHECKS = [
+    check_account_summary,
     check_connections,
     check_action_tokens,
     check_users,
