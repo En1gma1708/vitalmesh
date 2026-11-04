@@ -128,6 +128,8 @@ class Auth:
         self.profile_cache, self.purge, self.export_extra = profile_cache, purge, export_extra
         self.secure, self.clock = secure_cookies, clock
         self.mailer: Mailer = mailer or LogMailer()
+        # set by integrations: revoke outside permissions before the account's rows go
+        self.before_delete: Callable[[str], None] = lambda _uid: None
         self.base_url = base_url.rstrip("/")
         self.require_verified = require_verified
 
@@ -446,6 +448,7 @@ def install(app: FastAPI, auth: Auth) -> None:
         user = auth.store.by_id(c.user_id)
         if user is None or not verify_password(user.pw_hash, body.password):
             raise HTTPException(status_code=403, detail="the password is wrong")
+        auth.before_delete(c.user_id)  # outside permissions (Google) are revoked first
         auth.purge(c.user_id)  # health data in the read models
         auth.store.delete_user(c.user_id)  # account, sessions, profile, consent, audit
         Auth.clear_cookies(response)
@@ -461,6 +464,10 @@ def _authorise(path: str, claims: Claims) -> tuple[int, str] | None:
     m = _USER_PATH.match(path)
     if m:
         return None if m.group(1) == claims.user_id else (404, "not found")  # never confirm others
+    if path == "/v1/integrations/google/callback":
+        return (
+            None  # a redirect back from Google: the state is looked up under THIS session's person
+        )
     if path.startswith("/v1/ops/"):
         return None if claims.role == "operator" else (403, "operators only")
     return (404, "not found")  # deny by default: no rule for this route

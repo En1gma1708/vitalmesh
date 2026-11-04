@@ -138,6 +138,24 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
       </div>
       <div class="msg" id="import-msg" role="status"></div>
     </section>
+    <section class="card wide" id="cal-card" hidden>
+      <h2>Plan workouts around your calendar</h2>
+      <p class="sub" id="cal-intro">Connect Google Calendar and I will suggest workout times that fit around your events. Nothing is added until you say so.</p>
+      <div class="row" id="cal-connect-row"><button type="button" id="cal-connect">Connect Google Calendar</button></div>
+      <div id="cal-plan-row" hidden>
+        <form class="row" id="cal-form">
+          <select id="cal-minutes" aria-label="Length of each workout"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select>
+          <button type="submit" id="cal-find">Find times</button>
+          <button type="button" class="ghost" id="cal-disconnect">Disconnect</button>
+        </form>
+        <ul class="plain" id="cal-list"></ul>
+        <div class="row" id="cal-confirm-row" hidden>
+          <button type="button" id="cal-confirm">Add these to my calendar</button>
+          <button type="button" class="ghost" id="cal-cancel">Cancel</button>
+        </div>
+      </div>
+      <div class="msg" id="cal-msg" role="status"></div>
+    </section>
     <section class="card wide"><h2>This week</h2><div class="rings" id="rings"></div></section>
     <section class="card"><h2>Weight</h2><div id="weight"></div></section>
     <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
@@ -164,6 +182,7 @@ async function boot() {
     uid = me.user_id;
     document.getElementById("account-bar").hidden = false;
     document.getElementById("import-card").hidden = false;
+    document.getElementById("cal-card").hidden = false;
     document.getElementById("who").textContent = me.email;
     if (me.verification_required && !me.email_verified) {
       document.getElementById("verify-banner").hidden = false;
@@ -440,6 +459,64 @@ $("import-confirm").addEventListener("click", async () => {
 $("import-cancel").addEventListener("click", async () => {
   if (pendingImport) await fetch(`/v1/me/imports/${encodeURIComponent(pendingImport)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
   importDone("Nothing was saved.");
+});
+
+// ---- Google Calendar: connect, find times, add only after confirmation
+let proposalId = null;
+const calMsg = (text, bad = false) => { $("cal-msg").className = bad ? "msg err" : "msg"; $("cal-msg").textContent = text; };
+const post2 = (path, body) => fetch(path, { method: "POST", headers: jsonHeaders(), body: body === undefined ? undefined : JSON.stringify(body) });
+async function calStatus() {
+  const r = await fetch("/v1/me/integrations");
+  if (!r.ok) return;
+  const g = (await r.json()).google;
+  $("cal-connect-row").hidden = g.connected || !g.available;
+  $("cal-plan-row").hidden = !g.connected;
+  if (!g.available) calMsg("Google Calendar is not set up on this server yet.");
+}
+$("cal-connect").addEventListener("click", async () => {
+  const r = await post2("/v1/me/integrations/google/start");
+  const b = await r.json().catch(() => ({}));
+  if (r.ok && typeof b.url === "string") location.href = b.url; else calMsg(typeof b.detail === "string" ? b.detail : "That did not work.", true);
+});
+$("cal-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); calMsg(""); $("cal-find").disabled = true;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const r = await post2("/v1/me/schedule/propose", { minutes: Number($("cal-minutes").value), timezone: tz });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { calMsg(typeof b.detail === "string" ? b.detail : "That did not work.", true); return; }
+    proposalId = b.proposal_id;
+    const list = $("cal-list"); list.replaceChildren();
+    for (const s of b.sessions) {
+      const li = document.createElement("li");
+      li.textContent = new Date(s.start).toLocaleString(undefined, { weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + ` (${b.minutes} min)`;
+      list.appendChild(li);
+    }
+    $("cal-confirm-row").hidden = false;
+    calMsg(b.short_by ? `I could fit ${b.sessions.length} of ${b.wanted} sessions this week.` : `${b.total_minutes} minutes this week.`);
+  } catch (e) { calMsg("Could not reach the service. Please try again.", true); }
+  finally { $("cal-find").disabled = false; }
+});
+$("cal-confirm").addEventListener("click", async () => {
+  if (!proposalId) return;
+  const r = await post2(`/v1/me/schedule/${encodeURIComponent(proposalId)}/confirm`);
+  const b = await r.json().catch(() => ({}));
+  if (r.ok) { proposalId = null; $("cal-confirm-row").hidden = true; $("cal-list").replaceChildren(); calMsg(`Added ${b.created} workouts to your calendar` + (b.already_there ? ` (${b.already_there} were already there).` : ".")); }
+  else calMsg(typeof b.detail === "string" ? b.detail : "That did not work.", true);
+});
+$("cal-cancel").addEventListener("click", async () => {
+  if (proposalId) await fetch(`/v1/me/schedule/${encodeURIComponent(proposalId)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
+  proposalId = null; $("cal-confirm-row").hidden = true; $("cal-list").replaceChildren(); calMsg("Nothing was added.");
+});
+$("cal-disconnect").addEventListener("click", async () => {
+  await fetch("/v1/me/integrations/google", { method: "DELETE", headers: { "x-csrf-token": csrf() } });
+  proposalId = null; $("cal-list").replaceChildren(); $("cal-confirm-row").hidden = true; await calStatus(); calMsg("Google Calendar is disconnected.");
+});
+calStatus().then(() => {
+  const h = location.hash;
+  if (h === "#google=connected") calMsg("Google Calendar is connected.");
+  if (h === "#google=failed") calMsg("Google Calendar was not connected. Please try again.", true);
+  if (h.startsWith("#google=")) history.replaceState(null, "", location.pathname);
 });
 
 $("log-form").addEventListener("submit", async (ev) => {

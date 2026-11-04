@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from vitalmesh_accounts import (
     MAX_FAILURES,
@@ -17,6 +18,7 @@ from vitalmesh_accounts import (
     hash_password,
 )
 from vitalmesh_api.app import create_app
+from vitalmesh_api.googlecal import TokenBox
 from vitalmesh_api.onboarding import CONSENT_VERSION
 from vitalmesh_api.security import CSRF_COOKIE, Auth
 from vitalmesh_common.testing import PlainSerde, RecordingPublisher
@@ -43,7 +45,7 @@ PROFILE: dict[str, Any] = {
 
 
 class World:
-    def __init__(self, require_verified: bool = False) -> None:
+    def __init__(self, require_verified: bool = False, google: Any = None) -> None:
         self.now = datetime.now(UTC)
         self.mailer = OutboxMailer()
         self.mono = 0.0
@@ -67,7 +69,8 @@ class World:
         )
         self.app = create_app(
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
-            imports=self.imports, ops=lambda: {"tiers": {}, "cohort": {}},
+            imports=self.imports, google=google, token_box=TokenBox(Fernet.generate_key()),
+            ops=lambda: {"tiers": {}, "cohort": {}},
         )  # fmt: skip
 
     def client(self) -> TestClient:

@@ -103,7 +103,25 @@ def check_action_tokens(store: AccountStore) -> None:
     assert store.consume_action_token("t5", "verify", NOW) is None  # gone with the account
 
 
+def check_connections(store: AccountStore) -> None:
+    u = store.create_user("i@example.com", "h")
+    other = store.create_user("j@example.com", "h")
+    assert store.get_connection(u.user_id, "google") is None
+    store.put_connection(u.user_id, "google", "enc-1", "calendar.events")
+    store.put_connection(u.user_id, "google", "enc-2", "calendar.events")  # reconnect replaces
+    got = store.get_connection(u.user_id, "google")
+    assert got is not None and got.token_enc == "enc-2" and got.scope == "calendar.events"
+    assert store.get_connection(other.user_id, "google") is None  # never another person's
+    assert store.get_connection(u.user_id, "other-provider") is None
+    store.delete_connection(u.user_id, "google")
+    assert store.get_connection(u.user_id, "google") is None
+    store.put_connection(u.user_id, "google", "enc-3", "calendar.events")
+    store.delete_user(u.user_id)
+    assert store.get_connection(u.user_id, "google") is None  # gone with the account
+
+
 CHECKS = [
+    check_connections,
     check_action_tokens,
     check_users,
     check_lockout,

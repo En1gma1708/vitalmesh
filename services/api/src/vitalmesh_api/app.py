@@ -51,12 +51,14 @@ from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 
+from vitalmesh_api.googlecal import GoogleClient, TokenBox
 from vitalmesh_api.healthimport import (
     MAX_UPLOAD_BYTES,
     ImportRefused,
     parse_upload,
     summarise,
 )
+from vitalmesh_api.integrations import install_integrations
 from vitalmesh_api.runview import RunView, view_of
 from vitalmesh_api.security import Auth, install, require_self
 
@@ -266,6 +268,8 @@ def create_app(
     stream_appear_s: float = 5.0,
     auth: Auth | None = None,
     imports: PendingImports | None = None,
+    google: GoogleClient | None = None,
+    token_box: TokenBox | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -323,6 +327,8 @@ def create_app(
 
         def own_id(request: Request) -> str:
             return str(request.state.claims.user_id)
+
+        install_integrations(app, auth, google, token_box or TokenBox(), pending, clock)
 
         @app.post("/v1/me/imports", status_code=201)
         async def start_import(request: Request) -> dict[str, Any]:

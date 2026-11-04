@@ -60,6 +60,18 @@ class Session:
 
 
 @dataclass(frozen=True)
+class Connection:
+    """A person's link to an outside service. The token is stored encrypted; this module never
+    sees the plain text (the caller encrypts before ``put_connection``)."""
+
+    user_id: str
+    provider: str
+    token_enc: str
+    scope: str
+    connected_at: datetime
+
+
+@dataclass(frozen=True)
 class Rotation:
     """Result of presenting a refresh token."""
 
@@ -98,6 +110,9 @@ class AccountStore(Protocol):
     ) -> None: ...
     def consume_action_token(self, token_hash: str, purpose: str, now: datetime) -> str | None: ...
     def mark_email_verified(self, user_id: str) -> None: ...
+    def put_connection(self, user_id: str, provider: str, token_enc: str, scope: str) -> None: ...
+    def get_connection(self, user_id: str, provider: str) -> Connection | None: ...
+    def delete_connection(self, user_id: str, provider: str) -> None: ...
 
 
 # --------------------------------------------------------------------------------- in memory
@@ -112,6 +127,7 @@ class InMemoryAccountStore:
         self._audit: list[dict[str, Any]] = []
         # token_hash -> (user_id, purpose, expires_at, used)
         self._tokens: dict[str, tuple[str, str, datetime, bool]] = {}
+        self._connections: dict[tuple[str, str], Connection] = {}
 
     def create_user(self, email: str, pw_hash: str, role: str = "user") -> User:
         with self._lock:
@@ -223,6 +239,7 @@ class InMemoryAccountStore:
             self._profiles.pop(user_id, None)
             self._consent.pop(user_id, None)
             self._tokens = {h: t for h, t in self._tokens.items() if t[0] != user_id}
+            self._connections = {k: c for k, c in self._connections.items() if k[0] != user_id}
             # the audit trail keeps the fact of deletion but no longer identifies the account's data
             self._audit = [e for e in self._audit if e["user_id"] != user_id]
 
@@ -251,6 +268,19 @@ class InMemoryAccountStore:
             if user_id in self._users:
                 self._users[user_id] = replace(self._users[user_id], email_verified=True)
 
+    def put_connection(self, user_id: str, provider: str, token_enc: str, scope: str) -> None:
+        with self._lock:
+            self._connections[(user_id, provider)] = Connection(
+                user_id, provider, token_enc, scope, datetime.now(UTC)
+            )
+
+    def get_connection(self, user_id: str, provider: str) -> Connection | None:
+        return self._connections.get((user_id, provider))
+
+    def delete_connection(self, user_id: str, provider: str) -> None:
+        with self._lock:
+            self._connections.pop((user_id, provider), None)
+
 
 # ----------------------------------------------------------------------------------- postgres
 MIGRATION = """
@@ -270,6 +300,14 @@ CREATE TABLE IF NOT EXISTS action_tokens (
   purpose text NOT NULL,
   expires_at timestamptz NOT NULL,
   used boolean NOT NULL DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS connections (
+  user_id text NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  token_enc text NOT NULL,
+  scope text NOT NULL,
+  connected_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, provider)
 );
 CREATE TABLE IF NOT EXISTS sessions (
   session_id text PRIMARY KEY,
@@ -490,6 +528,25 @@ class PostgresAccountStore:
         )
         return str(row[0]) if row else None
 
+    def put_connection(self, user_id: str, provider: str, token_enc: str, scope: str) -> None:
+        self._run(
+            "INSERT INTO connections (user_id, provider, token_enc, scope) VALUES (%s,%s,%s,%s) "
+            "ON CONFLICT (user_id, provider) DO UPDATE SET token_enc=EXCLUDED.token_enc, "
+            "scope=EXCLUDED.scope, connected_at=now()",
+            (user_id, provider, token_enc, scope),
+        )
+
+    def get_connection(self, user_id: str, provider: str) -> Connection | None:
+        row = self._one(
+            "SELECT user_id, provider, token_enc, scope, connected_at FROM connections "
+            "WHERE user_id=%s AND provider=%s",
+            (user_id, provider),
+        )
+        return Connection(row[0], row[1], row[2], row[3], row[4]) if row else None
+
+    def delete_connection(self, user_id: str, provider: str) -> None:
+        self._run("DELETE FROM connections WHERE user_id=%s AND provider=%s", (user_id, provider))
+
     def mark_email_verified(self, user_id: str) -> None:
         self._run(
             "UPDATE users SET email_verified_at=COALESCE(email_verified_at, now()) "
@@ -500,6 +557,7 @@ class PostgresAccountStore:
 
 __all__ = [
     "AccountStore",
+    "Connection",
     "EmailTaken",
     "InMemoryAccountStore",
     "PostgresAccountStore",

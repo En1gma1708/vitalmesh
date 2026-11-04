@@ -30,6 +30,7 @@ from vitalmesh_stores import RedisPendingImports, RedisRunLog, export_user, purg
 from vitalmesh_t0.profiles import RedisProfileStore
 
 from vitalmesh_api.app import create_app
+from vitalmesh_api.googlecal import GoogleClient, TokenBox, config_from_env
 from vitalmesh_api.onboarding import ProfileIn
 from vitalmesh_api.security import Auth
 
@@ -81,6 +82,10 @@ def build_app() -> FastAPI:
             require_verified=os.environ.get("VITALMESH_REQUIRE_VERIFIED", "1") != "0",
         )
         log.warning("email links are written to this log (dev mailer); no mail service is set up")
+    base_url = os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000")
+    google_cfg = config_from_env(base_url)
+    if google_cfg is None:
+        log.warning("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set: Calendar connection is off")
     return create_app(
         profiles,
         SchemaRegistrySerde(settings),
@@ -89,6 +94,8 @@ def build_app() -> FastAPI:
         history=RedisHistoryStore(client),
         runs=RedisRunLog(client),
         imports=RedisPendingImports(client),
+        google=GoogleClient(google_cfg) if google_cfg else None,
+        token_box=TokenBox.from_env(),
         ops=lambda: {
             "tiers": _counts(client, "tiers:count"),
             "cohort": _counts(client, "cohort:stats"),

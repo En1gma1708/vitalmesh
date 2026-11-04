@@ -18,13 +18,15 @@ from typing import Any
 import pytest
 from vitalmesh_accounts import Claims, InMemoryAccountStore, TokenError
 from vitalmesh_api import app as app_module
-from vitalmesh_api import healthimport, security
+from vitalmesh_api import googlecal, healthimport, integrations, security
 from vitalmesh_stores import InMemoryPendingImports
 
 TESTS = [
     "services/api/tests/test_security.py",
     "services/api/tests/test_imports_api.py",
     "services/api/tests/test_healthimport.py",
+    "services/api/tests/test_google_api.py",
+    "services/api/tests/test_scheduler.py",
 ]
 
 
@@ -165,6 +167,22 @@ MUTATIONS = [
     Mutation(
         "implausible imported values are not rejected",
         lambda: patch(app_module, "validate_measurement", lambda m, now: None),
+    ),
+    Mutation(
+        "a Google sign-in state can be used twice",
+        lambda: patch(InMemoryPendingImports, "delete", lambda self, user_id, import_id: None),
+    ),
+    Mutation(
+        "the Google refresh token is stored in plain text",
+        lambda: patch(googlecal.TokenBox, "seal", lambda self, text: text),
+    ),
+    Mutation(
+        "workouts are scheduled for people with a declared condition",
+        lambda: patch(integrations, "refusal_for", lambda conditions: None),
+    ),
+    Mutation(
+        "the PKCE verifier does not match the challenge",
+        lambda: patch(integrations, "pkce_pair", lambda: ("v" * 60, "not-the-challenge")),
     ),
     Mutation(
         "the password policy is not applied",
