@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from vitalmesh.events.v1 import common_pb2, payloads_pb2
+from vitalmesh_accounts import QaHistory
 from vitalmesh_common.envelope import EventMeta
 from vitalmesh_common.processor import Handler
 from vitalmesh_common.run import risk_from_proto, specialist_from_proto
@@ -137,10 +138,29 @@ def entry_from_event(meta: EventMeta, payload: Any) -> dict[str, Any] | None:
     return entry
 
 
-def make_tracker_handler(log: RunLog) -> Handler:
+_ANSWER_FIELDS = ("text", "partial", "missing", "claims", "citations")
+
+
+def _remember(history: QaHistory, meta: EventMeta, entry: dict[str, Any]) -> None:
+    """Keep what the person was shown (their question, the released answer) beyond the run log."""
+    t, cid, uid, at = entry["type"], meta.correlation_id, meta.user_id, meta.occurred_at
+    if t == "question.asked":
+        history.record_question(uid, cid, entry["question"], at)
+    elif t == "recommendation.released":
+        history.record_answer(uid, cid, "released", {k: entry[k] for k in _ANSWER_FIELDS}, at)
+    elif t == "recommendation.blocked":
+        history.record_answer(uid, cid, "blocked", None, at)
+    elif t == "review.requested":
+        history.record_answer(uid, cid, "needs_review", None, at)
+
+
+def make_tracker_handler(log: RunLog, history: QaHistory | None = None) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
         entry = entry_from_event(meta, payload)
-        if entry is not None:
-            log.append(meta.correlation_id, meta.user_id, entry)
+        if entry is None:
+            return
+        log.append(meta.correlation_id, meta.user_id, entry)
+        if history is not None:
+            _remember(history, meta, entry)
 
     return handle

@@ -4,21 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VitalMesh</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23208a5f'/%3E%3Cpath d='M5 17h6l3-8 4 15 3-7h6' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #66756d; --line: #dfe5e0;
-  --accent: #1f8a5b; --accent-soft: #d8efe3; --warn: #c2571a; --grid: #e9eeea; --avg: #1b5fa8;
+  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #5a6a61; --line: #dfe5e0;
+  --accent: #16724b; --on-accent: #ffffff; --accent-soft: #d8efe3; --warn: #b34f16; --grid: #e9eeea; --avg: #1b5fa8;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
-    --accent: #4cc38a; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
+    --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
-  --accent: #4cc38a; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
+  --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -37,6 +38,9 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; le
 .ring .big { font-size: 20px; font-weight: 650; }
 .ring .lab { font-size: 12px; color: var(--muted); }
 svg { width: 100%; height: auto; display: block; }
+[hidden] { display: none !important; }
+caption { text-align: left; padding-bottom: 6px; }
+.ring svg { width: 104px; height: 104px; margin: 0 auto; }
 .axis { fill: var(--muted); font-size: 10px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .dot { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
@@ -55,7 +59,7 @@ ul.plain li { margin: 4px 0; }
 form.row { display: flex; gap: 8px; flex-wrap: wrap; }
 input, select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; min-width: 0; }
 input.grow { flex: 1 1 240px; }
-button { cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+button { cursor: pointer; background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 button.ghost { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; font-size: 13px; padding: 5px 10px; }
 button:disabled { opacity: .6; cursor: progress; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
@@ -67,6 +71,16 @@ ol.steps li.last { color: var(--fg); }
 .answer .text { font-size: 16px; margin: 0 0 8px; }
 .note { color: var(--warn); font-size: 14px; margin: 6px 0; }
 .answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.answer h3 { font-size: 13px; margin: 12px 0 0; color: var(--muted); font-weight: 600; }
+#history details { border-top: 1px solid var(--line); padding: 10px 0; }
+#history details:first-child { border-top: 0; }
+#history summary { cursor: pointer; display: block; font-size: 15px; list-style: none; }
+#history summary .sub { display: block; margin-left: 22px; }
+#history summary::-webkit-details-marker { display: none; }
+#history summary::before { content: "\25B8" / ""; color: var(--accent); margin-right: 8px; display: inline-block; transition: transform 0.15s; }
+#history details[open] summary::before { transform: rotate(90deg); }
+#history .answer { margin-top: 10px; padding-top: 10px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .msg { font-size: 14px; margin-top: 8px; }
 .msg.err { color: var(--warn); }
 .banner { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
@@ -109,7 +123,11 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
       </form>
       <div class="chips" id="chips"></div>
       <ol class="steps" id="steps" aria-live="polite"></ol>
-      <div id="answer" class="answer" hidden></div>
+      <div id="answer" class="answer" hidden aria-live="polite"></div>
+    </section>
+    <section class="card wide" id="history-card" hidden>
+      <h2>Recent questions</h2>
+      <div id="history"></div>
     </section>
     <section class="card wide" id="log-card">
       <h2>Log something</h2>
@@ -213,7 +231,8 @@ function el(name, attrs = {}, text) {
 
 function frame(host, w, h) {
   host.innerHTML = "";
-  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img" });
+  const title = host.closest("section")?.querySelector("h2")?.textContent || "Chart";
+  const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": `${title} chart` });
   host.appendChild(svg);
   return svg;
 }
@@ -230,12 +249,18 @@ function niceRange(values, pad = 0.1) {
   return [lo - p, hi + p];
 }
 
-function axes(svg, x0, x1, y0, y1, yDomain, xDomain, ticks = 4) {
+// Round tick steps (1, 2, 5 x 10^n) so axes read 0, 3, 6, 9 and never 2.6, 5.2, 7.8.
+function niceStep(span, n = 4) {
+  const raw = (span || 1) / n, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+}
+
+function axes(svg, x0, x1, y0, y1, yDomain, xDomain) {
   const y = scale(yDomain, [y1, y0]);
-  for (let i = 0; i <= ticks; i++) {
-    const v = yDomain[0] + ((yDomain[1] - yDomain[0]) * i) / ticks;
+  const step = niceStep(yDomain[1] - yDomain[0]);
+  for (let v = Math.ceil(yDomain[0] / step - 1e-9) * step; v <= yDomain[1] + 1e-9; v += step) {
     svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: css("--grid") }));
-    svg.appendChild(el("text", { x: x0 - 6, y: y(v) + 3, "text-anchor": "end", class: "axis" }, v.toFixed(v < 20 ? 1 : 0)));
+    svg.appendChild(el("text", { x: x0 - 6, y: y(v) + 3, "text-anchor": "end", class: "axis" }, step < 1 ? v.toFixed(1) : String(Math.round(v * 10) / 10)));
   }
   if (xDomain) {
     for (let i = 0; i <= 3; i++) {
@@ -267,13 +292,15 @@ function lineChart(host, s, unit) {
   svg.appendChild(el("path", { d: path(s.points), fill: "none", stroke: css("--accent"), "stroke-width": 1.2, opacity: 0.55 }));
   s.points.forEach((p) => svg.appendChild(el("circle", { cx: x(+new Date(p.t)), cy: y(p.v), r: 2, fill: css("--accent"), opacity: 0.6 })));
   if (s.average.length) svg.appendChild(el("path", { d: path(s.average), fill: "none", stroke: css("--avg"), "stroke-width": 2.4 }));
+  svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${last(s.points).v} ${unit} on ${fmtDay(last(s.points).t)}, ${s.points.length} days shown`);
   legend(host, [[css("--accent"), `Daily (${unit})`], ...(s.average.length ? [[css("--avg"), "7-day average"]] : [])]);
 }
 
 function barChart(host, bars, opts) {
   if (!bars.length) { host.innerHTML = '<div class="empty">No data yet.</div>'; return; }
   const W = 480, H = 220, x0 = 38, x1 = W - 8, y0 = 10, y1 = H - 24;
-  const max = Math.max(...bars.map((b) => b.v), opts.line || 0) * 1.15;
+  const top0 = Math.max(...bars.map((b) => b.v), opts.line || 0, 1);
+  const max = Math.ceil((top0 * 1.05) / niceStep(top0)) * niceStep(top0);
   const svg = frame(host, W, H);
   const y = axes(svg, x0, x1, y0, y1, [0, max], null);
   const bw = (x1 - x0) / bars.length;
@@ -288,6 +315,7 @@ function barChart(host, bars, opts) {
   if (opts.line) {
     svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(opts.line), y2: y(opts.line), stroke: css("--warn"), "stroke-width": 1.6, "stroke-dasharray": "5 4" }));
   }
+  svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${Math.round(last(bars).v * 10) / 10} on ${last(bars).label}${opts.line ? `, target ${Math.round(opts.line * 10) / 10}` : ""}`);
   legend(host, [[css("--accent"), opts.label], ...(opts.line ? [[css("--warn"), opts.lineLabel]] : [])]);
 }
 
@@ -295,7 +323,7 @@ function ring(host, value, goal, label, unit) {
   const r = 38, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(value / goal, 1));
   const wrap = document.createElement("div");
   wrap.className = "ring";
-  const svg = el("svg", { viewBox: "0 0 100 100", width: 104, height: 104 });
+  const svg = el("svg", { viewBox: "0 0 100 100", width: 104, height: 104, role: "img", "aria-label": `${label}: ${Math.round(frac * 100)} percent of your goal` });
   svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--grid"), "stroke-width": 9 }));
   svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
   svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:17px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
@@ -331,15 +359,17 @@ async function main() {
 
   $("numbers").innerHTML = rec ? rec.items.map((i) => `<li>${i.text} <span class="sub">(${i.basis.toLowerCase()})</span></li>`).join("") : '<li class="empty">No recommendation is available right now.</li>';
 
-  $("labs").innerHTML = labs && labs.length
-    ? `<table><tr><th>Test</th><th>Result</th><th>Range</th><th></th></tr>${labs.map((l) => `<tr><td>${l.name}</td><td>${l.value ?? l.text} ${l.unit ?? ""}</td><td>${l.reference_range || "-"}</td><td><span class="tag ${l.status.replace(" ", "")}">${l.status}</span></td></tr>`).join("")}</table>`
+  // The store keeps every collection of a test; the page shows the latest of each.
+  const latestLabs = labs ? [...new Map([...labs].sort((a, b) => new Date(a.collected_at) - new Date(b.collected_at)).map((l) => [l.name.trim().toLowerCase(), l])).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
+  $("labs").innerHTML = latestLabs.length
+    ? `<table><caption class="sub">Latest result of each test</caption><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Range</th><th scope="col">Status</th></tr>${latestLabs.map((l) => `<tr><td>${l.name}</td><td>${l.value ?? l.text} ${l.unit ?? ""}</td><td>${l.reference_range || "-"}</td><td><span class="tag ${l.status.replace(" ", "")}">${l.status}</span></td></tr>`).join("")}</table>`
     : '<div class="empty">No lab results yet.</div>';
 
   $("meals").innerHTML = plan && plan.days.length
     ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${m.meal}</b>${m.title}<div class="sub">${m.kcal} kcal &middot; ${m.protein_g} g protein &middot; portion ${m.portion}</div></div>`).join("")}</div>`
     : '<div class="empty">No meal plan is available right now.</div>';
 }
-boot().then((ok) => { if (ok) main(); });
+boot().then((ok) => { if (ok) { main(); loadHistory(); } });
 
 // ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
 const SAMPLES = ["How many calories should I eat?", "How much should I sleep?", "What should I eat and how should I train this week?"];
@@ -370,14 +400,43 @@ function showAnswer(view) {
     box.innerHTML = '<p class="text">A clinician needs to look at this before you see an answer. You will be told when it is ready.</p>';
     return;
   }
-  const a = view.answer;
-  if (!a) return;
+  if (!view.answer) return;
+  box.innerHTML = answerHtml(view.answer);
+  loadHistory();
+}
+
+function answerHtml(a) {
   const items = a.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("");
   const sources = a.sources.map((s) => `<li>${esc(s.document)} ${esc(s.locator)} <span class="sub">(${esc(s.licence)})</span>${/^https:\/\//.test(s.url) ? ` <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">open</a>` : ""}</li>`).join("");
-  box.innerHTML = `<p class="text">${esc(a.text)}</p>`
+  return `<p class="text">${esc(a.text)}</p>`
     + (a.partial_note ? `<p class="note">${esc(a.partial_note)}</p>` : "")
-    + (items ? `<h2>Why</h2><ul>${items}</ul>` : "")
-    + (sources ? `<h2 style="margin-top:12px">Sources</h2><ul>${sources}</ul>` : "");
+    + (items ? `<h3>Why</h3><ul>${items}</ul>` : "")
+    + (sources ? `<h3>Sources</h3><ul>${sources}</ul>` : "");
+}
+
+// ---- Recent questions: kept in the database, so they are still here tomorrow.
+const WAITING = { asked: "Still being worked on.", needs_review: "A clinician is looking at this before you see an answer.", blocked: BLOCKED };
+async function loadHistory() {
+  const items = await get(`/v1/users/${encodeURIComponent(uid)}/history?limit=10`);
+  $("history-card").hidden = !items || !items.length;
+  if (!items || !items.length) return;
+  const host = $("history");
+  host.innerHTML = "";
+  for (const it of items) {
+    const d = document.createElement("details");
+    const s = document.createElement("summary");
+    s.textContent = `${it.question || "(question not recorded)"} `;
+    const when = document.createElement("span");
+    when.className = "sub";
+    when.textContent = new Date(it.asked_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    s.appendChild(when);
+    d.appendChild(s);
+    const body = document.createElement("div");
+    body.className = "answer";
+    body.innerHTML = it.answer ? answerHtml(it.answer) : `<p class="text">${esc(WAITING[it.status] || "No answer was recorded.")}</p>`;
+    d.appendChild(body);
+    host.appendChild(d);
+  }
 }
 
 $("ask-form").addEventListener("submit", async (ev) => {
@@ -466,6 +525,7 @@ let proposalId = null;
 const calMsg = (text, bad = false) => { $("cal-msg").className = bad ? "msg err" : "msg"; $("cal-msg").textContent = text; };
 const post2 = (path, body) => fetch(path, { method: "POST", headers: jsonHeaders(), body: body === undefined ? undefined : JSON.stringify(body) });
 async function calStatus() {
+  if (location.pathname !== "/app") return; // the legacy seeded page has no accounts
   const r = await fetch("/v1/me/integrations");
   if (!r.ok) return;
   const g = (await r.json()).google;

@@ -1,5 +1,13 @@
 """Accounts and authentication (D75)."""
 
+from vitalmesh_accounts.history import (
+    KEEP,
+    InMemoryQaHistory,
+    PostgresQaHistory,
+    QaEntry,
+    QaHistory,
+    qa_export,
+)
 from vitalmesh_accounts.mail import (
     LogMailer,
     Mailer,
@@ -45,6 +53,7 @@ from vitalmesh_accounts.tokens import (
 
 __all__ = [
     "ACCESS_TTL_S",
+    "KEEP",
     "LOCK_FOR",
     "MAX_FAILURES",
     "PURPOSES",
@@ -56,12 +65,16 @@ __all__ = [
     "Connection",
     "EmailTaken",
     "InMemoryAccountStore",
+    "InMemoryQaHistory",
     "InMemoryRateLimiter",
     "LogMailer",
     "Mailer",
     "Message",
     "OutboxMailer",
     "PostgresAccountStore",
+    "PostgresQaHistory",
+    "QaEntry",
+    "QaHistory",
     "RateLimiter",
     "RedisRateLimiter",
     "Rotation",
@@ -76,6 +89,7 @@ __all__ = [
     "needs_rehash",
     "new_refresh_token",
     "normalise_email",
+    "qa_export",
     "reset_message",
     "secret_from_env",
     "verification_message",

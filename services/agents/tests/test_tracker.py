@@ -52,3 +52,17 @@ def test_the_cache_hit_run_is_recorded_as_tier_t1_with_no_specialist_entries() -
     assert record is not None
     assert next(e for e in record.entries if e["type"] == "run.planned")["tier"] == "T1"
     assert "advice.completed" not in [e["type"] for e in record.entries]
+
+
+def test_the_tracker_keeps_the_question_and_the_released_answer_beyond_the_run_log() -> None:
+    from vitalmesh_accounts import InMemoryQaHistory
+
+    qa = InMemoryQaHistory()
+    out = run(InMemoryRunLog(), qa=qa)
+    [entry] = qa.recent("u-1")
+    assert entry.correlation_id == out.correlation_id
+    assert entry.question == "What should I eat and how should I train?"
+    assert entry.status == "released" and entry.answer is not None
+    assert entry.answer["text"] == out.text
+    # only what the person was shown, nothing internal
+    assert set(entry.answer) == {"text", "partial", "missing", "claims", "citations"}

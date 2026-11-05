@@ -32,6 +32,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from vitalmesh.events.v1 import payloads_pb2
+from vitalmesh_accounts import KEEP, QaHistory
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.processor import EventSerde, Publisher
@@ -59,7 +60,7 @@ from vitalmesh_api.healthimport import (
     summarise,
 )
 from vitalmesh_api.integrations import install_integrations
-from vitalmesh_api.runview import RunView, view_of
+from vitalmesh_api.runview import Answer, RunView, answer_of, view_of
 from vitalmesh_api.security import Auth, install, require_self
 
 STATIC = Path(__file__).parent / "static"
@@ -154,6 +155,14 @@ class QuestionOut(BaseModel):
     status: str  # "accepted" (a run started) or "declined" (screened out, nothing was started)
     correlation_id: str | None = None
     message: str | None = None
+
+
+class QaItem(BaseModel):
+    correlation_id: str
+    question: str
+    status: str  # asked | released | blocked | needs_review
+    asked_at: datetime
+    answer: Answer | None
 
 
 class OpsTiersOut(BaseModel):
@@ -270,6 +279,7 @@ def create_app(
     imports: PendingImports | None = None,
     google: GoogleClient | None = None,
     token_box: TokenBox | None = None,
+    qa: QaHistory | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -652,6 +662,26 @@ def create_app(
         except Exception as exc:  # broker or registry down: tell the client to retry
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return QuestionOut(status="accepted", correlation_id=correlation_id)
+
+    @app.get("/v1/users/{user_id}/history", response_model=list[QaItem])
+    def get_history(user_id: str, limit: int = 10) -> list[QaItem]:
+        """The person's recent questions with the answers they were shown (kept in Postgres)."""
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        if qa is None:
+            return []
+        return [
+            QaItem(
+                correlation_id=e.correlation_id,
+                question=e.question,
+                status=e.status,
+                asked_at=e.asked_at,
+                answer=answer_of([{"type": "recommendation.released", **e.answer}])
+                if e.answer
+                else None,
+            )
+            for e in qa.recent(user_id, max(1, min(limit, KEEP)))
+        ]
 
     def _run_entries(user_id: str, correlation_id: str) -> list[dict[str, Any]]:
         if runs is None:

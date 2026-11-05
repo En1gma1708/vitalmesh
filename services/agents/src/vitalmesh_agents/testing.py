@@ -6,6 +6,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 
+from vitalmesh_accounts import QaHistory
 from vitalmesh_common.run import Specialist
 from vitalmesh_evidence.types import EvidenceAnswer
 from vitalmesh_llm import LLMRequest, LLMResponse, ToolCall
@@ -104,6 +105,7 @@ def world(
     load: Load = Load.NORMAL,
     extra_users: int = 0,
     runlog: RunLog | None = None,
+    qa: QaHistory | None = None,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
     profiles = InMemoryProfileStore()
     profiles.put(
@@ -192,6 +194,7 @@ def world(
             cohort=cohort,
             load=load,
             runlog=runlog,
+            qa=qa,
         )
     )
     return bus, router, clock

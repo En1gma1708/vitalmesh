@@ -32,6 +32,7 @@ from types import FrameType
 from typing import Any
 
 import redis
+from vitalmesh_accounts import PostgresQaHistory
 from vitalmesh_common.idempotency import RedisIdempotencyStore
 from vitalmesh_common.kafka import (
     KafkaPublisher,
@@ -159,7 +160,9 @@ class Runtime:
                 tiers=RedisTierCounter(self.redis),
             )
         if role == "tracker":
-            return make_tracker_handler(RedisRunLog(self.redis))
+            history = PostgresQaHistory(DB_DSN)  # what the person was shown outlives the run log
+            self.stack.callback(history.close)
+            return make_tracker_handler(RedisRunLog(self.redis), history)
         if role in ("cohort", "cachefill"):
             deps = SpecialistDeps(
                 router=self.router,  # never called: the T1 roles use deterministic tools only

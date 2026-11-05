@@ -19,8 +19,10 @@ import uvicorn
 from fastapi import FastAPI
 from vitalmesh_accounts import (
     PostgresAccountStore,
+    PostgresQaHistory,
     RedisRateLimiter,
     TokenIssuer,
+    qa_export,
     secret_from_env,
 )
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde, ensure_topics
@@ -64,6 +66,7 @@ def build_app() -> FastAPI:
     client = redis.Redis.from_url(os.environ.get("VITALMESH_REDIS_URL", "redis://127.0.0.1:6379/0"))
     profiles = RedisProfileStore(client)
     auth: Auth | None = None
+    qa = PostgresQaHistory(DB_DSN)  # recent questions and the answers shown (D83)
     if os.environ.get("VITALMESH_AUTH", "on").lower() == "off":
         log.warning("VITALMESH_AUTH=off: no sign-in, any reachable user id can be read. Demo only.")
     else:
@@ -74,8 +77,8 @@ def build_app() -> FastAPI:
             TokenIssuer(secret_from_env()),
             RedisRateLimiter(client),
             profiles,
-            purge=lambda uid: purge_user(client, uid),
-            export_extra=lambda uid: export_user(client, uid),
+            purge=lambda uid: purge_user(client, uid) + qa.purge(uid),
+            export_extra=lambda uid: {**export_user(client, uid), "questions": qa_export(qa, uid)},
             secure_cookies=os.environ.get("VITALMESH_SECURE_COOKIES", "") == "1",
             base_url=os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000"),
             # on by default: a person must confirm their email before questions spend model quota
@@ -96,6 +99,7 @@ def build_app() -> FastAPI:
         imports=RedisPendingImports(client),
         google=GoogleClient(google_cfg) if google_cfg else None,
         token_box=TokenBox.from_env(),
+        qa=qa,
         ops=lambda: {
             "tiers": _counts(client, "tiers:count"),
             "cohort": _counts(client, "cohort:stats"),
