@@ -489,7 +489,7 @@ def security_headers(path: str, nonce: str, secure: bool) -> dict[str, str]:
             "frame-ancestors 'none'"
         ),
     }
-    if path.startswith("/v1/") or path.startswith("/app"):
+    if path.startswith(("/v1/", "/app", "/ops")):
         h["Cache-Control"] = "no-store"
     if secure:
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

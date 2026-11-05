@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VitalMesh engineering console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23208a5f'/%3E%3Cpath d='M5 17h6l3-8 4 15 3-7h6' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #5a6a61; --line: #dfe5e0;
+  --accent: #16724b; --on-accent: #ffffff; --accent-soft: #d8efe3; --warn: #b34f16; --warn-soft: #f7e3d6;
+  --t0: #5a6a61; --t1: #1b5fa8; --t2: #8a5a00; --t3: #16724b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+    --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --warn-soft: #3a2616;
+    --t0: #93a39a; --t1: #6aa8f0; --t2: #e0b34a; --t3: #4cc38a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+  --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --warn-soft: #3a2616;
+  --t0: #93a39a; --t1: #6aa8f0; --t2: #e0b34a; --t3: #4cc38a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.sub { color: var(--muted); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.notice { background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; margin-top: 16px; }
+button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 5px 12px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.scroll { overflow-x: auto; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.bar > span { display: block; min-width: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.kpis { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+.kpi b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+tr.pick { cursor: pointer; }
+tr.pick:hover, tr.sel { background: var(--accent-soft); }
+.tag { border-radius: 6px; padding: 1px 8px; font-size: 12px; background: var(--accent-soft); }
+.tag.bad { background: var(--warn-soft); color: var(--warn); }
+.flow { margin: 10px 0 0; padding: 0; list-style: none; }
+.flow li { display: grid; grid-template-columns: minmax(120px, 220px) minmax(40px, 1fr) auto; gap: 10px; align-items: center; padding: 4px 0; font-size: 13px; }
+.flow .track { height: 10px; background: var(--line); border-radius: 5px; position: relative; }
+.flow .tick { position: absolute; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--accent); }
+.empty { color: var(--muted); }
+footer { margin-top: 24px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Engineering console</h1>
+    <span>
+      <span class="sub" id="stamp"></span>
+      <button type="button" id="auto" aria-pressed="true">Auto-refresh: on</button>
+      <button type="button" id="now">Refresh now</button>
+    </span>
+  </header>
+  <div class="notice" id="denied" role="alert" hidden></div>
+
+  <div class="grid" id="panels">
+    <section class="card" aria-labelledby="h-tiers">
+      <h2 id="h-tiers">How runs were planned</h2>
+      <div class="kpis" id="tier-kpis"></div>
+      <div class="bar" id="tier-bar" role="img" aria-label="Share of runs per tier"></div>
+      <div class="legend" id="tier-legend"></div>
+      <p class="sub" id="tier-note"></p>
+    </section>
+
+    <section class="card" aria-labelledby="h-lat">
+      <h2 id="h-lat">Answer time (question asked to answer released)</h2>
+      <div class="kpis" id="lat-kpis"></div>
+      <div class="scroll"><table id="lat-tier"></table></div>
+      <p class="sub" id="lat-note"></p>
+    </section>
+
+    <section class="card wide" aria-labelledby="h-runs">
+      <h2 id="h-runs">Recent runs (the run log keeps one hour)</h2>
+      <div class="scroll"><table id="runs"></table></div>
+      <div id="flow-box" hidden>
+        <h2 style="margin-top:18px">Flow of the selected run</h2>
+        <ul class="flow" id="flow"></ul>
+        <p class="sub" id="flow-note"></p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-lag">
+      <h2 id="h-lag">Consumer lag (messages not yet processed)</h2>
+      <div class="scroll"><table id="lag"></table></div>
+      <p class="sub" id="lag-note"></p>
+    </section>
+
+    <section class="card" aria-labelledby="h-ev">
+      <h2 id="h-ev">Eval baselines (committed)</h2>
+      <div class="scroll"><table id="evals"></table></div>
+      <p class="sub">These are the saved results of the last baseline runs checked into the repository, not a live run. A suite below its total is a known, written-up weakness, not a hidden one.</p>
+    </section>
+  </div>
+
+  <footer>Operators only. This page shows how runs flow and how long they take, never what a person asked or was told: question and answer text are removed on the server. Times come from the time each event was stamped by the service that produced it. Numbers are over the runs still in the run log, so percentiles say how many runs they cover.</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const TIER_COLOUR = { T0: "var(--t0)", T1: "var(--t1)", T2: "var(--t2)", T3: "var(--t3)" };
+let timer = null, selected = null;
+
+function cell(tr, text, cls) {
+  const td = tr.insertCell();
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
+}
+function head(table, names) {
+  table.innerHTML = "";
+  const tr = table.createTHead().insertRow();
+  names.forEach((n, i) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = n; if (i && n.startsWith("#")) th.className = "num"; tr.appendChild(th); });
+  return table.createTBody();
+}
+const ms = (v) => (v == null ? "-" : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${v} ms`);
+const pct = (v) => (v == null ? "-" : `${Math.round(v * 100)}%`);
+const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+async function get(path) {
+  const r = await fetch(path, { headers: { accept: "application/json" } });
+  if (r.status === 401) { const e = new Error("signin"); e.status = 401; throw e; }
+  if (r.status === 403) { const e = new Error("operators"); e.status = 403; throw e; }
+  return r.ok ? r.json() : null;
+}
+function kpi(host, label, value) {
+  const d = document.createElement("div"); d.className = "kpi";
+  const b = document.createElement("b"); b.textContent = value;
+  d.appendChild(b); d.append(label); host.appendChild(d);
+}
+
+function drawTiers(t) {
+  const host = $("tier-kpis"); host.innerHTML = "";
+  if (!t) { $("tier-note").textContent = "Tier counts are not available on this server."; return; }
+  kpi(host, "runs planned", t.planned);
+  kpi(host, "answered without a model", pct(t.no_model_share));
+  kpi(host, "answered from the cohort cache", pct(t.cache_hit_share));
+  const bar = $("tier-bar"), legend = $("tier-legend");
+  bar.innerHTML = ""; legend.innerHTML = "";
+  for (const tier of ["T0", "T1", "T2", "T3"]) {
+    const n = t.tiers[tier] || 0;
+    if (t.planned) { const s = document.createElement("span"); s.style.width = `${(100 * n) / t.planned}%`; s.style.background = TIER_COLOUR[tier]; bar.appendChild(s); }
+    const l = document.createElement("span");
+    const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = TIER_COLOUR[tier];
+    l.appendChild(dot); l.append(`${tier}: ${n}`); legend.appendChild(l);
+  }
+  $("tier-note").textContent = "T0 no model (also used when the system sheds load), T1 cohort cache, T2 one specialist, T3 the full multi-agent graph. Counts since the counters were last reset.";
+}
+
+function drawLatency(d) {
+  const host = $("lat-kpis"); host.innerHTML = "";
+  if (!d) return;
+  kpi(host, "median (p50)", ms(d.latency.p50_ms));
+  kpi(host, "p95", ms(d.latency.p95_ms));
+  kpi(host, "finished runs counted", d.latency.runs);
+  const body = head($("lat-tier"), ["Tier", "# runs", "# p50", "# p95"]);
+  for (const [tier, p] of Object.entries(d.latency_by_tier)) {
+    const tr = body.insertRow(); cell(tr, tier); cell(tr, p.runs, "num"); cell(tr, ms(p.p50_ms), "num"); cell(tr, ms(p.p95_ms), "num");
+  }
+  $("lat-note").textContent = d.latency.runs < 20 ? `Only ${d.latency.runs} finished runs are in the log, so these percentiles are coarse: a p95 over fewer than 20 runs is close to the slowest run.` : "Nearest-rank percentiles over the finished runs in the run log.";
+}
+
+function drawRuns(d) {
+  const body = head($("runs"), ["Started", "Tier", "Status", "Helpers", "# Model calls", "# Time"]);
+  if (!d || !d.runs.length) { $("runs").tBodies[0].insertRow().insertCell().textContent = "No runs in the last hour."; return; }
+  for (const r of d.runs) {
+    const tr = body.insertRow(); tr.className = "pick" + (r.correlation_id === selected ? " sel" : ""); tr.tabIndex = 0;
+    tr.setAttribute("aria-label", `Show the flow of the run started ${clock(r.started_at)}`);
+    const open = () => { selected = r.correlation_id; loadFlow(); drawRuns(d); };
+    tr.addEventListener("click", open);
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    cell(tr, clock(r.started_at)); cell(tr, r.tier || "-");
+    const st = cell(tr, ""); const tag = document.createElement("span"); tag.className = "tag" + (r.status === "blocked" ? " bad" : ""); tag.textContent = r.status + (r.partial ? " (partial)" : "") + (r.degraded ? " (degraded)" : ""); st.appendChild(tag);
+    cell(tr, r.specialists.join(", ") || "-"); cell(tr, r.model_calls, "num"); cell(tr, ms(r.total_ms), "num");
+  }
+}
+
+async function loadFlow() {
+  if (!selected) return;
+  const d = await get(`/v1/ops/runs/${encodeURIComponent(selected)}`);
+  const box = $("flow-box"), list = $("flow"); list.innerHTML = "";
+  if (!d) { box.hidden = true; return; }
+  box.hidden = false;
+  const total = Math.max(d.summary.hops.length ? d.summary.hops[d.summary.hops.length - 1].at_ms : 1, 1);
+  let prev = 0;
+  for (const h of d.summary.hops) {
+    const gap = h.at_ms - prev; prev = h.at_ms;
+    const li = document.createElement("li");
+    const name = document.createElement("span"); name.textContent = h.type;
+    const track = document.createElement("span"); track.className = "track";
+    const tick = document.createElement("span"); tick.className = "tick"; tick.style.left = `calc(${(100 * h.at_ms) / total}% - 2px)`; track.appendChild(tick);
+    const t = document.createElement("span"); t.className = "num"; t.textContent = gap > 0 ? `${ms(h.at_ms)} (+${ms(gap)})` : ms(h.at_ms);
+    li.append(name, track, t); list.appendChild(li);
+  }
+  $("flow-note").textContent = `Run ${d.summary.correlation_id}: when each event was stamped, measured from the question being asked; the bracket is the wait since the previous event. Tier ${d.summary.tier || "unknown"}, risk ${d.summary.risk || "unknown"}, ${d.summary.model_calls} model calls.`;
+}
+
+function drawLag(rows) {
+  const body = head($("lag"), ["Agent role", "Topics read", "# Waiting"]);
+  if (rows === null) { $("lag-note").textContent = "The broker did not answer (or lag is not enabled)."; return; }
+  if (!rows.length) { $("lag-note").textContent = "No consumer groups are connected: the agents and processor are not running."; return; }
+  const worst = Math.max(...rows.map((r) => r.lag));
+  for (const r of rows) {
+    const tr = body.insertRow(); cell(tr, r.group); cell(tr, r.topics.join(", ")); const c = cell(tr, r.lag, "num"); if (r.lag > 0) c.style.color = "var(--warn)";
+  }
+  $("lag-note").textContent = worst === 0 ? "Every connected group has processed everything published to it." : "A group with a growing number here is not keeping up, or has stopped.";
+}
+
+function drawEvals(rows) {
+  const body = head($("evals"), ["Suite", "# Passed", "# Total"]);
+  if (!rows || !rows.length) { body.insertRow().insertCell().textContent = "No baselines found."; return; }
+  for (const r of rows) { const tr = body.insertRow(); cell(tr, r.name); const c = cell(tr, r.passed, "num"); if (r.passed < r.total) c.style.color = "var(--warn)"; cell(tr, r.total, "num"); }
+}
+
+async function refresh() {
+  try {
+    const [tiers, runs, lag, evals] = await Promise.all([
+      get("/v1/ops/tiers"), get("/v1/ops/runs"), get("/v1/ops/lag").catch((e) => { if (e.status) throw e; return null; }), get("/v1/ops/evals"),
+    ]);
+    $("denied").hidden = true; $("panels").hidden = false;
+    drawTiers(tiers); drawLatency(runs); drawRuns(runs); drawLag(lag); drawEvals(evals); loadFlow();
+    $("stamp").textContent = `Updated ${new Date().toLocaleTimeString()} `;
+  } catch (e) {
+    $("panels").hidden = true; $("denied").hidden = false;
+    $("denied").textContent = e.status === 401 ? "Sign in with an operator account to see this page." : e.status === 403 ? "This page is for operators only." : "Could not load the console.";
+    if (e.status === 401) { const a = document.createElement("a"); a.href = "/"; a.textContent = " Go to sign in"; $("denied").appendChild(a); }
+  }
+}
+function schedule() { clearInterval(timer); if ($("auto").getAttribute("aria-pressed") === "true") timer = setInterval(refresh, 5000); }
+$("auto").addEventListener("click", () => { const on = $("auto").getAttribute("aria-pressed") !== "true"; $("auto").setAttribute("aria-pressed", String(on)); $("auto").textContent = `Auto-refresh: ${on ? "on" : "off"}`; schedule(); });
+$("now").addEventListener("click", refresh);
+refresh(); schedule();
+</script>
+</body>
+</html>

@@ -35,6 +35,7 @@ from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_accounts import KEEP, QaHistory
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
+from vitalmesh_common.lag import LagRow
 from vitalmesh_common.processor import EventSerde, Publisher
 from vitalmesh_common.topics import QUESTIONS_ASKED, USER_EVENTS
 from vitalmesh_concierge.screen import REFUSALS, screen_question
@@ -60,6 +61,15 @@ from vitalmesh_api.healthimport import (
     summarise,
 )
 from vitalmesh_api.integrations import install_integrations
+from vitalmesh_api.opsview import (
+    EvalRow,
+    LagGroup,
+    Percentiles,
+    RunSummary,
+    percentiles,
+    redact,
+    summarise_run,
+)
 from vitalmesh_api.runview import Answer, RunView, answer_of, view_of
 from vitalmesh_api.security import Auth, install, require_self
 
@@ -163,6 +173,17 @@ class QaItem(BaseModel):
     status: str  # asked | released | blocked | needs_review
     asked_at: datetime
     answer: Answer | None
+
+
+class OpsRunsOut(BaseModel):
+    runs: list[RunSummary]
+    latency: Percentiles  # released runs, question asked -> answer released
+    latency_by_tier: dict[str, Percentiles]
+
+
+class OpsRunOut(BaseModel):
+    summary: RunSummary
+    entries: list[dict[str, Any]]  # redacted: no question or answer text
 
 
 class OpsTiersOut(BaseModel):
@@ -280,6 +301,8 @@ def create_app(
     google: GoogleClient | None = None,
     token_box: TokenBox | None = None,
     qa: QaHistory | None = None,
+    lag: Callable[[], list[LagRow]] | None = None,
+    evals: Callable[[], list[EvalRow]] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -560,6 +583,11 @@ def create_app(
         html = html.replace("<script>", f'<script nonce="{nonce}">')
         return HTMLResponse(html.replace("<style>", f'<style nonce="{nonce}">'))
 
+    @app.get("/ops", response_class=HTMLResponse)
+    def ops_page(request: Request) -> HTMLResponse:
+        # the page is public HTML; every number on it comes from /v1/ops/*, which needs an operator
+        return page(request, "ops.html")
+
     if auth is not None:
 
         @app.get("/", response_class=HTMLResponse)
@@ -730,15 +758,72 @@ def create_app(
 
         return StreamingResponse(events(), media_type="text/event-stream")
 
-    @app.get("/v1/ops/runs/{correlation_id}")
-    def ops_run(correlation_id: str) -> dict[str, Any]:
-        """Operator view: the run's events with their internals (opt in with ``ops``)."""
+    @app.get("/v1/ops/runs", response_model=OpsRunsOut)
+    def ops_runs(limit: int = 25) -> OpsRunsOut:
+        """Recent runs with their flow and timing, and measured latency percentiles over them."""
+        if ops is None or runs is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        found = runs.recent(200)
+        summaries = [summarise_run(cid, rec.entries) for cid, rec in found if rec.entries]
+        done = [s for s in summaries if s.status == "released" and s.total_ms is not None]
+        tiers = sorted({s.tier or "unknown" for s in done})
+        return OpsRunsOut(
+            runs=summaries[: max(1, min(limit, 100))],
+            latency=percentiles([s.total_ms for s in done if s.total_ms is not None]),
+            latency_by_tier={
+                tier: percentiles(
+                    [
+                        s.total_ms
+                        for s in done
+                        if (s.tier or "unknown") == tier and s.total_ms is not None
+                    ]
+                )
+                for tier in tiers
+            },
+        )
+
+    @app.get("/v1/ops/runs/{correlation_id}", response_model=OpsRunOut)
+    def ops_run(correlation_id: str) -> OpsRunOut:
+        """Operator view: one run's events with their internals, minus question and answer text."""
         if ops is None or runs is None:
             raise HTTPException(status_code=404, detail="not enabled")
         record = runs.read(correlation_id)
-        if record is None:
+        if record is None or not record.entries:
             raise HTTPException(status_code=404, detail="no such run")
-        return {"correlation_id": correlation_id, "entries": record.entries}
+        return OpsRunOut(
+            summary=summarise_run(correlation_id, record.entries), entries=redact(record.entries)
+        )
+
+    @app.get("/v1/ops/lag", response_model=list[LagGroup])
+    def ops_lag() -> list[LagGroup]:
+        """Messages each consumer group has not yet processed, read from the broker."""
+        if lag is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        try:
+            rows = lag()
+        except Exception as exc:  # the broker is the thing being asked about: say it is unreachable
+            raise HTTPException(status_code=503, detail="the broker did not answer") from exc
+        # an agent role has one consumer group per topic ("agent-triage.questions.asked"): fold
+        # them into one row per role, and retry tiers into the topic they retry
+        by_role: dict[str, list[LagRow]] = {}
+        for r in rows:
+            by_role.setdefault(r.group.split(".")[0], []).append(r)
+        return [
+            LagGroup(
+                group=role,
+                lag=sum(r.lag for r in rs),
+                topics=sorted({r.topic.split(".retry.")[0] for r in rs}),
+                consumers_down=len({r.group for r in rs if r.members == 0}),
+            )
+            for role, rs in sorted(by_role.items())
+        ]
+
+    @app.get("/v1/ops/evals", response_model=list[EvalRow])
+    def ops_evals() -> list[EvalRow]:
+        """The committed eval baselines: how many cases each suite passes."""
+        if evals is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        return evals()
 
     @app.get("/v1/ops/tiers", response_model=OpsTiersOut)
     def ops_tiers() -> OpsTiersOut:

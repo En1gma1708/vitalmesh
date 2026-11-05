@@ -108,7 +108,7 @@ def make_synthesizer_handler(
             meta,
             OUTPUT_TYPE,
             f"recommendation.drafted.r{draft.revision}",
-            now,
+            clock(),  # stamped when the draft was FINISHED; the deadline still counts from `now`
             deadline_at=now + timedelta(seconds=POST_BUNDLE_BUDGET_S),
         )
         emit(serde, publisher, RECOMMENDATIONS_DRAFTED, out, draft)

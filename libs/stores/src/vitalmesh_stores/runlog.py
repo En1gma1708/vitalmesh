@@ -11,6 +11,7 @@ record of truth: the topics are).
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -30,6 +31,10 @@ class RunLog(Protocol):
 
     def read(self, correlation_id: str) -> RunRecord | None: ...
 
+    def recent(self, limit: int) -> list[tuple[str, RunRecord]]:
+        """The newest runs still in the log, newest first (the operator console reads this)."""
+        ...
+
 
 class InMemoryRunLog:
     def __init__(self) -> None:
@@ -42,6 +47,9 @@ class InMemoryRunLog:
 
     def read(self, correlation_id: str) -> RunRecord | None:
         return self._runs.get(correlation_id)
+
+    def recent(self, limit: int) -> list[tuple[str, RunRecord]]:
+        return list(reversed(list(self._runs.items())))[:limit]
 
 
 class RedisRunLog:
@@ -65,6 +73,9 @@ class RedisRunLog:
         pipe.set(owner, user_id)
         for key in (seen, entries, owner):
             pipe.expire(key, self._ttl)
+        index = f"{self._prefix}:index"  # when each run was first seen, so 'recent' is cheap
+        pipe.zadd(index, {correlation_id: time.time()}, nx=True)
+        pipe.expire(index, self._ttl)
         pipe.execute()
 
     def read(self, correlation_id: str) -> RunRecord | None:
@@ -74,3 +85,14 @@ class RedisRunLog:
         raw = self._r.lrange(self._key(correlation_id, "entries"), 0, -1)
         entries = [json.loads(r.decode() if isinstance(r, bytes) else str(r)) for r in raw]
         return RunRecord(owner.decode() if isinstance(owner, bytes) else str(owner), entries)
+
+    def recent(self, limit: int) -> list[tuple[str, RunRecord]]:
+        index = f"{self._prefix}:index"
+        self._r.zremrangebyscore(index, "-inf", time.time() - self._ttl)  # expired runs
+        out: list[tuple[str, RunRecord]] = []
+        for raw in self._r.zrevrange(index, 0, max(limit, 0) - 1):
+            cid = raw.decode() if isinstance(raw, bytes) else str(raw)
+            record = self.read(cid)
+            if record is not None:
+                out.append((cid, record))
+        return out

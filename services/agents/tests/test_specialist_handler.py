@@ -231,3 +231,17 @@ def test_the_scoped_question_reaches_the_model() -> None:
     run(Specialist.NUTRITION, deps(router), planned(common_pb2.SPECIALIST_NUTRITION))
     user = next(m for m in router.requests[0].messages if m.role == "user").content
     assert "food and nutrition specialist" in user
+
+
+def test_advice_is_stamped_when_the_work_finished_not_when_it_started() -> None:
+    # the console reads these times: a helper that spent 30 s must not look like it took none
+    times = iter([NOW, NOW + timedelta(seconds=30)])
+    router = FakeRouter(asks("get_energy_target"), resp("Aim for the calories in your plan."))
+    pub = RecordingPublisher()
+    handler = make_specialist_handler(
+        Specialist.NUTRITION, deps(router), PlainSerde(), pub, clock=lambda: next(times)
+    )
+    handler(*planned(common_pb2.SPECIALIST_NUTRITION))
+    meta, _ = codec.decode(pub.sent[0].value)
+    assert meta.occurred_at == NOW + timedelta(seconds=30)
+    assert meta.deadline_at == DEADLINE  # the run's deadline is unchanged

@@ -221,6 +221,9 @@ def test_operator_routes_are_for_operators_only(w: World) -> None:
     user_client = w.client()
     w.signup(user_client)
     assert user_client.get("/v1/ops/tiers").status_code == 403
+    for path in ("/v1/ops/runs", "/v1/ops/runs/x", "/v1/ops/lag", "/v1/ops/evals"):
+        assert user_client.get(path).status_code == 403, path  # the console routes too
+        assert w.client().get(path).status_code == 401, path
     w.store.create_user("ops@example.com", hash_password(PASSWORD), role="operator")
     op = w.client()
     assert (

@@ -155,7 +155,7 @@ def make_specialist_handler(
             meta,
             OUTPUT_TYPE,
             f"advice.{kind.value}",
-            now,
+            clock(),  # stamped when the work FINISHED, not when it started (the console reads it)
             deadline_at=meta.deadline_at,  # the run's deadline still governs the fan-out
         )
         emit(serde, publisher, ADVICE_COMPLETED, out_meta, advice)

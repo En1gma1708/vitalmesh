@@ -383,3 +383,15 @@ def test_a_reply_cut_off_twice_is_not_used_it_falls_back_to_the_checked_notes() 
     result = synth(FakeRouter(cut)).synthesize(inp())
     assert result.used_fallback and "cut off" in result.reason
     assert "and then" not in result.text
+
+
+def test_the_draft_is_stamped_when_it_was_finished_but_the_deadline_counts_from_the_start() -> None:
+    times = iter([NOW, NOW + timedelta(seconds=40)])  # the model call took 40 s
+    pub = RecordingPublisher()
+    router = FakeRouter(resp("You can aim for about 2124 kcal a day."))
+    make_synthesizer_handler(synth(router), PlainSerde(), pub, clock=lambda: next(times))(
+        *bundle_event()
+    )
+    meta, _ = codec.decode(pub.sent[0].value)
+    assert meta.occurred_at == NOW + timedelta(seconds=40)
+    assert meta.deadline_at == NOW + timedelta(seconds=120)  # unchanged: counted from the start

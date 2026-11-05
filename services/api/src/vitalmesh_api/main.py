@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 import redis
 import uvicorn
@@ -26,6 +27,7 @@ from vitalmesh_accounts import (
     secret_from_env,
 )
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde, ensure_topics
+from vitalmesh_common.lag import consumer_lag
 from vitalmesh_processor.history import RedisHistoryStore
 from vitalmesh_processor.labstore import RedisLabStore
 from vitalmesh_stores import RedisPendingImports, RedisRunLog, export_user, purge_user
@@ -34,6 +36,7 @@ from vitalmesh_t0.profiles import RedisProfileStore
 from vitalmesh_api.app import create_app
 from vitalmesh_api.googlecal import GoogleClient, TokenBox, config_from_env
 from vitalmesh_api.onboarding import ProfileIn
+from vitalmesh_api.opsview import eval_rows
 from vitalmesh_api.security import Auth
 
 log = logging.getLogger("vitalmesh.api")
@@ -100,6 +103,10 @@ def build_app() -> FastAPI:
         google=GoogleClient(google_cfg) if google_cfg else None,
         token_box=TokenBox.from_env(),
         qa=qa,
+        lag=lambda: consumer_lag(settings),
+        evals=lambda: eval_rows(
+            Path(os.environ.get("VITALMESH_EVAL_BASELINES", "evals/baselines"))
+        ),
         ops=lambda: {
             "tiers": _counts(client, "tiers:count"),
             "cohort": _counts(client, "cohort:stats"),
