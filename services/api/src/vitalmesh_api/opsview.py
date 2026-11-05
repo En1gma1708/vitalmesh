@@ -38,6 +38,18 @@ class EvalRow(BaseModel):
     total: int
 
 
+class GraphEdge(BaseModel):
+    kind: str  # avoids_allergen | limits_intensity
+    condition: str
+    target: str  # an allergen, or an intensity zone number
+    source: str
+
+
+class GraphOut(BaseModel):
+    version: str
+    edges: list[GraphEdge]
+
+
 class Hop(BaseModel):
     type: str
     at_ms: int  # milliseconds after the question was asked
@@ -55,6 +67,13 @@ class RunSummary(BaseModel):
     model_calls: int
     total_ms: int | None  # question asked -> answer released or blocked; None while running
     hops: list[Hop]
+
+
+class StageTiming(BaseModel):
+    type: str  # the event that ended the wait
+    runs: int  # how many finished runs contain this step
+    p50_ms: int | None
+    p95_ms: int | None
 
 
 class Percentiles(BaseModel):
@@ -99,6 +118,47 @@ def percentiles(values: list[int]) -> Percentiles:
     return Percentiles(runs=len(ordered), p50_ms=rank(0.5), p95_ms=rank(0.95))
 
 
+_PIPELINE = (
+    "question.asked",
+    "run.planned",
+    "advice.completed",
+    "advice.bundle.ready",
+    "recommendation.drafted",
+    "safety.cleared",
+    "review.completed",
+    "review.requested",
+    "review.decided",
+    "recommendation.blocked",
+    "recommendation.released",
+)
+
+
+def _stage_order(type_: str) -> int:
+    return _PIPELINE.index(type_) if type_ in _PIPELINE else len(_PIPELINE)
+
+
+def stage_timings(runs: list[RunSummary]) -> list[StageTiming]:
+    """Where the time goes: for each step, the wait since the previous event, over finished runs.
+
+    A step's time is the gap between the event before it and the event itself, so
+    ``advice.completed`` is how long the helpers took and ``recommendation.drafted`` how long the
+    synthesizer took. Pass the runs of ONE tier: a cache hit and a full run share no steps worth
+    averaging. Steps are listed in pipeline order.
+    """
+    gaps: dict[str, list[int]] = {}
+    for run in runs:
+        previous = 0
+        for hop in run.hops:
+            gaps.setdefault(hop.type, []).append(max(hop.at_ms - previous, 0))
+            previous = hop.at_ms
+    out: list[StageTiming] = []
+    for type_ in sorted(gaps, key=_stage_order):
+        values = gaps[type_]
+        p = percentiles(values)
+        out.append(StageTiming(type=type_, runs=p.runs, p50_ms=p.p50_ms, p95_ms=p.p95_ms))
+    return out
+
+
 def redact(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Run entries for the operator: flow and internals, minus anything the person wrote or read."""
     out: list[dict[str, Any]] = []
@@ -109,6 +169,25 @@ def redact(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 kept[f"{k}_n"] = len(e[k])
         out.append(kept)
     return out
+
+
+def graph_of(raw: str | bytes | None) -> GraphOut | None:
+    """The compiled constraint graph the agents read (one JSON document), or None if not loaded."""
+    if raw is None:
+        return None
+    try:
+        doc = json.loads(raw)
+        return GraphOut(
+            version=str(doc["version"]),
+            edges=[
+                GraphEdge(
+                    kind=e["kind"], condition=e["condition"], target=e["target"], source=e["source"]
+                )
+                for e in doc["edges"]
+            ],
+        )
+    except (ValueError, KeyError, TypeError):
+        return None  # a damaged document is reported as not loaded, never half shown
 
 
 def eval_rows(directory: Path) -> list[EvalRow]:

@@ -66,3 +66,19 @@ def test_the_tracker_keeps_the_question_and_the_released_answer_beyond_the_run_l
     assert entry.answer["text"] == out.text
     # only what the person was shown, nothing internal
     assert set(entry.answer) == {"text", "partial", "missing", "claims", "citations"}
+
+
+def test_a_held_answer_reaches_the_clinician_queue_and_a_decision_closes_it() -> None:
+    from vitalmesh_accounts import APPROVED, PENDING, InMemoryReviewQueue
+
+    reviews = InMemoryReviewQueue()
+    bus, _, _ = world(labs=True, runlog=InMemoryRunLog(), reviews=reviews)
+    out = ask(bus, "u-1", "What should I eat?", T0)
+    assert out.final == "review_requested"
+    [case] = reviews.cases(PENDING)
+    assert case.question == "What should I eat?" and case.status == PENDING
+    assert case.draft["text"] and case.reasons and case.briefing
+    assert reviews.owner(case.recommendation_id) == "u-1"
+    # whoever decides (console or the command-line stand-in), the queue follows the pipeline
+    assert reviews.record_decision(case.recommendation_id, APPROVED, "clin-1", T0, "ok")
+    assert reviews.cases(PENDING) == []

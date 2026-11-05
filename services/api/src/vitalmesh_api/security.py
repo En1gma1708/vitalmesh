@@ -456,6 +456,8 @@ def _authorise(path: str, claims: Claims) -> tuple[int, str] | None:
         )
     if path.startswith("/v1/ops/"):
         return None if claims.role == "operator" else (403, "operators only")
+    if path.startswith("/v1/clinician/"):  # held answers: health content, clinicians only (D85)
+        return None if claims.role == "clinician" else (403, "clinicians only")
     return (404, "not found")  # deny by default: no rule for this route
 
 
@@ -489,7 +491,7 @@ def security_headers(path: str, nonce: str, secure: bool) -> dict[str, str]:
             "frame-ancestors 'none'"
         ),
     }
-    if path.startswith(("/v1/", "/app", "/ops")):
+    if path.startswith(("/v1/", "/app", "/ops", "/clinician")):
         h["Cache-Control"] = "no-store"
     if secure:
         h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

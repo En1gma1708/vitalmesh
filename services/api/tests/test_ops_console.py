@@ -99,6 +99,7 @@ def make(
     entries_by_run: dict[str, list[dict[str, Any]]] | None = None,
     lag: Any = None,
     evals: Any = None,
+    graph: Any = None,
     ops: Any = lambda: {"tiers": {}, "cohort": {}},
 ) -> TestClient:
     log = InMemoryRunLog()
@@ -113,6 +114,7 @@ def make(
         ops=ops,
         lag=lag,
         evals=evals,
+        graph=graph,
     )
     return TestClient(app)
 
@@ -179,3 +181,65 @@ def test_in_memory_run_log_lists_newest_first() -> None:
     for cid in ("a", "b", "c"):
         log.append(cid, "u", {"event_id": cid, "type": "question.asked", "at": "x"})
     assert [cid for cid, _ in log.recent(2)] == ["c", "b"]
+
+
+def test_stage_timings_say_where_the_time_goes() -> None:
+    from vitalmesh_api.opsview import stage_timings
+
+    fast, slow = summarise_run("a", run(4000)), summarise_run("b", run(9000))
+    by = {s.type: s for s in stage_timings([fast, slow])}
+    assert by["run.planned"].p50_ms == 150 and by["run.planned"].runs == 2  # same in both
+    # the helpers' wait is the gap between planning (150 ms) and advice (2500 ms)
+    assert by["advice.completed"].p50_ms == 2350
+    # the last step absorbs the difference between the two runs
+    assert (by["recommendation.released"].p50_ms, by["recommendation.released"].p95_ms) == (
+        1000,
+        6000,
+    )
+    assert stage_timings([]) == []
+
+
+def test_the_runs_route_carries_the_stage_timings() -> None:
+    c = make({"a": run(4000), "b": run(9000), "cache": run(300, "T1")})  # a hit is kept apart
+    body = c.get("/v1/ops/runs").json()["stages_by_tier"]
+    stages = {s["type"]: s for s in body["T3"]}
+    assert stages["advice.completed"]["runs"] == 2 and stages["advice.completed"]["p50_ms"] == 2350
+    assert {x["type"]: x["runs"] for x in body["T1"]}["run.planned"] == 1  # its own table
+    assert {x["type"]: x["runs"] for x in body["T3"]}["run.planned"] == 2  # not mixed in
+    assert [s["type"] for s in body["T3"]][:3] == [
+        "question.asked",
+        "run.planned",
+        "advice.completed",
+    ]
+
+
+def test_the_graph_route_serves_the_compiled_document_or_says_it_is_not_loaded() -> None:
+    from vitalmesh_api.opsview import graph_of
+
+    doc = json.dumps(
+        {
+            "version": "kg-1",
+            "edges": [
+                {
+                    "kind": "avoids_allergen",
+                    "condition": "celiac_disease",
+                    "target": "gluten",
+                    "source": "s",
+                },
+                {"kind": "limits_intensity", "condition": "cardiac", "target": "3", "source": "s"},
+            ],
+        }
+    )
+    got = make(graph=lambda: graph_of(doc)).get("/v1/ops/graph").json()
+    assert got["version"] == "kg-1" and [e["condition"] for e in got["edges"]] == [
+        "celiac_disease",
+        "cardiac",
+    ]
+    assert make(graph=lambda: graph_of(None)).get("/v1/ops/graph").status_code == 404
+    for damaged in (
+        "{not json",
+        json.dumps({"version": "v"}),
+        json.dumps({"version": "v", "edges": [{"kind": "x"}]}),
+    ):
+        assert graph_of(damaged) is None  # never half shown
+    assert make().get("/v1/ops/graph").status_code == 404

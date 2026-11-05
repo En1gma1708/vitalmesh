@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from vitalmesh.events.v1 import common_pb2, payloads_pb2
-from vitalmesh_accounts import QaHistory
+from vitalmesh_accounts import APPROVED, REJECTED, QaHistory, ReviewCase, ReviewQueue
 from vitalmesh_common.envelope import EventMeta
 from vitalmesh_common.processor import Handler
 from vitalmesh_common.run import risk_from_proto, specialist_from_proto
@@ -154,7 +154,43 @@ def _remember(history: QaHistory, meta: EventMeta, entry: dict[str, Any]) -> Non
         history.record_answer(uid, cid, "needs_review", None, at)
 
 
-def make_tracker_handler(log: RunLog, history: QaHistory | None = None) -> Handler:
+def _queue_review(queue: ReviewQueue, meta: EventMeta, payload: Any) -> None:
+    """Keep a held answer for the clinician queue, and any decision made about it (D85)."""
+    if meta.type == "review.requested":
+        draft = payload.draft
+        queue.put_request(
+            meta.user_id,
+            ReviewCase(
+                recommendation_id=payload.recommendation_id,
+                correlation_id=meta.correlation_id,
+                requested_at=meta.occurred_at,
+                question=draft.question,
+                briefing=payload.briefing,
+                reasons=list(payload.reasons),
+                draft={
+                    "text": draft.text,
+                    "risk": risk_from_proto(draft.risk).value,
+                    "partial": bool(draft.partial),
+                    "claims": _claims(draft.claims),
+                    "citations": _citations(draft.citations),
+                },
+            ),
+        )
+    elif meta.type == "review.decided":
+        approved = payload.decision == payloads_pb2.DECISION_APPROVE
+        queue.record_decision(
+            payload.recommendation_id,
+            APPROVED if approved else REJECTED,
+            payload.reviewer_id,
+            meta.occurred_at,
+            payload.note,
+            user_id=meta.user_id,
+        )
+
+
+def make_tracker_handler(
+    log: RunLog, history: QaHistory | None = None, reviews: ReviewQueue | None = None
+) -> Handler:
     def handle(meta: EventMeta, payload: Any) -> None:
         entry = entry_from_event(meta, payload)
         if entry is None:
@@ -162,5 +198,7 @@ def make_tracker_handler(log: RunLog, history: QaHistory | None = None) -> Handl
         log.append(meta.correlation_id, meta.user_id, entry)
         if history is not None:
             _remember(history, meta, entry)
+        if reviews is not None:
+            _queue_review(reviews, meta, payload)
 
     return handle

@@ -32,7 +32,7 @@ from types import FrameType
 from typing import Any
 
 import redis
-from vitalmesh_accounts import PostgresQaHistory
+from vitalmesh_accounts import PostgresQaHistory, PostgresReviewQueue
 from vitalmesh_common.idempotency import RedisIdempotencyStore
 from vitalmesh_common.kafka import (
     KafkaPublisher,
@@ -162,7 +162,9 @@ class Runtime:
         if role == "tracker":
             history = PostgresQaHistory(DB_DSN)  # what the person was shown outlives the run log
             self.stack.callback(history.close)
-            return make_tracker_handler(RedisRunLog(self.redis), history)
+            queue = PostgresReviewQueue(DB_DSN)  # held answers wait for a clinician for hours
+            self.stack.callback(queue.close)
+            return make_tracker_handler(RedisRunLog(self.redis), history, queue)
         if role in ("cohort", "cachefill"):
             deps = SpecialistDeps(
                 router=self.router,  # never called: the T1 roles use deterministic tools only

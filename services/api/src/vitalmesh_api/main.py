@@ -21,9 +21,11 @@ from fastapi import FastAPI
 from vitalmesh_accounts import (
     PostgresAccountStore,
     PostgresQaHistory,
+    PostgresReviewQueue,
     RedisRateLimiter,
     TokenIssuer,
     qa_export,
+    review_export,
     secret_from_env,
 )
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde, ensure_topics
@@ -36,7 +38,7 @@ from vitalmesh_t0.profiles import RedisProfileStore
 from vitalmesh_api.app import create_app
 from vitalmesh_api.googlecal import GoogleClient, TokenBox, config_from_env
 from vitalmesh_api.onboarding import ProfileIn
-from vitalmesh_api.opsview import eval_rows
+from vitalmesh_api.opsview import eval_rows, graph_of
 from vitalmesh_api.security import Auth
 
 log = logging.getLogger("vitalmesh.api")
@@ -70,6 +72,7 @@ def build_app() -> FastAPI:
     profiles = RedisProfileStore(client)
     auth: Auth | None = None
     qa = PostgresQaHistory(DB_DSN)  # recent questions and the answers shown (D83)
+    reviews = PostgresReviewQueue(DB_DSN)  # held answers waiting for a clinician (D85)
     if os.environ.get("VITALMESH_AUTH", "on").lower() == "off":
         log.warning("VITALMESH_AUTH=off: no sign-in, any reachable user id can be read. Demo only.")
     else:
@@ -80,8 +83,12 @@ def build_app() -> FastAPI:
             TokenIssuer(secret_from_env()),
             RedisRateLimiter(client),
             profiles,
-            purge=lambda uid: purge_user(client, uid) + qa.purge(uid),
-            export_extra=lambda uid: {**export_user(client, uid), "questions": qa_export(qa, uid)},
+            purge=lambda uid: purge_user(client, uid) + qa.purge(uid) + reviews.purge(uid),
+            export_extra=lambda uid: {
+                **export_user(client, uid),
+                "questions": qa_export(qa, uid),
+                "held_answers": review_export(reviews, uid),
+            },
             secure_cookies=os.environ.get("VITALMESH_SECURE_COOKIES", "") == "1",
             base_url=os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000"),
             # on by default: a person must confirm their email before questions spend model quota
@@ -103,7 +110,9 @@ def build_app() -> FastAPI:
         google=GoogleClient(google_cfg) if google_cfg else None,
         token_box=TokenBox.from_env(),
         qa=qa,
+        reviews=reviews,
         lag=lambda: consumer_lag(settings),
+        graph=lambda: graph_of(client.get("kg:constraints")),
         evals=lambda: eval_rows(
             Path(os.environ.get("VITALMESH_EVAL_BASELINES", "evals/baselines"))
         ),

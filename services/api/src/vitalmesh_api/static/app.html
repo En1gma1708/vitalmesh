@@ -68,7 +68,7 @@ ol.steps li { padding-left: 22px; position: relative; font-size: 14px; color: va
 ol.steps li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 ol.steps li.last { color: var(--fg); }
 .answer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
-.answer .text { font-size: 16px; margin: 0 0 8px; }
+.answer .text { font-size: 16px; margin: 0 0 8px; white-space: pre-line; }
 .note { color: var(--warn); font-size: 14px; margin: 6px 0; }
 .answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
 .answer h3 { font-size: 13px; margin: 12px 0 0; color: var(--muted); font-weight: 600; }
@@ -405,10 +405,13 @@ function showAnswer(view) {
   loadHistory();
 }
 
+// The model sometimes writes **bold**. Escape first, then turn that one pattern into bold, so
+// nothing the model wrote can become markup.
+const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 function answerHtml(a) {
   const items = a.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("");
   const sources = a.sources.map((s) => `<li>${esc(s.document)} ${esc(s.locator)} <span class="sub">(${esc(s.licence)})</span>${/^https:\/\//.test(s.url) ? ` <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">open</a>` : ""}</li>`).join("");
-  return `<p class="text">${esc(a.text)}</p>`
+  return `<p class="text">${rich(a.text)}</p>`
     + (a.partial_note ? `<p class="note">${esc(a.partial_note)}</p>` : "")
     + (items ? `<h3>Why</h3><ul>${items}</ul>` : "")
     + (sources ? `<h3>Sources</h3><ul>${sources}</ul>` : "");

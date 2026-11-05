@@ -21,7 +21,7 @@ from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 from vitalmesh.events.v1 import payloads_pb2
-from vitalmesh_accounts import QaHistory
+from vitalmesh_accounts import QaHistory, ReviewQueue
 from vitalmesh_common.envelope import EventMeta, new_id, utcnow
 from vitalmesh_common.processor import Handler
 from vitalmesh_common.run import Specialist
@@ -125,6 +125,7 @@ class Wiring:
     cohort: CohortStore | None = None  # the T1 cache; None = every run is a full run
     runlog: RunLog | None = None  # when set, the tracker records every event for the app view
     qa: QaHistory | None = None  # when set, the tracker also keeps what the person was shown
+    reviews: ReviewQueue | None = None  # when set, held answers go to the clinician queue
 
 
 def build_graph(wiring: Wiring) -> Bus:
@@ -176,7 +177,7 @@ def build_graph(wiring: Wiring) -> Bus:
     for topic in (DRAFTS_CLEARED, REVIEWS_COMPLETED, REVIEWS_DECIDED):
         bus.subscribe(topic, release)
     if w.runlog is not None:
-        tracker = make_tracker_handler(w.runlog, w.qa)
+        tracker = make_tracker_handler(w.runlog, w.qa, w.reviews)
         for topic in TRACKED_TOPICS:
             bus.subscribe(topic, tracker)
     bus.sweep = aggregator.sweep

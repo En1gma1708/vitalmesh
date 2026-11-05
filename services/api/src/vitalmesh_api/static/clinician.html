@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VitalMesh clinician review</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23208a5f'/%3E%3Cpath d='M5 17h6l3-8 4 15 3-7h6' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #5a6a61; --line: #dfe5e0;
+  --accent: #16724b; --on-accent: #ffffff; --accent-soft: #d8efe3; --warn: #b34f16; --on-warn: #ffffff; --warn-soft: #f7e3d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+    --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --on-warn: #1b0d02; --warn-soft: #3a2616; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
+  --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --on-warn: #1b0d02; --warn-soft: #3a2616; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+h3 { font-size: 13px; margin: 16px 0 4px; color: var(--muted); font-weight: 600; }
+.sub { color: var(--muted); font-size: 13px; }
+.layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; }
+.notice { background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; margin-top: 16px; }
+button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+button.danger { background: var(--warn); color: var(--on-warn); border-color: var(--warn); font-weight: 600; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button:disabled { opacity: 0.55; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+ul.queue { list-style: none; margin: 0; padding: 0; }
+ul.queue li { margin: 0; }
+ul.queue button { display: block; width: 100%; text-align: left; border-radius: 10px; margin-bottom: 8px; padding: 10px 12px; }
+ul.queue button[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.tag { border-radius: 6px; padding: 1px 8px; font-size: 12px; background: var(--accent-soft); margin-right: 6px; }
+.tag.bad { background: var(--warn-soft); color: var(--warn); }
+.draft { white-space: pre-wrap; font-size: 16px; border-left: 3px solid var(--accent); padding-left: 12px; margin: 6px 0; }
+.q { font-style: italic; }
+ul.plain { margin: 4px 0 0; padding-left: 18px; font-size: 14px; }
+textarea { width: 100%; min-height: 80px; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; resize: vertical; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
+.msg { margin-top: 10px; font-size: 14px; }
+.msg.err { color: var(--warn); }
+.empty { color: var(--muted); }
+footer { margin-top: 24px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Clinician review</h1>
+    <button type="button" id="refresh">Refresh</button>
+  </header>
+  <div class="notice" id="denied" role="alert" hidden></div>
+
+  <div class="layout" id="layout">
+    <section class="card" aria-labelledby="h-queue">
+      <h2 id="h-queue">Queue</h2>
+      <div class="tabs" role="group" aria-label="Which reviews to list">
+        <button type="button" id="tab-pending" aria-pressed="true">Waiting</button>
+        <button type="button" id="tab-decided" aria-pressed="false">Decided</button>
+      </div>
+      <ul class="queue" id="queue"></ul>
+      <p class="sub" id="queue-note"></p>
+    </section>
+
+    <section class="card" aria-labelledby="h-case" aria-live="polite">
+      <h2 id="h-case">Case</h2>
+      <p class="empty" id="case-empty">Choose a case from the queue.</p>
+      <div id="case" hidden>
+        <p class="sub" id="case-meta"></p>
+        <h3>Why it was held</h3>
+        <ul class="plain" id="reasons"></ul>
+        <p id="briefing"></p>
+        <h3>The question that was asked</h3>
+        <p class="q" id="question"></p>
+        <h3>The answer the system drafted (nobody has seen it yet)</h3>
+        <p class="draft" id="draft"></p>
+        <p class="sub" id="partial" hidden>This draft is partial: a helper could not contribute.</p>
+        <h3>What the answer rests on</h3>
+        <ul class="plain" id="claims"></ul>
+        <h3>Sources</h3>
+        <ul class="plain" id="sources"></ul>
+
+        <form id="decide" hidden>
+          <h3>Your decision</h3>
+          <label class="sub" for="note">Note (optional, kept with the decision, at most 500 characters)</label>
+          <textarea id="note" maxlength="500"></textarea>
+          <div class="row">
+            <button type="button" class="primary" id="approve">Approve and release</button>
+            <button type="button" class="danger" id="reject">Reject (never released)</button>
+          </div>
+          <div class="row" id="confirm" hidden>
+            <span id="confirm-text"></span>
+            <button type="submit" class="primary" id="confirm-go">Yes, send it</button>
+            <button type="button" id="confirm-no">Go back</button>
+          </div>
+        </form>
+        <p class="msg" id="done" role="status"></p>
+      </div>
+    </section>
+  </div>
+
+  <footer>Clinicians only. You see a held answer and why it was held, never who asked. Opening a case and every decision are recorded in an audit log; the log holds the case number and your decision, not the text. Approving releases the draft exactly as shown; rejecting means it is never shown to the person.</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const csrf = () => (document.cookie.match(/(?:^|; )vm_csrf=([^;]+)/) || [])[1] || "";
+let status = "pending", selected = null, pendingChoice = null;
+
+async function api(path, options = {}) {
+  const r = await fetch(path, { ...options, headers: { accept: "application/json", "content-type": "application/json", "x-csrf-token": csrf(), ...(options.headers || {}) } });
+  if (r.status === 401 || r.status === 403) { const e = new Error("denied"); e.status = r.status; throw e; }
+  return r;
+}
+function denied(e) {
+  $("layout").hidden = true; $("denied").hidden = false;
+  $("denied").textContent = e.status === 401 ? "Sign in with a clinician account to review held answers." : e.status === 403 ? "This page is for clinicians only." : "Could not load the queue.";
+  if (e.status === 401) { const a = document.createElement("a"); a.href = "/"; a.textContent = " Go to sign in"; $("denied").appendChild(a); }
+}
+const when = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+function li(host, text) { const x = document.createElement("li"); x.textContent = text; host.appendChild(x); }
+
+async function loadQueue() {
+  try {
+    const r = await api(`/v1/clinician/reviews?status=${status}`);
+    const items = r.ok ? await r.json() : [];
+    $("layout").hidden = false; $("denied").hidden = true;
+    const ul = $("queue"); ul.innerHTML = "";
+    for (const it of items) {
+      const item = document.createElement("li"); const b = document.createElement("button"); b.type = "button";
+      if (it.recommendation_id === selected) b.setAttribute("aria-current", "true");
+      const tag = document.createElement("span"); tag.className = "tag" + (it.risk === "high" ? " bad" : ""); tag.textContent = `risk: ${it.risk}`;
+      b.appendChild(tag);
+      if (it.status !== "pending") { const s = document.createElement("span"); s.className = "tag"; s.textContent = it.status; b.appendChild(s); }
+      b.append(`${when(it.decided_at || it.requested_at)}`);
+      const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = it.reasons.join(", ") || "held for review"; b.appendChild(sub);
+      b.addEventListener("click", () => { selected = it.recommendation_id; openCase(); loadQueue(); });
+      item.appendChild(b); ul.appendChild(item);
+    }
+    $("queue-note").textContent = items.length ? (status === "pending" ? "Oldest first: the person who has waited longest is at the top." : "Newest decision first.") : (status === "pending" ? "Nothing is waiting." : "No decisions yet.");
+  } catch (e) { denied(e); }
+}
+
+async function openCase() {
+  if (!selected) return;
+  pendingChoice = null; $("confirm").hidden = true; $("done").textContent = ""; $("done").className = "msg";
+  try {
+    const r = await api(`/v1/clinician/reviews/${encodeURIComponent(selected)}`);
+    if (!r.ok) { $("case").hidden = true; $("case-empty").hidden = false; $("case-empty").textContent = "That case is no longer available."; return; }
+    const c = await r.json();
+    $("case-empty").hidden = true; $("case").hidden = false;
+    $("case-meta").textContent = `Case ${c.recommendation_id}, held ${when(c.requested_at)}, risk ${c.risk}. Status: ${c.status}${c.decided_at ? ` (${when(c.decided_at)})` : ""}.`;
+    $("reasons").innerHTML = ""; c.reasons.forEach((x) => li($("reasons"), x));
+    $("briefing").textContent = c.briefing; $("question").textContent = c.question; $("draft").textContent = c.draft_text;
+    $("partial").hidden = !c.partial;
+    $("claims").innerHTML = ""; c.claims.forEach((x) => li($("claims"), `${x.text} (${x.basis})`));
+    $("sources").innerHTML = ""; if (c.sources.length) c.sources.forEach((x) => li($("sources"), `${x.document} ${x.locator}`)); else li($("sources"), "None cited.");
+    $("decide").hidden = c.status !== "pending";
+    $("note").value = c.note || ""; $("note").readOnly = false;
+    if (c.status !== "pending") { $("done").textContent = `Decided: ${c.status}${c.note ? `. Note: ${c.note}` : ""}`; }
+  } catch (e) { denied(e); }
+}
+
+function ask(choice) {
+  pendingChoice = choice;
+  $("confirm-text").textContent = choice === "approve" ? "Release this answer to the person exactly as shown?" : "Reject this answer so it is never shown?";
+  $("confirm").hidden = false; $("confirm-go").focus();
+}
+$("approve").addEventListener("click", () => ask("approve"));
+$("reject").addEventListener("click", () => ask("reject"));
+$("confirm-no").addEventListener("click", () => { pendingChoice = null; $("confirm").hidden = true; });
+$("decide").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!pendingChoice || !selected) return;
+  $("confirm-go").disabled = true;
+  try {
+    const r = await api(`/v1/clinician/reviews/${encodeURIComponent(selected)}/decision`, { method: "POST", body: JSON.stringify({ decision: pendingChoice, note: $("note").value }) });
+    const b = await r.json().catch(() => ({}));
+    if (r.ok) { const was = pendingChoice; await loadQueue(); await openCase(); $("done").className = "msg"; $("done").textContent = was === "approve" ? "Approved. The answer is being released to the person." : "Rejected. The answer will not be shown."; }
+    else { $("done").className = "msg err"; $("done").textContent = r.status === 409 ? "Someone already decided this case." : (typeof b.detail === "string" ? b.detail : "That did not work. Nothing was decided."); }
+  } catch (e) { if (e.status) denied(e); else { $("done").className = "msg err"; $("done").textContent = "Could not reach the service. Nothing was decided."; } }
+  finally { $("confirm-go").disabled = false; }
+});
+function tab(which) {
+  status = which; selected = null; $("case").hidden = true; $("case-empty").hidden = false; $("case-empty").textContent = "Choose a case from the queue.";
+  $("tab-pending").setAttribute("aria-pressed", String(which === "pending")); $("tab-decided").setAttribute("aria-pressed", String(which === "decided"));
+  loadQueue();
+}
+$("tab-pending").addEventListener("click", () => tab("pending"));
+$("tab-decided").addEventListener("click", () => tab("decided"));
+$("refresh").addEventListener("click", () => { loadQueue(); openCase(); });
+loadQueue();
+</script>
+</body>
+</html>

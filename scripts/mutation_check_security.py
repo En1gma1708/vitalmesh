@@ -27,6 +27,7 @@ TESTS = [
     "services/api/tests/test_healthimport.py",
     "services/api/tests/test_google_api.py",
     "services/api/tests/test_scheduler.py",
+    "services/api/tests/test_clinician_api.py",
 ]
 
 
@@ -59,6 +60,17 @@ def authenticate_ignoring_revocation(self: security.Auth, request: Any) -> Claim
 
 def _no_authorise() -> Callable[[], None]:
     return patch(security, "_authorise", lambda path, claims: None)
+
+
+def _clinician_routes_open_to_everyone() -> Callable[[], None]:
+    original = security._authorise
+
+    def loose(path: str, claims: Any) -> Any:
+        if path.startswith("/v1/clinician/"):
+            return None  # any signed-in role, an operator or a plain user, may read held answers
+        return original(path, claims)
+
+    return patch(security, "_authorise", loose)
 
 
 def _csrf_always_ok() -> Callable[[], None]:
@@ -127,6 +139,7 @@ def _stdlib_iterparse() -> Callable[[], None]:
 
 MUTATIONS = [
     Mutation("any user can read any user's data", _no_authorise),
+    Mutation("any signed-in person can open held answers", _clinician_routes_open_to_everyone),
     Mutation("CSRF check always passes", _csrf_always_ok),
     Mutation("body user id is not compared with the session", _no_body_user_check),
     Mutation("logout does not revoke the session", _no_revocation),

@@ -32,7 +32,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from vitalmesh.events.v1 import payloads_pb2
-from vitalmesh_accounts import KEEP, QaHistory
+from vitalmesh_accounts import KEEP, QaHistory, ReviewQueue
 from vitalmesh_common.envelope import EventMeta, utcnow
 from vitalmesh_common.failure import EnvelopeError
 from vitalmesh_common.lag import LagRow
@@ -53,6 +53,7 @@ from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 
+from vitalmesh_api.clinician import install_clinician
 from vitalmesh_api.googlecal import GoogleClient, TokenBox
 from vitalmesh_api.healthimport import (
     MAX_UPLOAD_BYTES,
@@ -63,11 +64,14 @@ from vitalmesh_api.healthimport import (
 from vitalmesh_api.integrations import install_integrations
 from vitalmesh_api.opsview import (
     EvalRow,
+    GraphOut,
     LagGroup,
     Percentiles,
     RunSummary,
+    StageTiming,
     percentiles,
     redact,
+    stage_timings,
     summarise_run,
 )
 from vitalmesh_api.runview import Answer, RunView, answer_of, view_of
@@ -179,6 +183,7 @@ class OpsRunsOut(BaseModel):
     runs: list[RunSummary]
     latency: Percentiles  # released runs, question asked -> answer released
     latency_by_tier: dict[str, Percentiles]
+    stages_by_tier: dict[str, list[StageTiming]]  # where the time goes, per step, per tier
 
 
 class OpsRunOut(BaseModel):
@@ -302,6 +307,8 @@ def create_app(
     token_box: TokenBox | None = None,
     qa: QaHistory | None = None,
     lag: Callable[[], list[LagRow]] | None = None,
+    graph: Callable[[], GraphOut | None] | None = None,
+    reviews: ReviewQueue | None = None,
     evals: Callable[[], list[EvalRow]] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
@@ -583,6 +590,14 @@ def create_app(
         html = html.replace("<script>", f'<script nonce="{nonce}">')
         return HTMLResponse(html.replace("<style>", f'<style nonce="{nonce}">'))
 
+    if reviews is not None:
+        install_clinician(app, reviews, serde, publisher, clock, auth)
+
+    @app.get("/clinician", response_class=HTMLResponse)
+    def clinician_page(request: Request) -> HTMLResponse:
+        # public HTML; the queue and every decision go through /v1/clinician/, clinicians only
+        return page(request, "clinician.html")
+
     @app.get("/ops", response_class=HTMLResponse)
     def ops_page(request: Request) -> HTMLResponse:
         # the page is public HTML; every number on it comes from /v1/ops/*, which needs an operator
@@ -768,6 +783,10 @@ def create_app(
         done = [s for s in summaries if s.status == "released" and s.total_ms is not None]
         tiers = sorted({s.tier or "unknown" for s in done})
         return OpsRunsOut(
+            stages_by_tier={
+                tier: stage_timings([s for s in done if (s.tier or "unknown") == tier])
+                for tier in tiers
+            },
             runs=summaries[: max(1, min(limit, 100))],
             latency=percentiles([s.total_ms for s in done if s.total_ms is not None]),
             latency_by_tier={
@@ -817,6 +836,16 @@ def create_app(
             )
             for role, rs in sorted(by_role.items())
         ]
+
+    @app.get("/v1/ops/graph", response_model=GraphOut)
+    def ops_graph() -> GraphOut:
+        """The constraint knowledge graph exactly as the agents read it (compiled from Neo4j)."""
+        if graph is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        found = graph()
+        if found is None:
+            raise HTTPException(status_code=404, detail="the graph is not loaded: run vitalmesh_kg")
+        return found
 
     @app.get("/v1/ops/evals", response_model=list[EvalRow])
     def ops_evals() -> list[EvalRow]:
