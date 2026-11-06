@@ -65,6 +65,10 @@ ignore_errors = true
 follow_imports = "skip"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["pytesseract.*", "pypdfium2.*", "pypdf.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["libs", "services", "evals"]
 addopts = "-ra --strict-markers"

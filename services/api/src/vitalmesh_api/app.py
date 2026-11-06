@@ -24,6 +24,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -48,7 +49,7 @@ from vitalmesh_wellness.calculators import OutOfRange
 from vitalmesh_wellness.claims import Provenance
 from vitalmesh_wellness.engine import build_meal_plan_recommendation
 from vitalmesh_wellness.guardian import Guardian
-from vitalmesh_wellness.labs import LabError, interpret
+from vitalmesh_wellness.labs import LabError, LabResult, interpret
 from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
@@ -62,6 +63,9 @@ from vitalmesh_api.healthimport import (
     summarise,
 )
 from vitalmesh_api.integrations import install_integrations
+from vitalmesh_api.labextract import MAX_BYTES as LAB_MAX_BYTES
+from vitalmesh_api.labextract import ExtractRefused, OcrBusy
+from vitalmesh_api.labextract import extract as extract_labs
 from vitalmesh_api.opsview import (
     EvalRow,
     GraphOut,
@@ -145,6 +149,23 @@ class LabIn(BaseModel):
         if not USER_ID.match(v):
             raise ValueError("ids are 1-64 characters of letters, digits, '.', '_' or '-'")
         return v
+
+
+class LabPick(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    i: Annotated[int, Field(ge=0, le=200)]
+    value: float
+    unit: Annotated[str, Field(min_length=1, max_length=32)]
+
+
+class LabUploadConfirm(BaseModel):
+    """Only the rows the person ticked, with the value and unit as they left them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    collected_on: date
+    rows: Annotated[list[LabPick], Field(min_length=1, max_length=60)]
 
 
 class LabOut(BaseModel):
@@ -362,6 +383,55 @@ def create_app(
             raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
         return Accepted(event_id=event_id, correlation_id=correlation_id)
 
+    def emit_lab(
+        user_id: str,
+        household_id: str,
+        result: LabResult,
+        client_event_id: str | None,
+        now: datetime,
+    ) -> Accepted:
+        """Publish one validated lab result. Shared by the hand-typed form and the report upload."""
+        correlation_id = str(uuid.uuid4())
+        event_id = (
+            str(uuid.uuid5(_NAMESPACE, f"lab:{user_id}:{client_event_id}"))
+            if client_event_id
+            else str(uuid.uuid4())
+        )
+        meta = EventMeta(
+            event_id=event_id,
+            correlation_id=correlation_id,
+            user_id=user_id,
+            household_id=household_id,
+            source="api" if client_event_id else None,
+            external_id=client_event_id,
+            type="lab.result.recorded",
+            occurred_at=now,
+            trace_id=correlation_id,
+        )
+        payload = payloads_pb2.LabResultRecorded(
+            marker_code=result.loinc or "", marker_name=result.name, derived=result.derived
+        )
+        if result.text is not None:
+            payload.text = result.text
+        else:
+            assert result.value is not None and result.unit is not None
+            payload.numeric.value, payload.numeric.unit = result.value, result.unit
+        payload.reference.raw_text = result.reference.raw_text
+        payload.reference.parsed = result.reference.parsed
+        if result.reference.low is not None:
+            payload.reference.low = result.reference.low
+        if result.reference.high is not None:
+            payload.reference.high = result.reference.high
+        payload.collected_at.FromDatetime(result.collected_at.astimezone(UTC).replace(tzinfo=None))
+        try:
+            publisher.publish(
+                USER_EVENTS, user_id, serde.serialize_event(USER_EVENTS, meta, payload)
+            )
+            publisher.flush()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
+        return Accepted(event_id=event_id, correlation_id=correlation_id)
+
     if auth is not None:
         pending: PendingImports = imports if imports is not None else InMemoryPendingImports()
 
@@ -437,7 +507,7 @@ def create_app(
         def confirm_import(import_id: str, request: Request) -> dict[str, int]:
             user_id = own_id(request)
             item = pending.get(user_id, import_id) if IMPORT_ID.match(import_id) else None
-            if item is None:
+            if item is None or "readings" not in item:  # a lab upload has no readings
                 raise HTTPException(status_code=404, detail="that import expired; upload again")
             sent = 0
             for r in item["readings"]:
@@ -464,6 +534,71 @@ def create_app(
                 pending.delete(own_id(request), import_id)
             return {"status": "cancelled"}
 
+        # ---- lab report upload (D86): read -> person checks every row -> save on confirmation
+        @app.post("/v1/me/lab-uploads", status_code=201)
+        async def start_lab_upload(request: Request) -> dict[str, Any]:
+            user_id = own_id(request)
+            if not auth.limiter.hit(f"labup:{user_id}", 6, 3600):
+                raise HTTPException(status_code=429, detail="too many uploads; try again later")
+            body = bytearray()
+            async for chunk in request.stream():
+                body += chunk
+                if len(body) > LAB_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="that file is bigger than 15 MB")
+            try:
+                found = await run_in_threadpool(extract_labs, bytes(body))
+            except OcrBusy as exc:
+                raise HTTPException(status_code=429, detail=str(exc)) from exc
+            except ExtractRefused as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            rows = [
+                {"name": c.name, "marker": c.marker, "value": c.value, "unit": c.unit,
+                 "reference": c.reference, "line": c.line, "problem": c.problem}
+                for c in found.candidates
+            ]  # fmt: skip
+            upload_id = secrets.token_urlsafe(12)
+            pending.put(user_id, upload_id, {"kind": "labs", "rows": rows})
+            return {
+                "upload_id": upload_id,
+                "method": found.method,
+                "collected_on": found.collected_on.isoformat() if found.collected_on else None,
+                "rows": rows,
+                "unmatched_lines": found.unmatched_lines,
+            }
+
+        @app.post("/v1/me/lab-uploads/{upload_id}/confirm", status_code=202)
+        def confirm_lab_upload(
+            upload_id: str, body: LabUploadConfirm, request: Request
+        ) -> dict[str, int]:
+            user_id = own_id(request)
+            item = pending.get(user_id, upload_id) if IMPORT_ID.match(upload_id) else None
+            if item is None or item.get("kind") != "labs":
+                raise HTTPException(status_code=404, detail="that upload expired; upload again")
+            now = clock()
+            at = min(
+                datetime.combine(body.collected_on, dtime(12, 0), tzinfo=UTC),
+                now - timedelta(minutes=1),
+            )
+            if body.collected_on > now.date():
+                raise HTTPException(status_code=422, detail="the collection date is in the future")
+            results: list[tuple[LabResult, str]] = []
+            for pick in body.rows:
+                if not 0 <= pick.i < len(item["rows"]):
+                    raise HTTPException(status_code=422, detail="unknown row")
+                src = item["rows"][pick.i]
+                try:  # the same rules as a hand-typed result
+                    result = interpret(
+                        src["name"], at, value=pick.value, unit=pick.unit,
+                        reference_text=src["reference"],
+                    )  # fmt: skip
+                except LabError as exc:
+                    raise HTTPException(status_code=422, detail=f"{src['name']}: {exc}") from exc
+                results.append((result, f"labup:{src['marker']}:{body.collected_on}:{pick.value}"))
+            for result, event_key in results:
+                emit_lab(user_id, "default", result, event_key, now)
+            pending.delete(user_id, upload_id)
+            return {"saved": len(results)}
+
     @app.post("/v1/labs", status_code=202, response_model=Accepted)
     def post_lab(m: LabIn, request: Request) -> Accepted:
         require_self(request, m.user_id)
@@ -483,46 +618,7 @@ def create_app(
         except LabError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        correlation_id = str(uuid.uuid4())
-        event_id = (
-            str(uuid.uuid5(_NAMESPACE, f"lab:{m.user_id}:{m.client_event_id}"))
-            if m.client_event_id
-            else str(uuid.uuid4())
-        )
-        meta = EventMeta(
-            event_id=event_id,
-            correlation_id=correlation_id,
-            user_id=m.user_id,
-            household_id=m.household_id,
-            source="api" if m.client_event_id else None,
-            external_id=m.client_event_id,
-            type="lab.result.recorded",
-            occurred_at=now,
-            trace_id=correlation_id,
-        )
-        payload = payloads_pb2.LabResultRecorded(
-            marker_code=result.loinc or "", marker_name=result.name, derived=result.derived
-        )
-        if result.text is not None:
-            payload.text = result.text
-        else:
-            assert result.value is not None and result.unit is not None
-            payload.numeric.value, payload.numeric.unit = result.value, result.unit
-        payload.reference.raw_text = result.reference.raw_text
-        payload.reference.parsed = result.reference.parsed
-        if result.reference.low is not None:
-            payload.reference.low = result.reference.low
-        if result.reference.high is not None:
-            payload.reference.high = result.reference.high
-        payload.collected_at.FromDatetime(result.collected_at.astimezone(UTC).replace(tzinfo=None))
-        try:
-            publisher.publish(
-                USER_EVENTS, m.user_id, serde.serialize_event(USER_EVENTS, meta, payload)
-            )
-            publisher.flush()
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
-        return Accepted(event_id=event_id, correlation_id=correlation_id)
+        return emit_lab(m.user_id, m.household_id, result, m.client_event_id, now)
 
     @app.get("/v1/users/{user_id}/labs", response_model=list[LabOut])
     def get_labs(user_id: str) -> list[LabOut]:

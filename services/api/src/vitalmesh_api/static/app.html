@@ -156,6 +156,25 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
       </div>
       <div class="msg" id="import-msg" role="status"></div>
     </section>
+    <section class="card wide" id="labup-card" hidden>
+      <h2>Bring in a blood report</h2>
+      <p class="sub">Choose a PDF, or a photo or scan of the report. It is read on this server, not sent to any outside service. Check every number against the line shown beside it before saving: a photo can be misread.</p>
+      <form class="row" id="labup-form">
+        <input type="file" id="labup-file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Blood report file" required>
+        <button id="labup-btn" type="submit">Read the report</button>
+      </form>
+      <div id="labup-preview" hidden>
+        <p class="sub" id="labup-method"></p>
+        <label class="sub">Date the sample was collected <input type="date" id="labup-date" required></label>
+        <div style="overflow-x:auto"><table id="labup-table"></table></div>
+        <p class="sub" id="labup-note"></p>
+        <div class="row">
+          <button type="button" id="labup-confirm">Save the ticked results</button>
+          <button type="button" class="ghost" id="labup-cancel">Cancel</button>
+        </div>
+      </div>
+      <div class="msg" id="labup-msg" role="status"></div>
+    </section>
     <section class="card wide" id="cal-card" hidden>
       <h2>Plan workouts around your calendar</h2>
       <p class="sub" id="cal-intro">Connect Google Calendar and I will suggest workout times that fit around your events. Nothing is added until you say so.</p>
@@ -201,6 +220,7 @@ async function boot() {
     document.getElementById("account-bar").hidden = false;
     document.getElementById("import-card").hidden = false;
     document.getElementById("cal-card").hidden = false;
+    document.getElementById("labup-card").hidden = false;
     document.getElementById("who").textContent = me.email;
     if (me.verification_required && !me.email_verified) {
       document.getElementById("verify-banner").hidden = false;
@@ -521,6 +541,60 @@ $("import-confirm").addEventListener("click", async () => {
 $("import-cancel").addEventListener("click", async () => {
   if (pendingImport) await fetch(`/v1/me/imports/${encodeURIComponent(pendingImport)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
   importDone("Nothing was saved.");
+});
+
+// ---- blood report (PDF or scan): read, show beside the source line, save only ticked rows
+let pendingLab = null, labRows = [];
+const labMsg = (text, bad = false) => { $("labup-msg").className = bad ? "msg err" : "msg"; $("labup-msg").textContent = text; };
+function labDone(text) { pendingLab = null; $("labup-preview").hidden = true; labMsg(text); }
+$("labup-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const file = $("labup-file").files[0];
+  if (!file) return;
+  $("labup-btn").disabled = true; labMsg("Reading the report. A scan can take half a minute.");
+  try {
+    const r = await fetch("/v1/me/lab-uploads", { method: "POST", headers: { "x-csrf-token": csrf(), "content-type": "application/octet-stream" }, body: file });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) { labMsg(typeof body.detail === "string" ? body.detail : "That file could not be read.", true); return; }
+    pendingLab = body.upload_id; labRows = body.rows;
+    const table = $("labup-table"); table.replaceChildren();
+    const head = table.insertRow();
+    for (const h of ["Save", "Test", "Value", "Unit", "Printed range", "Line in your report"]) { const c = document.createElement("th"); c.textContent = h; head.appendChild(c); }
+    body.rows.forEach((row, i) => {
+      const tr = table.insertRow();
+      const tick = document.createElement("input"); tick.type = "checkbox"; tick.checked = !row.problem; tick.setAttribute("aria-label", `Save ${row.name}`); tick.dataset.i = i;
+      const val = document.createElement("input"); val.type = "number"; val.step = "any"; val.value = row.value; val.size = 6; val.setAttribute("aria-label", `${row.name} value`); val.id = `lu-v${i}`;
+      const unit = document.createElement("input"); unit.type = "text"; unit.value = row.unit; unit.size = 7; unit.maxLength = 32; unit.setAttribute("aria-label", `${row.name} unit`); unit.id = `lu-u${i}`;
+      tr.insertCell().appendChild(tick); tr.insertCell().textContent = row.name;
+      tr.insertCell().appendChild(val); tr.insertCell().appendChild(unit);
+      tr.insertCell().textContent = row.reference || "none printed";
+      const src = tr.insertCell(); src.textContent = row.line;
+      if (row.problem) { const p = document.createElement("div"); p.className = "sub"; p.textContent = "Not ticked: " + row.problem; src.appendChild(p); }
+    });
+    $("labup-date").value = body.collected_on || "";
+    $("labup-method").textContent = body.method === "ocr" ? "Read from an image with text recognition. Misreads are possible: compare each number with the line beside it." : "Read from the text inside the PDF.";
+    $("labup-note").textContent = `${body.rows.length} known results found.` + (body.unmatched_lines ? ` ${body.unmatched_lines} other lines were not used.` : "") + " Only tests we know are read; nothing is guessed. Nothing is saved until you press Save.";
+    $("labup-preview").hidden = false; labMsg("");
+  } catch (e) { labMsg("Could not reach the service. Please try again.", true); }
+  finally { $("labup-btn").disabled = false; }
+});
+$("labup-confirm").addEventListener("click", async () => {
+  if (!pendingLab) return;
+  const rows = [...$("labup-table").querySelectorAll("input[type=checkbox]:checked")].map((t) => ({ i: Number(t.dataset.i), value: Number($(`lu-v${t.dataset.i}`).value), unit: $(`lu-u${t.dataset.i}`).value.trim() }));
+  if (!rows.length) { labMsg("Tick at least one result.", true); return; }
+  if (!$("labup-date").value) { labMsg("Enter the date the sample was collected.", true); return; }
+  $("labup-confirm").disabled = true;
+  try {
+    const r = await post2(`/v1/me/lab-uploads/${encodeURIComponent(pendingLab)}/confirm`, { collected_on: $("labup-date").value, rows });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) { labDone(`Saved ${body.saved} results. They appear in a few seconds.`); setTimeout(main, 4000); }
+    else labMsg(typeof body.detail === "string" ? body.detail : "That did not work.", true);
+  } catch (e) { labMsg("Could not reach the service. Please try again.", true); }
+  finally { $("labup-confirm").disabled = false; }
+});
+$("labup-cancel").addEventListener("click", async () => {
+  if (pendingLab) await fetch(`/v1/me/imports/${encodeURIComponent(pendingLab)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
+  labDone("Nothing was saved.");
 });
 
 // ---- Google Calendar: connect, find times, add only after confirmation
