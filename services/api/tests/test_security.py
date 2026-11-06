@@ -22,7 +22,7 @@ from vitalmesh_api.googlecal import TokenBox
 from vitalmesh_api.onboarding import CONSENT_VERSION
 from vitalmesh_api.security import CSRF_COOKIE, Auth
 from vitalmesh_common.testing import PlainSerde, RecordingPublisher
-from vitalmesh_stores import InMemoryPendingImports, InMemoryRunLog
+from vitalmesh_stores import InMemoryNudgeStore, InMemoryPendingImports, InMemoryRunLog
 from vitalmesh_t0.profiles import InMemoryProfileStore
 
 SECRET = b"s" * 32
@@ -50,6 +50,7 @@ class World:
         self.mailer = OutboxMailer()
         self.mono = 0.0
         self.imports = InMemoryPendingImports(clock=lambda: self.mono)
+        self.nudges = InMemoryNudgeStore()
         self.store = InMemoryAccountStore()
         self.cache = InMemoryProfileStore()
         self.limiter = InMemoryRateLimiter()
@@ -69,7 +70,8 @@ class World:
         )
         self.app = create_app(
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
-            imports=self.imports, google=google, token_box=TokenBox(Fernet.generate_key()),
+            imports=self.imports, nudges=self.nudges, google=google,
+            token_box=TokenBox(Fernet.generate_key()),
             ops=lambda: {"tiers": {}, "cohort": {}},
         )  # fmt: skip
 

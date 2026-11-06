@@ -29,6 +29,9 @@ DRAFTS_CLEARED = "drafts.cleared"  # Guardian -> Checker or Release
 REVIEWS_COMPLETED = "reviews.completed"  # Checker -> Synthesizer (revise), Release, Briefer
 REVIEWS_REQUESTED = "reviews.requested"  # Briefer -> human console
 REVIEWS_DECIDED = "reviews.decided"  # human console -> Release
+ENGAGEMENT_TICKS = "engagement.ticks"  # ticker (code) -> Engagement agent
+NUDGES_PLANNED = "nudges.planned"  # Engagement agent -> Delivery
+NOTIFICATIONS_SENT = "notifications.sent"  # Delivery -> audit
 
 RETRY_INFIX = ".retry."  # one retry topic per backoff tier: <topic>.retry.<n>, n = 1..max_retries
 DLQ_SUFFIX = ".dlq"
@@ -93,6 +96,9 @@ for _name, _prod in (
     (REVIEWS_COMPLETED, 24),
     (REVIEWS_REQUESTED, 12),
     (REVIEWS_DECIDED, 12),
+    (ENGAGEMENT_TICKS, 24),
+    (NUDGES_PLANNED, 24),
+    (NOTIFICATIONS_SENT, 12),
 ):
     TOPICS[_name] = TopicSpec(
         name=_name,

@@ -51,7 +51,11 @@ def test_export_returns_what_is_held_and_purge_removes_only_that_person(
     held = export_user(redis_client, a)
     assert len(held["labs"]) == 1 and list(held["history"]) == ["body_weight"]
     assert purge_user(redis_client, a) == 4  # profile, labs, one history series, a pending import
-    assert export_user(redis_client, a) == {"labs": [], "history": {}}
+    assert export_user(redis_client, a) == {
+        "labs": [],
+        "history": {},
+        "nudges": {"settings": {}, "inbox": []},
+    }
     assert RedisPendingImports(redis_client).get(a, "abcdefgh1234") is None
     assert RedisPendingImports(redis_client).get(b, "abcdefgh1234") is not None
     assert RedisProfileStore(redis_client).get(a) is None

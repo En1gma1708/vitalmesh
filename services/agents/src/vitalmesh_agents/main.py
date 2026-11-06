@@ -15,6 +15,8 @@ guardian                recommendations.drafted          drafts.cleared | safety
 checker                 drafts.cleared                   reviews.completed
 release                 drafts.cleared, reviews.*        recommendations.released | blocked,
                                                          reviews.requested
+engagement              engagement.ticks                 nudges.planned
+delivery                nudges.planned                   notifications.sent (+ the inbox)
 ======================  ===============================  ==================================
 """
 
@@ -49,6 +51,8 @@ from vitalmesh_common.topics import (
     ADVICE_BUNDLES,
     ADVICE_COMPLETED,
     DRAFTS_CLEARED,
+    ENGAGEMENT_TICKS,
+    NUDGES_PLANNED,
     QUESTIONS_ASKED,
     RECOMMENDATIONS_DRAFTED,
     RECOMMENDATIONS_RELEASED,
@@ -60,7 +64,13 @@ from vitalmesh_common.topics import (
 from vitalmesh_llm import Router
 from vitalmesh_llm.cache import RedisCache
 from vitalmesh_llm.providers import load_keys
-from vitalmesh_stores import RedisHistoryStore, RedisLabStore, RedisProfileStore, RedisRunLog
+from vitalmesh_stores import (
+    RedisHistoryStore,
+    RedisLabStore,
+    RedisNudgeStore,
+    RedisProfileStore,
+    RedisRunLog,
+)
 from vitalmesh_tracing import tracer_from_env
 
 from vitalmesh_agents.aggregator import Aggregator
@@ -70,6 +80,8 @@ from vitalmesh_agents.checker import Checker
 from vitalmesh_agents.checker_handler import make_checker_handler
 from vitalmesh_agents.cohort_handler import DisabledEvidence, make_cohort_handler, make_fill_handler
 from vitalmesh_agents.cohortstore import RedisCohortStore
+from vitalmesh_agents.engagement import Engagement
+from vitalmesh_agents.engagement_handler import make_delivery_handler, make_engagement_handler
 from vitalmesh_agents.guardian_handler import make_guardian_handler
 from vitalmesh_agents.release import ReleaseGate
 from vitalmesh_agents.release_handler import make_release_handler
@@ -97,6 +109,8 @@ INPUTS: dict[str, tuple[str, ...]] = {
     "cohort": (RUNS_PLANNED,),
     "cachefill": (RECOMMENDATIONS_RELEASED,),
     "tracker": TRACKED_TOPICS,
+    "engagement": (ENGAGEMENT_TICKS,),
+    "delivery": (NUDGES_PLANNED,),
 }
 _SPECIALISTS = {
     "nutrition": Specialist.NUTRITION,
@@ -159,6 +173,17 @@ class Runtime:
                 monitor=RedisLoadMonitor(self.redis) if use_cohort else None,
                 tiers=RedisTierCounter(self.redis),
             )
+        if role == "engagement":
+            return make_engagement_handler(
+                Engagement(self.router, tracer=self.tracer),
+                profiles,
+                RedisHistoryStore(self.redis),
+                RedisNudgeStore(self.redis),
+                self.serde,
+                self.publisher,
+            )
+        if role == "delivery":
+            return make_delivery_handler(RedisNudgeStore(self.redis), self.serde, self.publisher)
         if role == "tracker":
             history = PostgresQaHistory(DB_DSN)  # what the person was shown outlives the run log
             self.stack.callback(history.close)

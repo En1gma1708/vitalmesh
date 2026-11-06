@@ -27,6 +27,7 @@ from datetime import UTC, date, datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -42,7 +43,14 @@ from vitalmesh_common.topics import QUESTIONS_ASKED, USER_EVENTS
 from vitalmesh_concierge.screen import REFUSALS, screen_question
 from vitalmesh_processor.history import HistoryStore
 from vitalmesh_processor.labstore import LabStore
-from vitalmesh_stores import InMemoryPendingImports, PendingImports, RunLog
+from vitalmesh_stores import (
+    InMemoryNudgeStore,
+    InMemoryPendingImports,
+    NudgeStore,
+    PendingImports,
+    Prefs,
+    RunLog,
+)
 from vitalmesh_t0.decision import decide
 from vitalmesh_t0.profiles import ProfileStore
 from vitalmesh_wellness.calculators import OutOfRange
@@ -83,6 +91,7 @@ from vitalmesh_api.security import Auth, install, require_self
 
 STATIC = Path(__file__).parent / "static"
 IMPORT_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+NOTIFICATION_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 MAX_IMPORT_EVENTS = 2000
 USER_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_FUTURE = timedelta(minutes=5)
@@ -166,6 +175,24 @@ class LabUploadConfirm(BaseModel):
 
     collected_on: date
     rows: Annotated[list[LabPick], Field(min_length=1, max_length=60)]
+
+
+class NudgePrefsIn(BaseModel):
+    """The switch for nudges and the browser's timezone, so quiet hours are the person's own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    timezone: Annotated[str, Field(min_length=1, max_length=64)] = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            raise ValueError("unknown timezone") from None
+        return v
 
 
 class LabOut(BaseModel):
@@ -324,6 +351,7 @@ def create_app(
     stream_appear_s: float = 5.0,
     auth: Auth | None = None,
     imports: PendingImports | None = None,
+    nudges: NudgeStore | None = None,
     google: GoogleClient | None = None,
     token_box: TokenBox | None = None,
     qa: QaHistory | None = None,
@@ -533,6 +561,38 @@ def create_app(
             if IMPORT_ID.match(import_id):
                 pending.delete(own_id(request), import_id)
             return {"status": "cancelled"}
+
+        # ---- gentle reminders (D87): off until the person turns them on; the agents decide, the
+        # ---- person's own switch and dismissals are all they can change here
+        nudge_store: NudgeStore = nudges if nudges is not None else InMemoryNudgeStore()
+
+        @app.get("/v1/me/nudges")
+        def get_nudge_prefs(request: Request) -> dict[str, Any]:
+            prefs = nudge_store.get_prefs(own_id(request))
+            return {"enabled": prefs.enabled, "timezone": prefs.timezone}
+
+        @app.put("/v1/me/nudges")
+        def put_nudge_prefs(body: NudgePrefsIn, request: Request) -> dict[str, Any]:
+            user_id = own_id(request)
+            nudge_store.set_prefs(user_id, Prefs(body.enabled, body.timezone))
+            auth.audit(request, user_id, "nudges_changed", enabled=body.enabled)
+            return {"enabled": body.enabled, "timezone": body.timezone}
+
+        @app.get("/v1/me/notifications")
+        def get_notifications(request: Request) -> list[dict[str, Any]]:
+            return [
+                {"id": i.id, "kind": i.kind, "text": i.text, "at": i.at.isoformat()}
+                for i in nudge_store.items(own_id(request))
+                if not i.dismissed
+            ][:20]
+
+        @app.post("/v1/me/notifications/{notification_id}/dismiss")
+        def dismiss_notification(notification_id: str, request: Request) -> dict[str, str]:
+            if not NOTIFICATION_ID.match(notification_id) or not nudge_store.dismiss(
+                own_id(request), notification_id
+            ):
+                raise HTTPException(status_code=404, detail="no such notification")
+            return {"status": "dismissed"}
 
         # ---- lab report upload (D86): read -> person checks every row -> save on confirmation
         @app.post("/v1/me/lab-uploads", status_code=201)

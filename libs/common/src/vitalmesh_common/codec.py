@@ -39,6 +39,9 @@ PAYLOAD_FIELDS: dict[str, str] = {
     "review.completed": "review_completed",
     "review.requested": "review_requested",
     "review.decided": "review_decided",
+    "engagement.tick": "engagement_tick",
+    "nudge.planned": "nudge_planned",
+    "notification.sent": "notification_sent",
 }
 
 _TIER_TO_PROTO = {

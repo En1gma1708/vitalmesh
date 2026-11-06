@@ -32,7 +32,13 @@ from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistry
 from vitalmesh_common.lag import consumer_lag
 from vitalmesh_processor.history import RedisHistoryStore
 from vitalmesh_processor.labstore import RedisLabStore
-from vitalmesh_stores import RedisPendingImports, RedisRunLog, export_user, purge_user
+from vitalmesh_stores import (
+    RedisNudgeStore,
+    RedisPendingImports,
+    RedisRunLog,
+    export_user,
+    purge_user,
+)
 from vitalmesh_t0.profiles import RedisProfileStore
 
 from vitalmesh_api.app import create_app
@@ -107,6 +113,7 @@ def build_app() -> FastAPI:
         history=RedisHistoryStore(client),
         runs=RedisRunLog(client),
         imports=RedisPendingImports(client),
+        nudges=RedisNudgeStore(client),
         google=GoogleClient(google_cfg) if google_cfg else None,
         token_box=TokenBox.from_env(),
         qa=qa,

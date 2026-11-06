@@ -277,3 +277,34 @@ message RecommendationBlocked {
   repeated GuardianViolation violations = 2;
   string rules_version = 3;
 }
+
+// ---- Engagement: when and how to nudge (docs/AGENTS.md agent 10, decision D87) ----
+
+// A once-a-day, per-person prompt to think about nudging. Published by a code-only ticker.
+message EngagementTick {
+  string day = 1;  // YYYY-MM-DD (UTC) the tick is for
+}
+
+// The Engagement agent's decision. "send" asks Delivery to put the nudge in the inbox, "hold"
+// means not now (it is looked at again on the next tick). The text is never in the event: it is
+// rendered from a fixed template by Delivery.
+message NudgePlanned {
+  string nudge_id = 1;
+  string action = 2;                  // send | hold
+  string kind = 3;                    // log_reminder | activity_behind ('' when nothing to say)
+  string tone = 4;                    // gentle | direct | upbeat
+  string decided_by = 5;              // agent | cache | fallback
+  string reason = 6;                  // the model's own words, for audit only, never shown
+  map<string, string> params = 7;     // numbers the template fills in (days, minutes, goal)
+  repeated string considered = 8;     // candidate kinds that passed the hard policy
+  repeated string blocked = 9;        // "kind:reason" for the ones the policy stopped
+  string fallback_action = 10;        // what the deterministic policy alone would have done
+  string fallback_kind = 11;
+}
+
+// Delivery's record that a nudge reached the person's in-app inbox.
+message NotificationSent {
+  string nudge_id = 1;
+  string kind = 2;
+  string channel = 3;  // in_app
+}

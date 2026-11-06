@@ -42,7 +42,8 @@ Example from the brief, in our domain: `nutrition.advice.completed` is consumed 
 | `review.completed` | Checker | Release / Escalation Briefer |
 | `review.requested` / `review.decided` | Briefer / Human console | Human console / Release |
 | `recommendation.released` | Release (code) | Engagement, Delivery (SSE), Audit, Eval sampler |
-| `nudge.planned` -> `notification.sent` | Engagement -> Delivery | Audit, Engagement |
+| `engagement.tick` (topic `engagement.ticks`) | Ticker (code, daily per person) | Engagement |
+| `nudge.planned` (`nudges.planned`) -> `notification.sent` (`notifications.sent`) | Engagement -> Delivery | Delivery, Audit |
 | `schedule.requested` (user opted in, plan has sessions) | Concierge / Release | Scheduler |
 | `schedule.proposed` (slots from free/busy) | Scheduler | Delivery (asks user), Guardian (schedule rules: recovery days, sleep window) |
 | `schedule.confirmed` / `schedule.declined` | Concierge (user action) | Scheduler, Audit |

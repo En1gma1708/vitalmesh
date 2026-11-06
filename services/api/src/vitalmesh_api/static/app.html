@@ -85,6 +85,9 @@ ol.steps li.last { color: var(--fg); }
 .msg.err { color: var(--warn); }
 .banner { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+ul.plain { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.nudge-item { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.nudge-item span { flex: 1 1 240px; min-width: 0; }
 /* blood-report confirm table: one stacked card per result on a narrow screen, so the value and the line it came from are always on screen together */
 @media (max-width: 640px) {
   #labup-table, #labup-table tbody, #labup-table tr, #labup-table td { display: block; width: 100%; }
@@ -148,6 +151,13 @@ footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
         <button id="log-btn" type="submit">Save</button>
       </form>
       <div class="msg" id="log-msg" role="status"></div>
+    </section>
+    <section class="card wide" id="nudge-card" hidden>
+      <h2>Gentle reminders</h2>
+      <p class="sub">Off until you turn them on. At most two a day, never at night in your own time zone, and fewer of any kind you dismiss. They only appear here in the app.</p>
+      <label class="row" style="align-items:center"><input type="checkbox" id="nudge-on" aria-label="Send me gentle reminders in the app"> <span>Send me gentle reminders in the app</span></label>
+      <ul id="nudge-list" class="plain" aria-live="polite"></ul>
+      <div class="msg" id="nudge-msg" role="status"></div>
     </section>
     <section class="card wide" id="import-card" hidden>
       <h2>Bring in your health data</h2>
@@ -231,6 +241,8 @@ async function boot() {
     document.getElementById("import-card").hidden = false;
     document.getElementById("cal-card").hidden = false;
     document.getElementById("labup-card").hidden = false;
+    document.getElementById("nudge-card").hidden = false;
+    loadNudges();
     document.getElementById("who").textContent = me.email;
     if (me.verification_required && !me.email_verified) {
       document.getElementById("verify-banner").hidden = false;
@@ -552,6 +564,40 @@ $("import-cancel").addEventListener("click", async () => {
   if (pendingImport) await fetch(`/v1/me/imports/${encodeURIComponent(pendingImport)}`, { method: "DELETE", headers: { "x-csrf-token": csrf() } });
   importDone("Nothing was saved.");
 });
+
+// ---- gentle reminders: a switch, the inbox, dismiss
+const nudgeMsg = (text, bad = false) => { $("nudge-msg").className = bad ? "msg err" : "msg"; $("nudge-msg").textContent = text; };
+async function loadNudges() {
+  try {
+    const [p, n] = await Promise.all([fetch("/v1/me/nudges"), fetch("/v1/me/notifications")]);
+    if (p.ok) $("nudge-on").checked = (await p.json()).enabled;
+    const list = $("nudge-list"); list.replaceChildren();
+    const items = n.ok ? await n.json() : [];
+    for (const it of items) {
+      const li = document.createElement("li"); li.className = "nudge-item";
+      const t = document.createElement("span"); t.textContent = it.text;
+      const b = document.createElement("button"); b.type = "button"; b.className = "ghost"; b.textContent = "Dismiss"; b.setAttribute("aria-label", "Dismiss this reminder");
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        const r = await fetch(`/v1/me/notifications/${encodeURIComponent(it.id)}/dismiss`, { method: "POST", headers: { "x-csrf-token": csrf() } });
+        if (r.ok) loadNudges(); else { b.disabled = false; nudgeMsg("Could not dismiss that. Please try again.", true); }
+      });
+      li.append(t, b); list.appendChild(li);
+    }
+    if (!items.length) { const li = document.createElement("li"); li.className = "sub"; li.textContent = $("nudge-on").checked ? "No reminders right now." : ""; list.appendChild(li); }
+  } catch (e) { nudgeMsg("Could not load your reminders.", true); }
+}
+$("nudge-on").addEventListener("change", async () => {
+  const box = $("nudge-on"); box.disabled = true;
+  try {
+    const zone = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+    const r = await fetch("/v1/me/nudges", { method: "PUT", headers: jsonHeaders(), body: JSON.stringify({ enabled: box.checked, timezone: zone }) });
+    if (!r.ok) { box.checked = !box.checked; nudgeMsg("That did not save. Please try again.", true); }
+    else nudgeMsg(box.checked ? `Reminders are on (your time zone: ${zone}).` : "Reminders are off.");
+  } catch (e) { box.checked = !box.checked; nudgeMsg("Could not reach the service. Please try again.", true); }
+  finally { box.disabled = false; loadNudges(); }
+});
+setInterval(() => { if (!document.hidden && !$("nudge-card").hidden) loadNudges(); }, 60000);
 
 // ---- blood report (PDF or scan): read, show beside the source line, save only ticked rows
 let pendingLab = null, labRows = [];

@@ -4,6 +4,13 @@ results and measurement history, each with an in-memory twin for tests."""
 from vitalmesh_stores.history import HistoryStore, InMemoryHistoryStore, Point, RedisHistoryStore
 from vitalmesh_stores.imports import InMemoryPendingImports, PendingImports, RedisPendingImports
 from vitalmesh_stores.labstore import InMemoryLabStore, LabStore, RedisLabStore
+from vitalmesh_stores.nudges import (
+    InMemoryNudgeStore,
+    Item,
+    NudgeStore,
+    Prefs,
+    RedisNudgeStore,
+)
 from vitalmesh_stores.profiles import (
     InMemoryProfileStore,
     ProfileRecord,
@@ -17,16 +24,21 @@ __all__ = [
     "HistoryStore",
     "InMemoryHistoryStore",
     "InMemoryLabStore",
+    "InMemoryNudgeStore",
     "InMemoryPendingImports",
     "InMemoryProfileStore",
     "InMemoryRunLog",
+    "Item",
     "LabStore",
+    "NudgeStore",
     "PendingImports",
     "Point",
+    "Prefs",
     "ProfileRecord",
     "ProfileStore",
     "RedisHistoryStore",
     "RedisLabStore",
+    "RedisNudgeStore",
     "RedisPendingImports",
     "RedisProfileStore",
     "RedisRunLog",

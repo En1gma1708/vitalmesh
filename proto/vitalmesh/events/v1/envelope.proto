@@ -45,6 +45,9 @@ message Envelope {
     ReviewCompleted review_completed = 36;
     ReviewRequested review_requested = 37;
     ReviewDecided review_decided = 38;
+    EngagementTick engagement_tick = 39;
+    NudgePlanned nudge_planned = 40;
+    NotificationSent notification_sent = 41;
   }
 }
 
