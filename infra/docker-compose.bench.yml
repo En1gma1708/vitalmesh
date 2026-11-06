@@ -1,0 +1,79 @@
+# Throwaway benchmark stack (D90): its own Kafka, Schema Registry and Redis, on different ports and
+# with different container names, so a load test never touches the development data or the
+# development Redis (which is capped at 128 MB). Nothing is persisted: `down -v` removes it.
+#
+#   docker compose -f infra/docker-compose.bench.yml up -d --wait
+#   VITALMESH_KAFKA_BOOTSTRAP=127.0.0.1:9192 VITALMESH_SCHEMA_REGISTRY_URL=http://127.0.0.1:8181 \
+#   VITALMESH_REDIS_URL=redis://127.0.0.1:6390/0 uv run python scripts/load_pipeline.py ...
+#   docker compose -f infra/docker-compose.bench.yml down -v
+#
+# All ports are bound to 127.0.0.1. Same images and topic contract as the development stack.
+name: vitalmesh-bench
+
+services:
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: vitalmesh-bench-kafka
+    ports:
+      - "127.0.0.1:9192:9192"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://:19092,PLAINTEXT_HOST://:9192,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://127.0.0.1:9192
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xms1g -Xmx1g"
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9192 --list > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.9.0
+    container_name: vitalmesh-bench-schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8181:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:19092
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: BACKWARD
+      SCHEMA_REGISTRY_HEAP_OPTS: "-Xms128m -Xmx256m"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/subjects > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: vitalmesh-bench-redis
+    ports:
+      - "127.0.0.1:6390:6379"
+    # sized for a million synthetic people; noeviction, as in the development stack, so a full
+    # Redis fails loudly instead of silently dropping state or idempotency keys
+    command: ["redis-server", "--maxmemory", "3gb", "--maxmemory-policy", "noeviction", "--appendonly", "no"]
+    mem_limit: 3500m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
