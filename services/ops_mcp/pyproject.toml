@@ -1,0 +1,13 @@
+[project]
+name = "vitalmesh-ops-mcp"
+version = "0.1.0"
+description = "Ops MCP server: the engineering console's read-only data as MCP tools over stdio, through the API's own operator gate"
+requires-python = ">=3.12,<3.13"
+dependencies = ["httpx>=0.27", "mcp==2.3.0", "pydantic>=2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vitalmesh_ops_mcp"]

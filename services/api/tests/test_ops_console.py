@@ -100,6 +100,7 @@ def make(
     lag: Any = None,
     evals: Any = None,
     graph: Any = None,
+    nudges: Any = None,
     ops: Any = lambda: {"tiers": {}, "cohort": {}},
 ) -> TestClient:
     log = InMemoryRunLog()
@@ -115,6 +116,7 @@ def make(
         lag=lag,
         evals=evals,
         graph=graph,
+        nudges=nudges,
     )
     return TestClient(app)
 
@@ -167,6 +169,28 @@ def test_routes_that_are_not_wired_say_so() -> None:
     assert c.get("/v1/ops/lag").status_code == 404
     assert c.get("/v1/ops/evals").status_code == 404
     assert make(evals=lambda: []).get("/v1/ops/evals").json() == []
+
+
+def test_nudge_counters_carry_no_person_and_say_how_often_the_model_agreed() -> None:
+    from vitalmesh_stores import InMemoryNudgeStore
+
+    store = InMemoryNudgeStore()
+    assert make(nudges=store).get("/v1/ops/nudges").json()["model_agreement"] is None
+    counts = {"agree": 3, "disagree": 1, "cache_hit": 1, "cache_miss": 4}
+    counts |= {"delivery_vetoed_daily_cap": 2, "delivered": 3}
+    for name, n in counts.items():
+        store.stat(name, n)
+    body = make(nudges=store).get("/v1/ops/nudges").json()
+    assert body["model_agreement"] == 0.75 and body["cache_hit_share"] == 0.2
+    assert body["vetoed_by_delivery"] == 2 and body["decisions_by_model"] == 4
+    assert set(body) == {
+        "counters",
+        "decisions_by_model",
+        "model_agreement",
+        "cache_hit_share",
+        "vetoed_by_delivery",
+    }
+    assert make().get("/v1/ops/nudges").status_code == 404  # not wired: says so
 
 
 def test_the_page_is_served_with_a_nonce_and_never_cached() -> None:

@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Event-driven multi-agent health recommendation platform (workspace root)"
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
-dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-tracing", "vitalmesh-concierge", "vitalmesh-stores", "vitalmesh-agents", "vitalmesh-knowledge-mcp", "vitalmesh-accounts", "vitalmesh-evals"]
+dependencies = ["vitalmesh-common", "vitalmesh-processor", "vitalmesh-wellness", "vitalmesh-t0", "vitalmesh-api", "vitalmesh-kg", "vitalmesh-llm", "vitalmesh-retrieval", "vitalmesh-evidence", "vitalmesh-specialists", "vitalmesh-tracing", "vitalmesh-concierge", "vitalmesh-stores", "vitalmesh-agents", "vitalmesh-knowledge-mcp", "vitalmesh-ops-mcp", "vitalmesh-accounts", "vitalmesh-evals"]
 
 [tool.uv.workspace]
-members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "libs/evidence", "libs/specialists", "libs/tracing", "libs/concierge", "libs/stores", "services/agents", "services/knowledge_mcp", "libs/accounts", "evals"]
+members = ["libs/common", "libs/wellness", "services/processor", "services/t0", "services/api", "services/kg", "libs/llm", "libs/retrieval", "libs/evidence", "libs/specialists", "libs/tracing", "libs/concierge", "libs/stores", "services/agents", "services/knowledge_mcp", "services/ops_mcp", "libs/accounts", "evals"]
 
 [tool.uv]
 # fastembed 0.9.0 (latest) caps pillow<13, but pillow 12.3.0 has 35 known advisories fixed in 13.0.0.
@@ -30,6 +30,7 @@ vitalmesh-concierge = { workspace = true }
 vitalmesh-stores = { workspace = true }
 vitalmesh-agents = { workspace = true }
 vitalmesh-knowledge-mcp = { workspace = true }
+vitalmesh-ops-mcp = { workspace = true }
 vitalmesh-accounts = { workspace = true }
 vitalmesh-evals = { workspace = true }
 

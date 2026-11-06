@@ -247,6 +247,16 @@ class OpsTiersOut(BaseModel):
     no_model_share: float | None  # (T0 + T1) / all planned runs
 
 
+class OpsNudgesOut(BaseModel):
+    """Engagement counters (D87): counts only, never a person, a message or a model's reason."""
+
+    counters: dict[str, int]
+    decisions_by_model: int  # model decisions compared with the plain rule (cached copies excluded)
+    model_agreement: float | None  # share of model decisions equal to the plain rule's
+    cache_hit_share: float | None  # cached decisions / (cached + model-or-fallback) decisions
+    vetoed_by_delivery: int  # nudges Delivery refused although the agent asked
+
+
 class Accepted(BaseModel):
     event_id: str
     correlation_id: str
@@ -1009,6 +1019,23 @@ def create_app(
         if evals is None:
             raise HTTPException(status_code=404, detail="not enabled")
         return evals()
+
+    @app.get("/v1/ops/nudges", response_model=OpsNudgesOut)
+    def ops_nudges() -> OpsNudgesOut:
+        """How the Engagement agent is deciding: counters and the model-vs-rule agreement."""
+        if nudges is None:
+            raise HTTPException(status_code=404, detail="not enabled")
+        c = nudges.stats()
+        asked = c.get("cache_hit", 0) + c.get("cache_miss", 0)
+        compared = c.get("agree", 0) + c.get("disagree", 0)
+        by_model = compared  # agree/disagree are counted for the model's own decisions only
+        return OpsNudgesOut(
+            counters=c,
+            decisions_by_model=by_model,
+            model_agreement=round(c.get("agree", 0) / compared, 3) if compared else None,
+            cache_hit_share=round(c.get("cache_hit", 0) / asked, 3) if asked else None,
+            vetoed_by_delivery=sum(v for k, v in c.items() if k.startswith("delivery_vetoed_")),
+        )
 
     @app.get("/v1/ops/tiers", response_model=OpsTiersOut)
     def ops_tiers() -> OpsTiersOut:

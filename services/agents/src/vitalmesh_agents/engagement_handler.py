@@ -97,7 +97,10 @@ def make_engagement_handler(
         )
         plain = fallback(situation)
         decision = _decide(agent, store, situation, meta.correlation_id)
-        store.stat("agree" if decision.same_as(plain) else "disagree")
+        if decision.decided_by == "agent":
+            # only the model's own decisions say anything about the model: a cached copy is not an
+            # independent decision and a fallback decision IS the plain rule (it would always agree)
+            store.stat("agree" if decision.same_as(plain) else "disagree")
         store.stat(f"decided_{decision.decided_by}")
         store.stat(f"action_{decision.action}")
 

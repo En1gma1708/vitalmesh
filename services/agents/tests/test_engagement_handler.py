@@ -126,6 +126,21 @@ def test_the_same_situation_for_a_second_person_is_a_cache_hit_not_a_second_mode
     assert w.store.stats()["cache_hit"] == 1
 
 
+def test_agreement_is_counted_only_for_the_models_own_decisions() -> None:
+    w = World(SEND_LOG, "nonsense", "nonsense")
+    a, b, c = w.person(1), w.person(2), w.person(3, quiet_days=12)
+    w.tick(a)  # the model decides
+    w.tick(b)  # same situation: a cached copy
+    w.tick(c)  # a different situation (12 days quiet): the model's reply is junk, the rule decides
+    stats = w.store.stats()
+    assert stats["agree"] == 1 and "disagree" not in stats  # one model decision, nothing inflated
+    assert (
+        stats["decided_agent"] == 1
+        and stats["decided_cache"] == 1
+        and stats["decided_fallback"] == 1
+    )
+
+
 def test_a_fallback_decision_is_never_cached_so_a_recovered_model_gets_the_next_one() -> None:
     w = World("nonsense", "nonsense", SEND_LOG)
     a, b = w.person(1), w.person(2)
