@@ -63,6 +63,7 @@ Scope: the web application (accounts, onboarding, questions, runs), the Kafka ag
 - **Local-only transport.** Cookies are `Secure` only when `VITALMESH_SECURE_COOKIES=1`; real HTTPS and a secret store (Azure Key Vault) arrive with the cloud phase.
 - **The input screen is weak** (a blocklist). The real defence is that the model cannot act: its output is verified and gated.
 - **No penetration test or external review.** The mutation check proves our tests notice five removed rules; it does not prove there are no other holes.
+- **Erasure leaves a few short-lived, shared traces in Redis** (D89): the aggregator's per-run state (up to 24 h, specialist advice keyed by run), the shared LLM response cache (7 days, keyed by a prompt hash, not erasable per person), idempotency keys (event ids only) and rate-limit keys (an IP or email, at most an hour). Everything keyed by the person is erased through a per-person index, checked by a test that scans the whole keyspace; before 2026-11-07 the processor's derived health state was missed.
 - **Account layer not load-tested.** The 1M-user claim rests on the agent tiers; the account store at scale is still to be measured.
 - **Browser behaviour is tested by hand once, not yet by an automated browser suite or an accessibility audit.**
 - **Model provider sees question text.** Only synthetic or public data is ever sent; a real deployment needs a data-processing agreement and a decision on regional hosting.

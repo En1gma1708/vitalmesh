@@ -11,6 +11,7 @@ from vitalmesh_stores.nudges import (
     Prefs,
     RedisNudgeStore,
 )
+from vitalmesh_stores.personkeys import backfill, erase, index_key, track, tracked, untrack
 from vitalmesh_stores.profiles import (
     InMemoryProfileStore,
     ProfileRecord,
@@ -44,6 +45,12 @@ __all__ = [
     "RedisRunLog",
     "RunLog",
     "RunRecord",
+    "backfill",
+    "erase",
     "export_user",
+    "index_key",
     "purge_user",
+    "track",
+    "tracked",
+    "untrack",
 ]

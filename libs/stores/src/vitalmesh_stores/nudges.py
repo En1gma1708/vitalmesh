@@ -20,6 +20,8 @@ from typing import Protocol
 
 import redis
 
+from vitalmesh_stores.personkeys import track
+
 MAX_ITEMS = 50
 ITEM_TTL_S = 30 * 24 * 3600
 DECISION_TTL_S = 24 * 3600
@@ -152,12 +154,16 @@ class RedisNudgeStore:
 
     def set_prefs(self, user_id: str, prefs: Prefs) -> None:
         key = f"{PREFS_PREFIX}:{user_id}"
-        self._r.hset(
+        pipe = self._r.pipeline()
+        track(pipe, user_id, key)
+        pipe.hset(
             key, mapping={"enabled": "1" if prefs.enabled else "0", "timezone": prefs.timezone}
         )
+        pipe.execute()
 
     def add(self, user_id: str, item: Item) -> bool:
         key = f"{INBOX_PREFIX}:{user_id}"
+        track(self._r, user_id, key)  # before the data, so an interrupted write is still erasable
         if not self._r.hsetnx(key, item.id, _dump(item)):
             return False
         mine = self.items(user_id)

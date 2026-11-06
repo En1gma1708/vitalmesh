@@ -14,6 +14,7 @@ from typing import Protocol
 import redis
 from pydantic import BaseModel, ConfigDict, Field
 from vitalmesh_common.failure import EnvelopeError
+from vitalmesh_stores.personkeys import track
 
 
 class Metric(BaseModel):
@@ -91,4 +92,8 @@ class RedisStateStore:
         return HealthState.model_validate_json(raw) if raw else HealthState(user_id=user_id)
 
     def put(self, state: HealthState) -> None:
-        self._r.set(f"{self._prefix}:{state.user_id}", state.model_dump_json())
+        key = f"{self._prefix}:{state.user_id}"
+        pipe = self._r.pipeline()
+        track(pipe, state.user_id, key)  # state:<user> was never erased before the index (D89)
+        pipe.set(key, state.model_dump_json())
+        pipe.execute()

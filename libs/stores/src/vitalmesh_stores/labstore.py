@@ -12,6 +12,8 @@ from typing import Protocol
 import redis
 from vitalmesh_wellness.labs import LabResult
 
+from vitalmesh_stores.personkeys import track
+
 
 def _field(result: LabResult) -> str:
     return f"{result.name.strip().lower()}|{result.collected_at.isoformat()}"
@@ -45,7 +47,11 @@ class RedisLabStore:
         self._prefix = prefix
 
     def put(self, user_id: str, result: LabResult) -> None:
-        self._r.hset(f"{self._prefix}:{user_id}", _field(result), result.model_dump_json())
+        key = f"{self._prefix}:{user_id}"
+        pipe = self._r.pipeline()
+        track(pipe, user_id, key)
+        pipe.hset(key, _field(result), result.model_dump_json())
+        pipe.execute()
 
     def list(self, user_id: str) -> list[LabResult]:
         raw = self._r.hgetall(f"{self._prefix}:{user_id}")

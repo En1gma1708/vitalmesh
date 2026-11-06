@@ -14,6 +14,8 @@ import redis
 from pydantic import BaseModel, ConfigDict
 from vitalmesh_wellness.engine import Profile
 
+from vitalmesh_stores.personkeys import track
+
 
 class ProfileRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -50,4 +52,8 @@ class RedisProfileStore:
         return ProfileRecord.model_validate_json(raw) if raw else None
 
     def put(self, record: ProfileRecord) -> None:
-        self._r.set(f"{self._prefix}:{record.profile.user_id}", record.model_dump_json())
+        key = f"{self._prefix}:{record.profile.user_id}"
+        pipe = self._r.pipeline()
+        track(pipe, record.profile.user_id, key)
+        pipe.set(key, record.model_dump_json())
+        pipe.execute()

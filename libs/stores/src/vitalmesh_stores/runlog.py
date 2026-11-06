@@ -17,6 +17,8 @@ from typing import Any, Protocol
 
 import redis
 
+from vitalmesh_stores.personkeys import track
+
 RUN_TTL_S = 3600
 
 
@@ -65,6 +67,7 @@ class RedisRunLog:
             self._key(correlation_id, "entries"),
             self._key(correlation_id, "user"),
         )
+        track(self._r, user_id, seen, entries, owner)  # the run view holds answer text: erasable
         # the event id makes the append idempotent under redelivery
         if self._r.sadd(seen, str(entry.get("event_id", ""))) == 0:
             return

@@ -13,6 +13,8 @@ from typing import Protocol
 
 import redis
 
+from vitalmesh_stores.personkeys import track
+
 MAX_POINTS = 3650
 
 
@@ -61,6 +63,7 @@ class RedisHistoryStore:
     def add(self, user_id: str, metric: str, point: Point) -> None:
         key = self._key(user_id, metric)
         pipe = self._r.pipeline()
+        track(pipe, user_id, key)
         pipe.zadd(key, {_member(point): point.t.timestamp() * 1000})
         pipe.zremrangebyrank(key, 0, -(MAX_POINTS + 1))  # keep the newest MAX_POINTS
         pipe.execute()

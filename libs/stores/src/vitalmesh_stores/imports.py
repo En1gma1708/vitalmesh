@@ -15,6 +15,8 @@ from typing import Any, Protocol
 
 import redis
 
+from vitalmesh_stores.personkeys import track, untrack
+
 PENDING_TTL_S = 900
 PREFIX = "pending-import"
 
@@ -55,7 +57,11 @@ class RedisPendingImports:
         return f"{PREFIX}:{user_id}:{import_id}"
 
     def put(self, user_id: str, import_id: str, payload: dict[str, Any]) -> None:
-        self._r.set(self._key(user_id, import_id), json.dumps(payload), ex=self._ttl)
+        key = self._key(user_id, import_id)
+        pipe = self._r.pipeline()
+        track(pipe, user_id, key)
+        pipe.set(key, json.dumps(payload), ex=self._ttl)
+        pipe.execute()
 
     def get(self, user_id: str, import_id: str) -> dict[str, Any] | None:
         raw = self._r.get(self._key(user_id, import_id))
@@ -65,4 +71,8 @@ class RedisPendingImports:
         return loaded if isinstance(loaded, dict) else None
 
     def delete(self, user_id: str, import_id: str) -> None:
-        self._r.delete(self._key(user_id, import_id))
+        key = self._key(user_id, import_id)
+        pipe = self._r.pipeline()
+        pipe.delete(key)
+        untrack(pipe, user_id, key)
+        pipe.execute()
