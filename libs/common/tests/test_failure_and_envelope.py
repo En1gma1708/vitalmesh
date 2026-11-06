@@ -101,7 +101,13 @@ def test_unknown_exception_message_is_bounded() -> None:
 # --------------------------------------------------------------------- envelope
 def test_idempotency_key_prefers_provider_identity() -> None:
     m = make_meta(source="fitbit", external_id="abc-123")
-    assert m.idempotency_key() == "fitbit:abc-123"
+    assert m.idempotency_key() == "fitbit:u-1:abc-123"
+
+
+def test_the_same_external_id_from_two_people_is_not_a_duplicate() -> None:
+    a = make_meta(user_id="u-1", source="api", external_id="labup:ldl:2026-11-03:190")
+    b = make_meta(user_id="u-2", source="api", external_id="labup:ldl:2026-11-03:190")
+    assert a.idempotency_key() != b.idempotency_key()
 
 
 def test_idempotency_key_falls_back_to_event_id() -> None:

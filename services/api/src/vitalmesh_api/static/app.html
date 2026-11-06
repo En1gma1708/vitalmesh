@@ -85,6 +85,16 @@ ol.steps li.last { color: var(--fg); }
 .msg.err { color: var(--warn); }
 .banner { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+/* blood-report confirm table: one stacked card per result on a narrow screen, so the value and the line it came from are always on screen together */
+@media (max-width: 640px) {
+  #labup-table, #labup-table tbody, #labup-table tr, #labup-table td { display: block; width: 100%; }
+  #labup-table tr:first-child { display: none; }
+  #labup-table tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  #labup-table td { border: 0; padding: 3px 0; }
+  #labup-table td::before { content: attr(data-label); display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+  #labup-table td[data-label="Save"]::before { content: none; }
+  #labup-table input[type=text], #labup-table input[type=number] { width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -565,10 +575,11 @@ $("labup-form").addEventListener("submit", async (ev) => {
       const tick = document.createElement("input"); tick.type = "checkbox"; tick.checked = !row.problem; tick.setAttribute("aria-label", `Save ${row.name}`); tick.dataset.i = i;
       const val = document.createElement("input"); val.type = "number"; val.step = "any"; val.value = row.value; val.size = 6; val.setAttribute("aria-label", `${row.name} value`); val.id = `lu-v${i}`;
       const unit = document.createElement("input"); unit.type = "text"; unit.value = row.unit; unit.size = 7; unit.maxLength = 32; unit.setAttribute("aria-label", `${row.name} unit`); unit.id = `lu-u${i}`;
-      tr.insertCell().appendChild(tick); tr.insertCell().textContent = row.name;
-      tr.insertCell().appendChild(val); tr.insertCell().appendChild(unit);
-      tr.insertCell().textContent = row.reference || "none printed";
-      const src = tr.insertCell(); src.textContent = row.line;
+      const cell = (label) => { const c = tr.insertCell(); c.dataset.label = label; return c; };
+      cell("Save").appendChild(tick); cell("Test").textContent = row.name;
+      cell("Value").appendChild(val); cell("Unit").appendChild(unit);
+      cell("Printed range").textContent = row.reference || "none printed";
+      const src = cell("Line in your report"); src.textContent = row.line;
       if (row.problem) { const p = document.createElement("div"); p.className = "sub"; p.textContent = "Not ticked: " + row.problem; src.appendChild(p); }
     });
     $("labup-date").value = body.collected_on || "";

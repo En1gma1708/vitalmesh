@@ -65,7 +65,7 @@ def test_timestamps_survive_with_microsecond_precision_and_timezone() -> None:
 def test_idempotency_key_survives_the_wire() -> None:
     with_provider = meta(source="fitbit", external_id="abc")
     got, _ = codec.decode(codec.encode(with_provider, weight()))
-    assert got.idempotency_key() == "fitbit:abc"
+    assert got.idempotency_key() == "fitbit:u-1:abc"
 
 
 def test_every_declared_type_has_a_matching_payload_field() -> None:

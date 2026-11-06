@@ -69,9 +69,14 @@ class EventMeta(BaseModel):
         return self
 
     def idempotency_key(self) -> str:
-        """(source, external_id) when the provider supplied one, else the event id."""
+        """(source, user, external_id) when the provider supplied one, else the event id.
+
+        The user is part of the key because a provider's id is only unique within one account:
+        without it, two people saving the same value on the same day would collide and the
+        second save would be dropped as a duplicate (found 2026-11-07, D86).
+        """
         if self.source is not None and self.external_id is not None:
-            return f"{self.source}:{self.external_id}"
+            return f"{self.source}:{self.user_id}:{self.external_id}"
         return self.event_id
 
     def is_expired(self, now: datetime | None = None) -> bool:
