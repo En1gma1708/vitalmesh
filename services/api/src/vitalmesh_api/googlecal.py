@@ -33,6 +33,7 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from vitalmesh_accounts.keyvault import fetch_secret
 
 log = logging.getLogger("vitalmesh.google")
 
@@ -105,9 +106,11 @@ class TokenBox:
 
     @classmethod
     def from_env(cls) -> TokenBox:
-        raw = os.environ.get("VITALMESH_TOKEN_KEY") or _env_file_value(
-            Path(".env"), "VITALMESH_TOKEN_KEY"
-        )
+        raw = os.environ.get("VITALMESH_TOKEN_KEY", "")
+        ref = os.environ.get("VITALMESH_TOKEN_KEY_KEYVAULT", "")
+        if not raw and ref:
+            raw = fetch_secret(ref)  # D92: a vault failure stops the process, no random key
+        raw = raw or _env_file_value(Path(".env"), "VITALMESH_TOKEN_KEY")
         return cls(raw.encode() if raw else None)
 
     def seal(self, text: str) -> str:

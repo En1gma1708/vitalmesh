@@ -37,6 +37,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import chaos_lib
 import psutil
 import redis
 from confluent_kafka.admin import AdminClient
@@ -108,19 +109,25 @@ class Sampler(threading.Thread):
     def __init__(self, settings: KafkaSettings, prefix: str) -> None:
         super().__init__(daemon=True)
         self.settings, self.prefix = settings, prefix
-        self.points: list[tuple[float, int, int, int]] = []  # t, committed, lag, members
+        # t, committed, lag, members, retry lag, retry commits (D92: an event that failed
+        # once waits in a retry tier for seconds to minutes; a run is not over until they drain)
+        self.points: list[tuple[float, int, int, int, int, int]] = []
         self.stop = threading.Event()
 
     def run(self) -> None:
         while not self.stop.is_set():
             try:
-                rows = [
-                    r for r in consumer_lag(self.settings, (self.prefix,)) if r.topic == USER_EVENTS
-                ]
+                every = consumer_lag(self.settings, (self.prefix,))
+                rows = [r for r in every if r.topic == USER_EVENTS]
+                retries = [r for r in every if r.topic.startswith(USER_EVENTS + ".retry.")]
                 committed = sum(max(r.committed or 0, 0) for r in rows)
                 lag = sum(r.lag for r in rows)
                 members = max((r.members for r in rows), default=0)
-                self.points.append((time.monotonic(), committed, lag, members))
+                retry_lag = sum(r.lag for r in retries)
+                retry_done = sum(max(r.committed or 0, 0) for r in retries)
+                self.points.append(
+                    (time.monotonic(), committed, lag, members, retry_lag, retry_done)
+                )
             except Exception:  # a sample may fail while the group rebalances: skip it
                 pass
             self.stop.wait(1.0)
@@ -240,6 +247,17 @@ def main() -> None:
     ap.add_argument("--drain-timeout", type=float, default=3600)
     ap.add_argument("--stall-seconds", type=float, default=180.0)
     ap.add_argument("--json", default="")
+    ap.add_argument(
+        "--chaos", default="", help="kill:processor@T, respawn:processor@T, broker@T (D92)"
+    )
+    ap.add_argument("--group", default="", help="consumer group name (default: random)")
+    ap.add_argument(
+        "--wait-members",
+        type=int,
+        default=0,
+        help="processors to wait for in the group (default --procs); more than --procs means "
+        "processors on OTHER machines join the same group (Azure runs, D92)",
+    )
     args = ap.parse_args()
 
     settings = KafkaSettings.from_env()
@@ -248,36 +266,41 @@ def main() -> None:
     r = redis.Redis.from_url(redis_url)
     r.flushall()
     reset_topics(settings)
-    group = f"bench-proc-{uuid.uuid4().hex[:6]}"
+    group = args.group or f"bench-proc-{uuid.uuid4().hex[:6]}"
+    chaos_actions = chaos_lib.parse(args.chaos)
+    wait_members = args.wait_members or args.procs
     mem0 = int(r.info("memory")["used_memory"])
 
     env = {**os.environ, "VITALMESH_CONSUMER_GROUP": group, "VITALMESH_LOG_LEVEL": "WARNING"}
-    logs = [Path(os.environ.get("TEMP", ".")) / f"bench-proc-{i}.log" for i in range(args.procs)]
-    procs = []
-    for path in logs:
-        out = path.open("w")  # kept open for the child's lifetime
-        procs.append(
-            subprocess.Popen(
-                [sys.executable, "-m", "vitalmesh_processor"],
-                env=env,
-                stdout=out,
-                stderr=subprocess.STDOUT,
-            )
+    procs: list[subprocess.Popen[bytes]] = []
+
+    def spawn_processor() -> subprocess.Popen[bytes]:
+        out = (Path(os.environ.get("TEMP", ".")) / f"bench-proc-{len(procs)}.log").open("w")
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "vitalmesh_processor"],
+            env=env,
+            stdout=out,  # kept open for the child's lifetime
+            stderr=subprocess.STDOUT,
         )
+        procs.append(proc)
+        return proc
+
+    for _ in range(args.procs):
+        spawn_processor()
     atexit.register(lambda: [kill_tree(p.pid) for p in procs])  # a crash must not leave them
     sampler = Sampler(settings, group)
     sampler.start()
     t_wait = time.monotonic()
     while time.monotonic() - t_wait < 120:
-        if sampler.points and sampler.points[-1][3] >= args.procs:
+        if sampler.points and sampler.points[-1][3] >= wait_members:
             break
         time.sleep(1)
     else:
         for p in procs:
             p.kill()
-        raise SystemExit("the processors did not all join the consumer group in 120 s")
+        raise SystemExit(f"{wait_members} processors did not all join the group in 120 s")
     time.sleep(5)  # let the rebalance settle
-    print(f"{args.procs} processor process(es) ready in group {group}")
+    print(f"{wait_members} processor process(es) ready in group {group}")
 
     _SERDE = SchemaRegistrySerde(settings)
     publisher = KafkaPublisher(settings, client_id="load-generator")
@@ -292,7 +315,24 @@ def main() -> None:
     lab_users: set[str] = set()
     meas_n = lab_n = 0
     has_state = bytearray(args.users)  # 1 once a person has a measurement event
+
+    def do_kill(_: str) -> str:
+        for proc in procs:
+            if proc.poll() is None:
+                kill_tree(proc.pid)
+                return f"killed pid {proc.pid} (processor)"
+        return "no live processor"
+
+    def do_respawn(_: str) -> str:
+        return f"started pid {spawn_processor().pid} (processor)"
+
     t0 = time.monotonic()
+    chaos = chaos_lib.Chaos(
+        chaos_actions,
+        {"kill": do_kill, "respawn": do_respawn, "broker": chaos_lib.restart_bench_broker},
+        t0,
+    )
+    chaos.start()
     produced = 0
     for i in range(args.events):
         user = f"bu-{i % args.users:07d}"
@@ -325,11 +365,11 @@ def main() -> None:
     best, best_at = -1, time.monotonic()
     while time.monotonic() < deadline:
         pt = sampler.points[-1] if sampler.points else None
-        if pt and pt[1] >= total_on_topic and pt[2] == 0:
+        if pt and pt[1] >= total_on_topic and pt[2] == 0 and pt[4] == 0:
             drained = True
             break
-        if pt and pt[1] > best:
-            best, best_at = pt[1], time.monotonic()
+        if pt and pt[1] + pt[5] > best:
+            best, best_at = pt[1] + pt[5], time.monotonic()
         if (
             time.monotonic() - best_at > args.stall_seconds
         ):  # no commit moved: do not wait for hours
@@ -338,6 +378,7 @@ def main() -> None:
             break
         time.sleep(1)
     t_done = time.monotonic()
+    chaos.stop_event.set()
     prober.stop.set()
     sampler.stop.set()
     time.sleep(1.5)
@@ -400,6 +441,10 @@ def main() -> None:
         "max_lag": max((p[2] for p in pts), default=0),
         "events_on_topic": total_on_topic, "probe_events": prober.sent, "dlq": dlq,
         "retry_topic_messages": retries,
+        "chaos": args.chaos,
+        "chaos_actions_run": chaos.done,
+        "consumer_group": group,
+        "processors_expected": wait_members,
         "check": {
             "all_committed_before_timeout": drained,
             "stalled": stalled,

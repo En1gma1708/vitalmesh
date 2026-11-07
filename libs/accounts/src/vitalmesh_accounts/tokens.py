@@ -7,9 +7,10 @@
   usable sessions. It is single-use: each refresh issues a new one and the old hash is kept as
   ``previous`` so that REUSE of a stolen, already-used token is detected and the whole session is
   revoked (the store does this; see ``AccountStore.rotate``).
-* The signing secret comes from the environment (``VITALMESH_AUTH_SECRET``, at least 32 bytes). If
-  it is missing the process may generate a throwaway one for local development and says so loudly;
-  it never falls back to a fixed default.
+* The signing secret comes from the environment (``VITALMESH_AUTH_SECRET``, at least 32 bytes) or,
+  on an Azure VM, from Key Vault (``VITALMESH_AUTH_SECRET_KEYVAULT=<vault>/<secret>``, D92; a vault
+  failure stops the process). If neither is set the process may generate a throwaway one for local
+  development and says so loudly; it never falls back to a fixed default.
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import jwt
+
+from vitalmesh_accounts.keyvault import Fetch, fetch_secret
 
 log = logging.getLogger("vitalmesh.accounts")
 
@@ -57,9 +60,14 @@ def _dotenv_value(key: str, path: Path = Path(".env")) -> str:
     return ""
 
 
-def secret_from_env(env: dict[str, str] | None = None) -> bytes:
+def secret_from_env(env: dict[str, str] | None = None, fetch: Fetch | None = None) -> bytes:
     source = os.environ if env is None else env
     raw = source.get("VITALMESH_AUTH_SECRET", "")
+    ref = source.get("VITALMESH_AUTH_SECRET_KEYVAULT", "")
+    if not raw and ref:
+        # the deployment asked for a vault: a failure stops the process, it never falls back to a
+        # random or file secret (SecretUnavailable propagates)
+        raw = fetch_secret(ref) if fetch is None else fetch_secret(ref, fetch)
     if not raw and env is None:
         raw = _dotenv_value("VITALMESH_AUTH_SECRET")  # the real environment wins, then .env
     if raw:

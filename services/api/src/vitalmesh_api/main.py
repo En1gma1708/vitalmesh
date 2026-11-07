@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import redis
@@ -71,6 +72,24 @@ def warm_profiles(store: PostgresAccountStore, cache: RedisProfileStore) -> int:
     return restored
 
 
+def secure_cookies_from_env(env: Mapping[str, str]) -> bool:
+    """Cookies are Secure (and HSTS is sent) whenever the public address is https (D92).
+
+    ``VITALMESH_SECURE_COOKIES=1`` still forces it on for a TLS-terminating proxy that talks plain
+    http to this process. An https address with ``VITALMESH_SECURE_COOKIES=0`` is refused at start:
+    that combination sends session cookies over an unencrypted link by mistake."""
+    base = env.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000")
+    flag = env.get("VITALMESH_SECURE_COOKIES", "")
+    if base.lower().startswith("https://"):
+        if flag == "0":
+            raise SystemExit(
+                "VITALMESH_BASE_URL is https but VITALMESH_SECURE_COOKIES=0: refusing to start "
+                "(session cookies must be Secure behind https)"
+            )
+        return True
+    return flag == "1"
+
+
 def build_app() -> FastAPI:
     settings = KafkaSettings.from_env()
     ensure_topics(settings)
@@ -95,7 +114,7 @@ def build_app() -> FastAPI:
                 "questions": qa_export(qa, uid),
                 "held_answers": review_export(reviews, uid),
             },
-            secure_cookies=os.environ.get("VITALMESH_SECURE_COOKIES", "") == "1",
+            secure_cookies=secure_cookies_from_env(os.environ),
             base_url=os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000"),
             # on by default: a person must confirm their email before questions spend model quota
             require_verified=os.environ.get("VITALMESH_REQUIRE_VERIFIED", "1") != "0",
