@@ -47,6 +47,13 @@ is not the limit; **the model is**. With a slow model the limit is how many spec
 at once. The agent topics have 3 partitions locally, so 3 processes per role is the local maximum
 (the production profile has more partitions).
 
+### Failure tests (chaos), event pipeline, 20,000 events for 19,420 people at 200 events/s, 3 processors
+
+| failure | result |
+|---|---|
+| kill one processor mid-run | 19,420 of 19,420, 0 dead letters; the event in flight when the worker died was recovered through the retry tiers about 2.5 minutes late (the dead worker's 60 s lease, then 5 s / 30 s / 2 min retry tiers) |
+| restart the Kafka broker mid-run | 19,420 of 19,420, 0 dead letters; a 6,668-message backlog drained within 8 s of the last publish |
+
 ### Failure tests (chaos), agent graph, 100 questions each
 
 | failure | result |
@@ -115,7 +122,14 @@ scope of this project phase; the numbers below are arithmetic from the measureme
   That proves the configuration (Secure cookies, HSTS, vault-loaded secret), not a public
   certificate.
 
-## 5. Reproducing it
+## 5. Cloud runs
+
+The Azure runs (one VM, then three) are **not done yet**; this page will not quote a cloud number
+until they are. Note for anyone repeating this on an Azure for Students subscription: it carries
+an "Allowed resource deployment regions" policy (five regions), and a region can look usable by VM
+size and quota and still be refused at deploy time, so read the policy assignments first.
+
+## 6. Reproducing it
 
 ```
 docker compose -f infra/docker-compose.bench.yml up -d --wait

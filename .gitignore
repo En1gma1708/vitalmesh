@@ -25,3 +25,4 @@ private/
 # eval run reports
 evals/results/
 .cache/
+*.tfvars

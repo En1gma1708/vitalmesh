@@ -1,21 +1,21 @@
 variable "location" {
-  description = "Azure region. The authorised scope is ONE region with an allowed 2-vCPU size and quota: eastus (Central India has none usable)."
+  description = "Azure region. The authorised scope is ONE region with an allowed 2-vCPU size and quota. The subscription policy only admits malaysiawest, indiasouthcentral, koreacentral, eastasia and uaenorth (eastus is refused, Central India has no usable size); indiasouthcentral works."
   type        = string
-  default     = "eastus"
+  default     = "indiasouthcentral"
 
   validation {
-    condition     = var.location == "eastus"
-    error_message = "The authorised scope is the single region eastus (docs/DECISIONS.md D90)."
+    condition     = var.location == "indiasouthcentral"
+    error_message = "The authorised scope is the single region indiasouthcentral (docs/DECISIONS.md D92)."
   }
 }
 
 variable "vm_sizes" {
-  description = "One 2-vCPU size per VM, in order. The student quota is 4 vCPUs per VM family, so 3 VMs need two families, for example [Standard_D2s_v4, Standard_D2s_v4, Standard_D2ds_v4]."
+  description = "One 2-vCPU size per VM, in order. The student quota is 4 vCPUs per VM family, so 3 VMs need two families, for example [Standard_D2as_v4, Standard_D2as_v4, Standard_F2s_v2]."
   type        = list(string)
 
   validation {
-    condition     = length(var.vm_sizes) >= 1 && length(var.vm_sizes) <= 3 && alltrue([for s in var.vm_sizes : can(regex("^Standard_D2d?s_v4$", s))])
-    error_message = "Give 1 to 3 sizes, each Standard_D2s_v4 or Standard_D2ds_v4 (the 2-vCPU sizes checked as allowed with quota)."
+    condition     = length(var.vm_sizes) >= 1 && length(var.vm_sizes) <= 3 && alltrue([for s in var.vm_sizes : contains(["Standard_D2as_v4", "Standard_F2s_v2"], s)])
+    error_message = "Give 1 to 3 sizes, each Standard_D2as_v4 or Standard_F2s_v2 (the 2-vCPU sizes checked as allowed, with quota, in indiasouthcentral)."
   }
 }
 

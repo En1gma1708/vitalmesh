@@ -1,7 +1,7 @@
 # Azure benchmark environment (D90): ONE resource group, up to 3 small Linux VMs, one subnet.
 #
 # Scope authorised by Sahil on 2026-11-07 (see docs/DECISIONS.md D90): resource group
-# `vitalmesh-bench`, region eastus (the one region with an allowed 2-vCPU size and quota for this subscription), at most 3 VMs of 2 vCPU each, about $15 of the $100
+# `vitalmesh-bench`, region indiasouthcentral (the subscription policy admits only five regions; eastus is refused, Central India has no usable size), at most 3 VMs of 2 vCPU each, about $15 of the $100
 # student credit in total, everything deleted after each test (infra/azure/teardown.ps1), nothing
 # left running overnight. This file cannot exceed the VM count (see the validation in variables.tf).
 #
@@ -10,8 +10,8 @@
 # take an SSH public key only (password login is disabled); SSH is open only to one address.
 #
 #   terraform init
-#   terraform plan  -var 'vm_sizes=["Standard_D2s_v4"]' -var vm_count=1 -var ssh_allowed_cidr=<your-ip>/32
-#   terraform apply -var 'vm_sizes=["Standard_D2s_v4"]' -var vm_count=1 -var ssh_allowed_cidr=<your-ip>/32
+#   terraform plan  -var-file=bench.tfvars   (vm_sizes, vm_count, enable_keyvault, ssh_allowed_cidr; keep it out of git)
+#   terraform apply -var-file=bench.tfvars
 #   pwsh infra/azure/teardown.ps1          # always, when the test is finished
 #
 # Optional (-var enable_keyvault=true): a Key Vault in the same group with role-based access. The
