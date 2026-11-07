@@ -12,7 +12,11 @@ name: vitalmesh-bench
 
 services:
   kafka:
-    image: apache/kafka:4.0.0
+    # 4.0.0 (the development stack's version) hits KAFKA-19888 under heavy offset-commit load: the
+    # group coordinator throws 'Histogram recorded value cannot be negative' after a small backward
+    # clock adjustment and then answers every consumer join with COORDINATOR_NOT_AVAILABLE. Two
+    # 1M-event runs stalled that way (D90), so the benchmark stack uses 4.2.2.
+    image: apache/kafka:4.2.2
     container_name: vitalmesh-bench-kafka
     ports:
       - "127.0.0.1:9192:9192"
@@ -33,9 +37,11 @@ services:
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_HEAP_OPTS: "-Xms1g -Xmx1g"
-    mem_limit: 2g
+    mem_limit: 3g
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9192 --list > /dev/null"]
+      # a TCP connect, not kafka-topics.sh: that script starts a second JVM (with the broker's
+      # heap settings) every interval, which starved the broker under load (D90)
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9192'"]
       interval: 10s
       timeout: 10s
       retries: 12

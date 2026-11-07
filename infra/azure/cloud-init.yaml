@@ -1,0 +1,17 @@
+#cloud-config
+# First boot of every benchmark VM (D90): Docker (for the Kafka, Schema Registry and Redis
+# containers), git and Python tooling. Nothing here holds a secret. The repository is copied over
+# SSH by the test script, so no GitHub token or deploy key is ever stored on a VM.
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - curl
+  - python3-venv
+  - unzip
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker vmadmin
+  - curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+  - touch /var/lib/cloud/instance/vitalmesh-ready

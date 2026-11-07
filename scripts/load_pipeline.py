@@ -222,6 +222,7 @@ def main() -> None:
     )
     ap.add_argument("--no-probe", action="store_true")
     ap.add_argument("--drain-timeout", type=float, default=3600)
+    ap.add_argument("--stall-seconds", type=float, default=180.0)
     ap.add_argument("--json", default="")
     args = ap.parse_args()
 
@@ -303,10 +304,20 @@ def main() -> None:
     total_on_topic = end_offsets(settings, USER_EVENTS)
     deadline = time.monotonic() + args.drain_timeout
     drained = False
+    stalled = False
+    best, best_at = -1, time.monotonic()
     while time.monotonic() < deadline:
         pt = sampler.points[-1] if sampler.points else None
         if pt and pt[1] >= total_on_topic and pt[2] == 0:
             drained = True
+            break
+        if pt and pt[1] > best:
+            best, best_at = pt[1], time.monotonic()
+        if (
+            time.monotonic() - best_at > args.stall_seconds
+        ):  # no commit moved: do not wait for hours
+            stalled = True
+            print(f"STALLED: no progress for {args.stall_seconds:.0f}s at {best:,} committed")
             break
         time.sleep(1)
     t_done = time.monotonic()
@@ -339,14 +350,20 @@ def main() -> None:
     hist_points = 0
     state_keys = 0
     lab_keys = 0
+    hist_keys: list[str] = []
     for key in r.scan_iter(match="*", count=5000):
         k = key.decode()
         if k.startswith("hist:bu-"):
-            hist_points += int(r.zcard(k))
+            hist_keys.append(k)
         elif k.startswith("state:bu-"):
             state_keys += 1
         elif k.startswith("labs:bu-"):
             lab_keys += 1
+    for start in range(0, len(hist_keys), 2000):  # pipelined: one round trip per 2000 keys
+        pipe = r.pipeline(transaction=False)
+        for k in hist_keys[start : start + 2000]:
+            pipe.zcard(k)
+        hist_points += sum(int(n) for n in pipe.execute())
     dlq = end_offsets(settings, dlq_topic(USER_EVENTS))
     retries = sum(end_offsets(settings, f"{USER_EVENTS}.retry.{t}") for t in (1, 2, 3))
     mem1 = int(r.info("memory")["used_memory"])
@@ -368,6 +385,7 @@ def main() -> None:
         "retry_topic_messages": retries,
         "check": {
             "all_committed_before_timeout": drained,
+            "stalled": stalled,
             "history_points_equal_measurements": hist_points == meas_n,
             "people_with_state_equal_people": state_keys == users_seen,
             "people_with_labs_equal": lab_keys == len(lab_users),
