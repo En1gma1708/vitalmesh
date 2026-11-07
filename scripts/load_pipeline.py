@@ -248,6 +248,16 @@ def main() -> None:
     ap.add_argument("--stall-seconds", type=float, default=180.0)
     ap.add_argument("--json", default="")
     ap.add_argument(
+        "--reset-only",
+        action="store_true",
+        help="flush the bench Redis, reset the topics and exit (step 1 of a multi-machine run)",
+    )
+    ap.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="do NOT reset: processors on other machines already joined after --reset-only",
+    )
+    ap.add_argument(
         "--chaos", default="", help="kill:processor@T, respawn:processor@T, broker@T (D92)"
     )
     ap.add_argument("--group", default="", help="consumer group name (default: random)")
@@ -264,8 +274,12 @@ def main() -> None:
     redis_url = os.environ.get("VITALMESH_REDIS_URL", "")
     refuse_unless_bench(settings, redis_url)
     r = redis.Redis.from_url(redis_url)
-    r.flushall()
-    reset_topics(settings)
+    if not args.no_reset:
+        r.flushall()
+        reset_topics(settings)
+    if args.reset_only:
+        print("bench Redis flushed and topics reset")
+        return
     group = args.group or f"bench-proc-{uuid.uuid4().hex[:6]}"
     chaos_actions = chaos_lib.parse(args.chaos)
     wait_members = args.wait_members or args.procs

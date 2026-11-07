@@ -122,14 +122,67 @@ scope of this project phase; the numbers below are arithmetic from the measureme
   That proves the configuration (Secure cookies, HSTS, vault-loaded secret), not a public
   certificate.
 
-## 5. Cloud runs
+## 5. Cloud runs (Azure, three small VMs)
 
-The Azure runs (one VM, then three) are **not done yet**; this page will not quote a cloud number
-until they are. Note for anyone repeating this on an Azure for Students subscription: it carries
-an "Allowed resource deployment regions" policy (five regions), and a region can look usable by VM
-size and quota and still be refused at deploy time, so read the policy assignments first.
+Run on 2026-11-08 in one resource group in `indiasouthcentral` (the student subscription's own
+policy admits only five regions), then deleted. Synthetic people, the same event mix as the laptop
+runs. Machines: VM 0 runs Kafka, Schema Registry, Redis and the load generator; VM 1 and VM 2 run the
+processors. VM 0 and VM 1 are 2-vCPU AMD `Standard_D2as_v4`; VM 2 is a smaller 2-vCPU
+`Standard_F2s_v2` with 4 GB. The machines are therefore not identical.
 
-## 6. Reproducing it
+| placement | events | events/s (whole run) | drain after last publish | checks |
+|---|---|---|---|---|
+| everything on one VM, 2 processors | 30,000 | 496 (604 saturated) | 54 s | passed |
+| 2 processors on VM 1, broker and Redis on VM 0 | 60,000 | 342 | 166 s | passed |
+| 4 processors (2 on VM 1, 2 on VM 2) | 60,000 | 520 and 547 (two runs) | 107 s and 101 s | passed |
+| 6 processors (3 on VM 1, 3 on VM 2) | 60,000 | **955** (1,074 saturated) | 53 s | passed |
+
+Every run: nothing lost or duplicated, 0 dead letters.
+
+**What limits it, and how that was confirmed.** During the 4- and 6-processor runs every machine was
+47 to 72 percent idle, so the run was **not CPU-bound**. A processor spends its time waiting on round
+trips (about five Redis calls and a Kafka flush per event), which caps it at roughly 175 events/s
+whether it runs on a laptop or on a VM. With 6 partitions the drain time is then
+`partitions per busiest consumer x 10,000 events / 175`: 3 -> 171 s (measured 166), 2 -> 114 s
+(measured 101 to 107), 1 -> 57 s (measured 53). The prediction was written down before the
+6-processor run and matched. Practical meaning: more throughput needs more partitions and more
+consumers (the production profile has 48 to 96 partitions), not bigger machines.
+
+**Caveats.** Unequal machines; one placement of each size; 60,000 events per run, so the saturated
+median is noisy (the whole-run figure is the steadier one). One run showed 861 bytes of Redis per
+person against 713 in the others; I did not find out why. This is not a one-million-person cloud
+test; the one-million figure for the whole product remains arithmetic (section 2).
+
+**Secrets and HTTPS, on the same VMs.** Two VMs read the signing secret from Key Vault using only
+their managed identity (fingerprint and length matched what was stored; a missing secret and a
+malformed reference both failed closed). The API then ran behind Caddy with a self-signed
+certificate on a port open only to the operator, with the secret loaded from the vault: TLS 1.3,
+`Strict-Transport-Security` sent, and the access, refresh and CSRF cookies all `Secure` (the first
+two `HttpOnly`). A public certificate was not tested: it needs a domain name and an
+internet-reachable port 80.
+
+Note for anyone repeating this on an Azure for Students subscription: it carries an "Allowed
+resource deployment regions" policy, and a region can look usable by VM size and quota and still be
+refused at deploy time, so read the policy assignments first.
+
+## 6. Rolling changes out safely (design, not run)
+
+Status: **design only.** There is no production traffic to shadow, so this describes how the
+measured system would be changed safely, not something that was exercised.
+
+* **Shadow traffic for the agent graph:** a copy of real questions (with the person's consent and no
+  stored text) is replayed through a candidate graph that has its own consumer groups and publishes
+  to `shadow.*` topics that nobody reads. Compare the candidate's Guardian blocks, partial rates,
+  failure codes and latency against production; only when they match does it get real traffic.
+* **Canary for rule and prompt changes:** the Guardian's rules version is already stamped on every
+  event, so a canary is "5% of users on rules version N+1", with the other 95% on N. A rise in
+  blocks, partial answers or human reviews above a stated threshold rolls the canary back by
+  changing one setting.
+* **Autoscaling signal:** lag plus utilisation (section 3), never lag alone for model-bound roles.
+* The Guardian's safety-critical rules change only through the mutation-tested path (the
+  Guardian mutation check must stay green) and never via a prompt.
+
+## 7. Reproducing it
 
 ```
 docker compose -f infra/docker-compose.bench.yml up -d --wait
