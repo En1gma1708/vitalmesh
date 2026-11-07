@@ -83,14 +83,16 @@ from vitalmesh_agents.cohortstore import RedisCohortStore
 from vitalmesh_agents.engagement import Engagement
 from vitalmesh_agents.engagement_handler import make_delivery_handler, make_engagement_handler
 from vitalmesh_agents.guardian_handler import make_guardian_handler
+from vitalmesh_agents.llmcall import RouterLike
 from vitalmesh_agents.release import ReleaseGate
 from vitalmesh_agents.release_handler import make_release_handler
 from vitalmesh_agents.runstore import RedisRunStore
+from vitalmesh_agents.simulated import simulated_router_from_env
 from vitalmesh_agents.specialist_handler import SpecialistDeps, make_specialist_handler
 from vitalmesh_agents.synthesizer import Synthesizer
 from vitalmesh_agents.synthesizer_handler import make_synthesizer_handler
 from vitalmesh_agents.tracker import TRACKED_TOPICS, make_tracker_handler
-from vitalmesh_agents.triage_handler import make_triage_handler
+from vitalmesh_agents.triage_handler import DEFAULT_RUN_DEADLINE_S, make_triage_handler
 
 log = logging.getLogger("vitalmesh.agents")
 DB_DSN = os.environ.get("VITALMESH_PG_DSN", "postgresql://vitalmesh@127.0.0.1:5432/vitalmesh")
@@ -117,6 +119,23 @@ _SPECIALISTS = {
     "movement": Specialist.MOVEMENT_RECOVERY,
     "condition": Specialist.CONDITION_MEDICATION,
 }
+
+
+def run_deadline_from_env() -> float:
+    """VITALMESH_RUN_DEADLINE_S: how long a run may take from planning to its answer.
+
+    Documented since the first live run but never read until D91 found it (every run used the 90 s
+    default whatever the variable said). A bad value stops the process at start, not mid-run."""
+    raw = os.environ.get("VITALMESH_RUN_DEADLINE_S", "").strip()
+    if not raw:
+        return DEFAULT_RUN_DEADLINE_S
+    try:
+        value = float(raw)
+    except ValueError:
+        raise SystemExit(f"VITALMESH_RUN_DEADLINE_S must be a number, got {raw!r}") from None
+    if not 5 <= value <= 3600:
+        raise SystemExit(f"VITALMESH_RUN_DEADLINE_S must be between 5 and 3600 s, got {value}")
+    return value
 
 
 def input_topics(role: str, policy: RetryPolicy) -> list[str]:
@@ -148,14 +167,20 @@ class Runtime:
         self.tracer = tracer_from_env()
         self.stack = contextlib.ExitStack()
         self.sweepers: list[Callable[[], int]] = []
-        self._router: Router | None = None
+        self._router: RouterLike | None = None
+        # D91: a load test of the graph replaces the model with a fixed-text stand-in
+        self.simulated = os.environ.get("VITALMESH_LLM_MODE", "") == "simulated"
         self.roles = roles
 
     @property
-    def router(self) -> Router:
+    def router(self) -> RouterLike:
         if self._router is None:
-            self._router = Router(
-                load_keys(Path(".env")), cache=RedisCache(self.redis), tracer=self.tracer
+            self._router = (
+                simulated_router_from_env()
+                if self.simulated
+                else Router(
+                    load_keys(Path(".env")), cache=RedisCache(self.redis), tracer=self.tracer
+                )
             )
         return self._router
 
@@ -172,6 +197,7 @@ class Runtime:
                 cohort=RedisCohortStore(self.redis) if use_cohort else None,
                 monitor=RedisLoadMonitor(self.redis) if use_cohort else None,
                 tiers=RedisTierCounter(self.redis),
+                run_deadline_s=run_deadline_from_env(),
             )
         if role == "engagement":
             return make_engagement_handler(
@@ -238,14 +264,22 @@ class Runtime:
         raise ValueError(f"unknown role {role!r}; choose from {sorted(INPUTS)}")
 
     def _specialist_deps(self, profiles: RedisProfileStore) -> SpecialistDeps:
-        from vitalmesh_evidence import EvidenceAgent, StoreRetriever
-        from vitalmesh_retrieval import Store
-        from vitalmesh_retrieval.embed import LocalEmbedder
+        evidence: Any
+        if self.simulated:  # no corpus and no embedding model in a graph load test
+            from vitalmesh_agents.testing import NoEvidence
 
-        embedder = LocalEmbedder()
-        evidence = EvidenceAgent(
-            self.router, StoreRetriever(Store(DB_DSN, embedder.dim), embedder), tracer=self.tracer
-        )
+            evidence = NoEvidence()
+        else:
+            from vitalmesh_evidence import EvidenceAgent, StoreRetriever
+            from vitalmesh_retrieval import Store
+            from vitalmesh_retrieval.embed import LocalEmbedder
+
+            embedder = LocalEmbedder()
+            evidence = EvidenceAgent(
+                self.router,
+                StoreRetriever(Store(DB_DSN, embedder.dim), embedder),
+                tracer=self.tracer,
+            )
         return SpecialistDeps(
             router=self.router,
             evidence=evidence,

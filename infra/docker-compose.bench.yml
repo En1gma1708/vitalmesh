@@ -7,6 +7,8 @@
 #   VITALMESH_REDIS_URL=redis://127.0.0.1:6390/0 uv run python scripts/load_pipeline.py ...
 #   docker compose -f infra/docker-compose.bench.yml down -v
 #
+# The Postgres (5442) is only for the agent-graph test; fsync is off there on purpose (a
+# throwaway database), so its latency is NOT a production figure.
 # All ports are bound to 127.0.0.1. Same images and topic contract as the development stack.
 name: vitalmesh-bench
 
@@ -83,3 +85,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  postgres:
+    # for the agent-graph load test (D91): the release step's checkpoints and the tracker's
+    # question history/review queue. Throwaway, loopback only, never the development database.
+    image: pgvector/pgvector:pg16
+    container_name: vitalmesh-bench-postgres
+    ports:
+      - "127.0.0.1:5442:5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: vitalmesh
+      POSTGRES_USER: vitalmesh
+    command: ["postgres", "-c", "max_connections=300", "-c", "fsync=off"]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitalmesh -d vitalmesh"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
