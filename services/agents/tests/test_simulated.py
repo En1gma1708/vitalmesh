@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 from vitalmesh_agents.main import Runtime, run_deadline_from_env
@@ -13,7 +14,7 @@ from vitalmesh_agents.simulated import (
     SimulatedRouter,
     simulated_router_from_env,
 )
-from vitalmesh_llm import LLMRequest, Message
+from vitalmesh_llm import AllProvidersFailed, LLMRequest, Message
 
 
 def req(purpose: str) -> LLMRequest:
@@ -102,3 +103,15 @@ def test_runtime_goes_simulated_only_with_mode_and_flag(monkeypatch: pytest.Monk
         _ = rt.router
     monkeypatch.setenv(ALLOW_ENV, ALLOW_VALUE)
     assert isinstance(rt.router, SimulatedRouter)
+
+
+def test_an_outage_file_makes_every_call_fail_until_it_is_removed(tmp_path: Path) -> None:
+    flag = tmp_path / "outage"
+    router = SimulatedRouter(outage_file=str(flag))
+    assert router.complete(req("briefer")).text  # no file: fine
+    flag.write_text("x")
+    with pytest.raises(AllProvidersFailed):
+        router.complete(req("briefer"))
+    flag.unlink()
+    assert router.complete(req("briefer")).text  # recovered
+    assert router.calls["outage"] == 1

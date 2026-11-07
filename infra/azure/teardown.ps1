@@ -30,4 +30,11 @@ Write-Output "Deleting resource group '$group' and everything in it..."
 & $az group delete --name $group --yes
 $still = (& $az group exists --name $group) -eq "true"
 if ($still) { Write-Error "The group still exists. Check the portal; do not leave it running."; exit 1 }
+# a deleted Key Vault stays "soft-deleted" for 7 days under its name: purge it so nothing is left
+$deleted = & $az keyvault list-deleted --query "[?starts_with(name,'vmbench')].name" -o tsv
+foreach ($name in ($deleted -split "?
+" | Where-Object { $_ })) {
+    Write-Output "Purging soft-deleted Key Vault $name ..."
+    & $az keyvault purge --name $name | Out-Null
+}
 Write-Output "Done: '$group' no longer exists. Nothing from the benchmark is running or billing."

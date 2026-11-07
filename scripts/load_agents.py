@@ -20,6 +20,7 @@ Report it only as: synthetic people, simulated model, one laptop, time compresse
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import random
@@ -33,11 +34,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import chaos_lib
 import psutil
 import redis
 from confluent_kafka import Consumer
 from confluent_kafka.admin import AdminClient
-from load_pipeline import BENCH_KAFKA, BENCH_REDIS, end_offsets, pct, reset_topics, tree_cpu
+from load_pipeline import (
+    BENCH_KAFKA,
+    BENCH_REDIS,
+    end_offsets,
+    kill_tree,
+    pct,
+    reset_topics,
+    tree_cpu,
+)
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_common.envelope import EventMeta
 from vitalmesh_common.kafka import KafkaPublisher, KafkaSettings, SchemaRegistrySerde
@@ -143,6 +153,12 @@ def main() -> None:
     ap.add_argument("--stall-seconds", type=float, default=90.0)
     ap.add_argument("--timeout", type=float, default=1800.0)
     ap.add_argument("--log-level", default="WARNING", help="agent process log level")
+    ap.add_argument("--chaos", default="", help="scheduled failures, see scripts/chaos_lib.py")
+    ap.add_argument(
+        "--expect-degraded",
+        action="store_true",
+        help="a failed or fallback specialist is an expected outcome (model-outage runs)",
+    )
     ap.add_argument("--json", default="")
     args = ap.parse_args()
 
@@ -154,6 +170,8 @@ def main() -> None:
     r.flushall()
     reset_topics(settings)
     users = seed_people(r, args.users)
+    chaos_actions = chaos_lib.parse(args.chaos)
+    outage_flag = Path(os.environ.get("TEMP", ".")) / f"vitalmesh-sim-outage-{uuid.uuid4().hex[:6]}"
 
     env = {
         **os.environ,
@@ -163,20 +181,28 @@ def main() -> None:
         "VITALMESH_PG_DSN": PG_DSN,
         "VITALMESH_RUN_DEADLINE_S": str(args.deadline_s),
         "VITALMESH_LOG_LEVEL": args.log_level,
+        "VITALMESH_SIM_LLM_OUTAGE_FILE": str(outage_flag),
     }
     procs: dict[str, list[subprocess.Popen[bytes]]] = {}
     logdir = Path(os.environ.get("TEMP", "."))
+
+    def spawn(role: str) -> subprocess.Popen[bytes]:
+        n = len(procs.get(role, []))
+        out = (logdir / f"bench-agent-{role}-{n}.log").open("w")  # kept for the child's life
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "vitalmesh_agents", role],
+            env=env,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+        procs.setdefault(role, []).append(proc)
+        return proc
+
+    # a crash of this script must not leave dozens of agent processes running
+    atexit.register(lambda: [kill_tree(p.pid) for g in procs.values() for p in g])
     for role, n in scale.items():
-        for i in range(n):
-            out = (logdir / f"bench-agent-{role}-{i}.log").open("w")  # kept for the child's life
-            procs.setdefault(role, []).append(
-                subprocess.Popen(
-                    [sys.executable, "-m", "vitalmesh_agents", role],
-                    env=env,
-                    stdout=out,
-                    stderr=subprocess.STDOUT,
-                )
-            )
+        for _ in range(n):
+            spawn(role)
     try:
         wait_ready(settings, scale)
     except SystemExit:
@@ -232,7 +258,43 @@ def main() -> None:
             if msg.topic() == RECOMMENDATIONS_RELEASED and payload.partial:
                 partial_released += 1
 
+    def do_kill(role: str) -> str:
+        for proc in procs.get(role, []):
+            if proc.poll() is None:
+                try:
+                    root = psutil.Process(proc.pid)
+                    for child in root.children(recursive=True):
+                        child.kill()
+                    root.kill()
+                except psutil.Error:
+                    proc.kill()
+                return f"killed pid {proc.pid} ({role})"
+        return f"no live process for {role}"
+
+    def do_respawn(role: str) -> str:
+        return f"started pid {spawn(role).pid} ({role})"
+
+    def outage_on(_: str) -> str:
+        outage_flag.write_text("down")
+        return "simulated model down"
+
+    def outage_off(_: str) -> str:
+        outage_flag.unlink(missing_ok=True)
+        return "simulated model back"
+
     t0 = time.monotonic()
+    chaos = chaos_lib.Chaos(
+        chaos_actions,
+        {
+            "kill": do_kill,
+            "respawn": do_respawn,
+            "broker": chaos_lib.restart_bench_broker,
+            "outage_on": outage_on,
+            "outage_off": outage_off,
+        },
+        t0,
+    )
+    chaos.start()
     for i in range(args.questions):
         corr = f"{prefix}{i:06d}"
         user = users[i % len(users)]
@@ -274,6 +336,8 @@ def main() -> None:
                 f"STALLED: no question finished for {args.stall_seconds:.0f} s ({len(finals)} done)"
             )
             break
+    chaos.stop_event.set()
+    outage_flag.unlink(missing_ok=True)
     for _ in range(40):  # a short tail to pick up late duplicate or extra final events
         drain(0.1)
 
@@ -319,12 +383,14 @@ def main() -> None:
             "max": max(lat_ms, default=None),
             "mean": round(statistics.mean(lat_ms)) if lat_ms else None,
         },
+        "chaos": args.chaos,
+        "chaos_actions_run": chaos.done,
         "cpu_seconds_by_role": {k: round(v, 1) for k, v in cpu_s.items()},
         "check": {
             "every_question_finished_exactly_once": len(finals) == args.questions
             and extra_finals == 0,
             "no_dead_lettered_messages": dlq == 0,
-            "no_failed_specialist": advice.get("failed", 0) == 0,
+            "no_failed_specialist": args.expect_degraded or advice.get("failed", 0) == 0,
             "not_stalled": not stalled,
         },
     }

@@ -11,3 +11,7 @@ output "private_ips" {
 output "resource_group" {
   value = azurerm_resource_group.bench.name
 }
+
+output "key_vault_name" {
+  value = var.enable_keyvault ? azurerm_key_vault.bench[0].name : ""
+}

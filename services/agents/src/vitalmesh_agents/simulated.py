@@ -16,26 +16,33 @@ import os
 import threading
 import time
 from collections import Counter
+from pathlib import Path
 
-from vitalmesh_llm import LLMRequest, LLMResponse
+from vitalmesh_llm import AllProvidersFailed, LLMRequest, LLMResponse
 
 from vitalmesh_agents.testing import ScriptedRouter
 
 ALLOW_ENV = "VITALMESH_ALLOW_SIMULATED_LLM"
 ALLOW_VALUE = "benchmark-only"
 LATENCY_ENV = "VITALMESH_SIM_LLM_MS"
+OUTAGE_FILE_ENV = "VITALMESH_SIM_LLM_OUTAGE_FILE"  # while this file exists, every call fails
 
 
 class SimulatedRouter:
-    def __init__(self, latency_ms: float = 0.0) -> None:
+    def __init__(self, latency_ms: float = 0.0, outage_file: str = "") -> None:
         if latency_ms < 0:
             raise ValueError("latency_ms must not be negative")
         self.latency_ms = latency_ms
+        self.outage_file = outage_file
         self.calls: Counter[str] = Counter()
         self._lock = threading.Lock()
         self._inner = ScriptedRouter()  # holds no state we read; its purpose list is cleared below
 
     def complete(self, req: LLMRequest, max_wait_s: float = 0.0) -> LLMResponse:
+        if self.outage_file and Path(self.outage_file).exists():
+            with self._lock:
+                self.calls["outage"] += 1
+            raise AllProvidersFailed(["simulated outage"])
         if self.latency_ms:
             time.sleep(self.latency_ms / 1000.0)
         with self._lock:  # the scripted router appends to a list: keep it from growing forever
@@ -51,4 +58,6 @@ def simulated_router_from_env() -> SimulatedRouter:
             f"refusing the simulated model: set {ALLOW_ENV}={ALLOW_VALUE} (benchmarks only). "
             "Its answers are fixed text, not advice."
         )
-    return SimulatedRouter(float(os.environ.get(LATENCY_ENV, "0")))
+    return SimulatedRouter(
+        float(os.environ.get(LATENCY_ENV, "0")), os.environ.get(OUTAGE_FILE_ENV, "")
+    )

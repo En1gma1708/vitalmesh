@@ -1,7 +1,7 @@
 # Azure benchmark environment (D90): ONE resource group, up to 3 small Linux VMs, one subnet.
 #
 # Scope authorised by Sahil on 2026-11-07 (see docs/DECISIONS.md D90): resource group
-# `vitalmesh-bench`, region Central India, at most 3 VMs of 2 vCPU each, about $15 of the $100
+# `vitalmesh-bench`, region eastus (the one region with an allowed 2-vCPU size and quota for this subscription), at most 3 VMs of 2 vCPU each, about $15 of the $100
 # student credit in total, everything deleted after each test (infra/azure/teardown.ps1), nothing
 # left running overnight. This file cannot exceed the VM count (see the validation in variables.tf).
 #
@@ -13,6 +13,10 @@
 #   terraform plan  -var 'vm_sizes=["Standard_D2s_v4"]' -var vm_count=1 -var ssh_allowed_cidr=<your-ip>/32
 #   terraform apply -var 'vm_sizes=["Standard_D2s_v4"]' -var vm_count=1 -var ssh_allowed_cidr=<your-ip>/32
 #   pwsh infra/azure/teardown.ps1          # always, when the test is finished
+#
+# Optional (-var enable_keyvault=true): a Key Vault in the same group with role-based access. The
+# VMs get a managed identity that may READ secrets; the operator may write them. The API then loads
+# its signing secret from the vault at start (VITALMESH_AUTH_SECRET_KEYVAULT) instead of an env file.
 
 terraform {
   required_version = ">= 1.9"
@@ -39,6 +43,8 @@ locals {
     delete  = "after-each-test"
   }
 }
+
+data "azurerm_client_config" "current" {}
 
 resource "azurerm_resource_group" "bench" {
   name     = local.name
@@ -76,6 +82,19 @@ resource "azurerm_network_security_group" "bench" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
+    source_address_prefix      = var.ssh_allowed_cidr
+    destination_address_prefix = "*"
+  }
+
+  # the HTTPS check of the API (a self-signed certificate, see docs/SCALING.md) from the same one address
+  security_rule {
+    name                       = "https-from-operator"
+    priority                   = 105
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8443"
     source_address_prefix      = var.ssh_allowed_cidr
     destination_address_prefix = "*"
   }
@@ -146,9 +165,14 @@ resource "azurerm_linux_virtual_machine" "vm" {
   size                            = var.vm_sizes[count.index]
   admin_username                  = var.admin_username
   disable_password_authentication = true
-  network_interface_ids           = [azurerm_network_interface.vm[count.index].id]
-  custom_data                     = base64encode(file("${path.module}/cloud-init.yaml"))
-  tags                            = merge(local.tags, { role = count.index == 0 ? "broker-and-generator" : "processor" })
+
+  # lets a VM read secrets from the vault without any stored credential
+  identity {
+    type = "SystemAssigned"
+  }
+  network_interface_ids = [azurerm_network_interface.vm[count.index].id]
+  custom_data           = base64encode(file("${path.module}/cloud-init.yaml"))
+  tags                  = merge(local.tags, { role = count.index == 0 ? "broker-and-generator" : "processor" })
 
   admin_ssh_key {
     username   = var.admin_username
@@ -167,4 +191,34 @@ resource "azurerm_linux_virtual_machine" "vm" {
     sku       = "server"
     version   = "latest"
   }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Key Vault (optional): where the signing secret lives instead of an environment file (D92)
+# ---------------------------------------------------------------------------------------------
+resource "azurerm_key_vault" "bench" {
+  count                      = var.enable_keyvault ? 1 : 0
+  name                       = "vmbench${substr(sha1(azurerm_resource_group.bench.id), 0, 10)}"
+  location                   = azurerm_resource_group.bench.location
+  resource_group_name        = azurerm_resource_group.bench.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
+  soft_delete_retention_days = 7 # the minimum; teardown.ps1 purges the deleted vault
+  purge_protection_enabled   = false
+  tags                       = local.tags
+}
+
+resource "azurerm_role_assignment" "operator_writes_secrets" {
+  count                = var.enable_keyvault ? 1 : 0
+  scope                = azurerm_key_vault.bench[0].id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_role_assignment" "vms_read_secrets" {
+  count                = var.enable_keyvault ? var.vm_count : 0
+  scope                = azurerm_key_vault.bench[0].id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_virtual_machine.vm[count.index].identity[0].principal_id
 }

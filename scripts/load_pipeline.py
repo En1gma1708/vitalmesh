@@ -22,6 +22,7 @@ throughput; their latency is queueing time. Use ``--rate`` below capacity for la
 from __future__ import annotations
 
 import argparse
+import atexit
 import itertools
 import json
 import os
@@ -195,13 +196,28 @@ def lab_event(user: str, seq: int) -> bytes:
 def tree_cpu(proc: psutil.Process) -> float:
     """CPU seconds of a process and every child (a venv launcher starts the real interpreter)."""
     total = 0.0
-    for p in [proc, *proc.children(recursive=True)]:
+    try:
+        family = [proc, *proc.children(recursive=True)]
+    except psutil.Error:  # the process is gone (a chaos test killed it): it has no CPU to count
+        return 0.0
+    for p in family:
         try:
             times = p.cpu_times()
             total += times.user + times.system
         except psutil.Error:
             pass
     return total
+
+
+def kill_tree(pid: int) -> None:
+    """Kill a process and its children; never raises (used at exit, even after a crash)."""
+    try:
+        root = psutil.Process(pid)
+        for child in root.children(recursive=True):
+            child.kill()
+        root.kill()
+    except psutil.Error:
+        pass
 
 
 def pct(values: list[float], q: float) -> float | None:
@@ -248,6 +264,7 @@ def main() -> None:
                 stderr=subprocess.STDOUT,
             )
         )
+    atexit.register(lambda: [kill_tree(p.pid) for p in procs])  # a crash must not leave them
     sampler = Sampler(settings, group)
     sampler.start()
     t_wait = time.monotonic()

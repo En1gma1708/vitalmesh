@@ -1,0 +1,24 @@
+# Azure override of the benchmark stack (D90, D92). Used on VM 0 only, on top of the local file:
+#
+#   BROKER_IP=10.60.0.10 docker compose -f infra/docker-compose.bench.yml \
+#       -f infra/azure/docker-compose.azure.yml up -d --wait
+#
+# Kafka now tells clients to come back to the VM's PRIVATE address, so processors on the other VMs
+# can connect; Schema Registry, Redis and Postgres get a second binding on the private address.
+# Nothing here is reachable from the internet: the network security group admits only SSH and
+# the HTTPS check from one operator address, and everything else only from inside the subnet.
+services:
+  kafka:
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://${BROKER_IP:?set BROKER_IP}:9192
+    ports:
+      - "${BROKER_IP}:9192:9192"
+  schema-registry:
+    ports:
+      - "${BROKER_IP}:8181:8081"
+  redis:
+    ports:
+      - "${BROKER_IP}:6390:6379"
+  postgres:
+    ports:
+      - "${BROKER_IP}:5442:5432"

@@ -50,3 +50,9 @@ variable "ssh_allowed_cidr" {
     error_message = "Give a single address as a /32, never a wider range and never 0.0.0.0/0."
   }
 }
+
+variable "enable_keyvault" {
+  description = "Create a Key Vault in the group (role-based access, VMs may read secrets)."
+  type        = bool
+  default     = false
+}
