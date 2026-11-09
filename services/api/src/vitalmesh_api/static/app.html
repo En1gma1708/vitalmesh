@@ -399,16 +399,16 @@ async function main() {
   if (active?.weekly.length) ring(rings, last(active.weekly).total, active.weekly_goal, "Active minutes this week", "min");
   if (!rings.children.length) rings.innerHTML = '<div class="empty">Log some data to see your goals.</div>';
 
-  $("numbers").innerHTML = rec ? rec.items.map((i) => `<li>${i.text} <span class="sub">(${i.basis.toLowerCase()})</span></li>`).join("") : '<li class="empty">No recommendation is available right now.</li>';
+  $("numbers").innerHTML = rec ? rec.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("") : '<li class="empty">No recommendation is available right now.</li>';
 
   // The store keeps every collection of a test; the page shows the latest of each.
   const latestLabs = labs ? [...new Map([...labs].sort((a, b) => new Date(a.collected_at) - new Date(b.collected_at)).map((l) => [l.name.trim().toLowerCase(), l])).values()].sort((a, b) => a.name.localeCompare(b.name)) : [];
   $("labs").innerHTML = latestLabs.length
-    ? `<table><caption class="sub">Latest result of each test</caption><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Range</th><th scope="col">Status</th></tr>${latestLabs.map((l) => `<tr><td>${l.name}</td><td>${l.value ?? l.text} ${l.unit ?? ""}</td><td>${l.reference_range || "-"}</td><td><span class="tag ${l.status.replace(" ", "")}">${l.status}</span></td></tr>`).join("")}</table>`
+    ? `<table><caption class="sub">Latest result of each test</caption><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Range</th><th scope="col">Status</th></tr>${latestLabs.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.value ?? l.text ?? "")} ${esc(l.unit ?? "")}</td><td>${esc(l.reference_range || "-")}</td><td><span class="tag ${esc(l.status.replace(" ", ""))}">${esc(l.status)}</span></td></tr>`).join("")}</table>`
     : '<div class="empty">No lab results yet.</div>';
 
   $("meals").innerHTML = plan && plan.days.length
-    ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${m.meal}</b>${m.title}<div class="sub">${m.kcal} kcal &middot; ${m.protein_g} g protein &middot; portion ${m.portion}</div></div>`).join("")}</div>`
+    ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${esc(m.meal)}</b>${esc(m.title)}<div class="sub">${esc(m.kcal)} kcal &middot; ${esc(m.protein_g)} g protein &middot; portion ${esc(m.portion)}</div></div>`).join("")}</div>`
     : '<div class="empty">No meal plan is available right now.</div>';
 }
 boot().then((ok) => { if (ok) { main(); loadHistory(); } });
@@ -416,7 +416,7 @@ boot().then((ok) => { if (ok) { main(); loadHistory(); } });
 // ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
 const SAMPLES = ["How many calories should I eat?", "How much should I sleep?", "What should I eat and how should I train this week?"];
 const BLOCKED = "I can't give an answer to this one. A doctor or dietitian can help.";
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let stream = null;
 
 SAMPLES.forEach((s) => {
