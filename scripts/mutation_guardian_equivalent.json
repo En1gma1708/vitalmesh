@@ -1,0 +1,3 @@
+{
+  "207:0 -> -1": "rule_meal_plan_energy returns early unless `len(targets) == 1 and len(claimed) == 1` (line 200), so on line 207 `targets[0]` and `targets[-1]` (and `claimed[0]` / `claimed[-1]`) are the same element: the mutant cannot change behaviour. Keyed by line and change; if the Guardian's lines move, re-check and update."
+}
