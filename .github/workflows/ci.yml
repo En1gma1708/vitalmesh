@@ -55,6 +55,24 @@ jobs:
       - name: Mutate the Guardian in memory; any open survivor fails the build
         run: uv run python scripts/mutation_guardian.py --jobs 4
 
+  regression-gates:
+    name: eval baselines and security-rule mutation check
+    runs-on: ubuntu-latest
+    needs: checks
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: Install
+        run: uv sync --frozen
+      - name: Generate protobuf code
+        run: uv run python scripts/gen_proto.py
+      - name: Deterministic eval baselines (no model, no network); any change in a result fails
+        run: |
+          uv run python -m vitalmesh_evals --explainer template --check-baseline --no-save
+          uv run python -m vitalmesh_evals --explainer template --guard --check-baseline --no-save
+      - name: Break each of the 21 security rules in memory; the tests must notice every one
+        run: uv run python scripts/mutation_check_security.py
+
   integration:
     name: integration tests (Kafka, Schema Registry, Redis)
     runs-on: ubuntu-latest
@@ -70,6 +88,18 @@ jobs:
         run: docker compose -f infra/docker-compose.yml up -d --wait
       - name: Integration tests
         run: uv run pytest -m integration -q
+      - name: Access-control red team against the running API (after the integration tests, which must not share the topics with a live processor)
+        run: |
+          export VITALMESH_AUTH_SECRET="$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')"
+          export VITALMESH_REQUIRE_VERIFIED=0
+          nohup uv run python -m vitalmesh_processor > processor.log 2>&1 &
+          nohup uv run python -m vitalmesh_api > api.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/healthz && break; sleep 1; done
+          curl -sf http://127.0.0.1:8000/healthz
+          uv run python scripts/redteam_access.py
+      - name: App logs on failure
+        if: failure()
+        run: tail -n 80 api.log processor.log || true
       - name: Stack logs on failure
         if: failure()
         run: docker compose -f infra/docker-compose.yml logs --no-color --tail 200
