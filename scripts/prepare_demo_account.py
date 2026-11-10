@@ -45,14 +45,32 @@ ACTIVE = [35, 40, 55, 45, 60, 35, 45, 40, 50, 40, 45, 55, 38, 42]
 WEIGHT = [68.4, 68.2, 68.3, 68.0, 67.9, 68.1, 67.8, 67.9, 67.7, 67.8, 67.9, 67.7, 67.8, 67.6]
 
 
+def remove_old_accounts() -> None:
+    """Delete the two demo accounts from the local Postgres (made-up people only). Their Redis
+    data goes when Redis is restarted (it has no persistence) or with ``purge_user``."""
+    import psycopg
+
+    dsn = os.environ.get("VITALMESH_PG_DSN", "postgresql://vitalmesh@127.0.0.1:5432/vitalmesh")
+    if urlparse(dsn).hostname not in ("127.0.0.1", "localhost"):
+        sys.exit("refusing: local Postgres only")
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        gone = conn.execute(
+            "delete from users where email in (%s, %s) returning email", (USER_EMAIL, OPS_EMAIL)
+        ).fetchall()
+    print(f"removed {len(gone)} old demo account(s)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--base", default="http://127.0.0.1:8000")
     ap.add_argument("--sleep", choices=sorted(SLEEP), default="rested")
+    ap.add_argument("--replace", action="store_true", help="delete the two demo accounts first")
     args = ap.parse_args()
     if urlparse(args.base).hostname not in ("127.0.0.1", "localhost", "::1"):
         sys.exit("refusing: loopback only")
 
+    if args.replace:
+        remove_old_accounts()
     password = secrets.token_urlsafe(12) + "Aa1!"
     ops_password = secrets.token_urlsafe(12) + "Aa1!"
     c = httpx.Client(base_url=args.base, timeout=60)
@@ -93,8 +111,9 @@ def main() -> None:
     }  # fmt: skip
     failures += c.post("/v1/labs", headers=csrf(), json=lab).status_code != 202
     time.sleep(5)  # the processor writes the history behind the 202s
-    points = c.get(f"/v1/users/{uid}/history")
-    held = len(points.json()) if points.status_code == 200 else 0
+    export = c.get("/v1/me/export")
+    series = export.json().get("data", {}).get("history", {}) if export.status_code == 200 else {}
+    held = len(series)  # how many measurement series the processor has written (expect 4)
 
     env = {**os.environ, "VITALMESH_NEW_PASSWORD": ops_password}
     create = str(ROOT / "scripts" / "create_account.py")
@@ -113,7 +132,7 @@ def main() -> None:
     )
     print(
         f"person {USER_EMAIL}: {n} nights of sleep ({args.sleep}), posting failures: {failures},"
-        f" history series held: {held}"
+        f" measurement series held: {held} of 4"
     )
     print(f"operator {OPS_EMAIL}: {'created' if ops_ok else 'NOT created: ' + made.stderr[-200:]}")
     print(f"passwords written to {OUT.relative_to(ROOT)} (git-ignored; not printed)")
