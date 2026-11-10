@@ -17,6 +17,7 @@ from vitalmesh_wellness.claims import (
     Quantity,
     Recommendation,
     UserConstraints,
+    WorkoutEntry,
 )
 from vitalmesh_wellness.guardian import DEFAULT_RULES, RULES_VERSION, Guardian
 
@@ -39,8 +40,15 @@ def user(**over: object) -> UserConstraints:
     return UserConstraints(**{**base, **over})  # type: ignore[arg-type]
 
 
-def rec(u: UserConstraints, *claims: Claim, plan: tuple[MealEntry, ...] = ()) -> Recommendation:
-    return Recommendation(recommendation_id="demo", user=u, claims=claims, meal_plan=plan)
+def rec(
+    u: UserConstraints,
+    *claims: Claim,
+    plan: tuple[MealEntry, ...] = (),
+    workout: tuple[WorkoutEntry, ...] = (),
+) -> Recommendation:
+    return Recommendation(
+        recommendation_id="demo", user=u, claims=claims, meal_plan=plan, workout_plan=workout
+    )
 
 
 def crashing_rule(_rec: Recommendation) -> list:  # type: ignore[type-arg]
@@ -72,6 +80,23 @@ SCENARIOS: list[tuple[str, Recommendation, Guardian]] = [
         rec(
             user(conditions=frozenset({"cardiac"})),
             claim("target_hr_zone", 5, "zone", "Train in zone 5."),
+        ),
+        Guardian(),
+    ),
+    (
+        "A bench press prescribed to a person with a heart condition (strength work is refused)",
+        rec(
+            user(conditions=frozenset({"cardiac"})),
+            claim("workout_total_sets", 3, "sets", "Bench press: 3 sets of 8-12 reps."),
+            workout=(
+                WorkoutEntry(
+                    day=date(2026, 10, 26),
+                    exercise_id="bench_press",
+                    sets=3,
+                    reps_low=8,
+                    reps_high=12,
+                ),
+            ),
         ),
         Guardian(),
     ),
