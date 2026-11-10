@@ -1,0 +1,15 @@
+[Unit]
+Description=VitalMesh infrastructure containers (Kafka, Schema Registry, Redis, Postgres)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/vitalmesh/app
+ExecStart=/usr/bin/docker compose -f infra/docker-compose.yml up -d --wait kafka schema-registry redis postgres
+ExecStop=/usr/bin/docker compose -f infra/docker-compose.yml stop kafka schema-registry redis postgres
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

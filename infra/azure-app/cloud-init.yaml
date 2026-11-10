@@ -1,0 +1,20 @@
+#cloud-config
+# First boot of the demo VM (D99): Docker (Kafka, Schema Registry, Redis, Postgres and Caddy run as
+# containers), git and the uv Python tool. Nothing here holds a secret. The application itself is
+# installed afterwards over SSH by deploy.ps1 (infra/azure-app/remote/bootstrap.sh), so no GitHub
+# token or deploy key is ever stored on the VM: the repository is public and cloned over https.
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - curl
+  - python3-venv
+  - unzip
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker vmadmin
+  - curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+  - mkdir -p /opt/vitalmesh
+  - chown vmadmin:vmadmin /opt/vitalmesh
+  - touch /var/lib/cloud/instance/vitalmesh-ready

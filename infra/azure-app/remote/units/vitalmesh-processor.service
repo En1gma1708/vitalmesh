@@ -1,0 +1,15 @@
+[Unit]
+Description=VitalMesh state processor
+After=vitalmesh-infra.service
+Requires=vitalmesh-infra.service
+
+[Service]
+User=vmadmin
+WorkingDirectory=/opt/vitalmesh/app
+EnvironmentFile=/opt/vitalmesh/env
+ExecStart=/opt/vitalmesh/app/.venv/bin/python -m vitalmesh_processor
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

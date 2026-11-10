@@ -1,0 +1,15 @@
+[Unit]
+Description=VitalMesh API (listens on 127.0.0.1:8000; reached only through Caddy)
+After=vitalmesh-infra.service
+Requires=vitalmesh-infra.service
+
+[Service]
+User=vmadmin
+WorkingDirectory=/opt/vitalmesh/app
+EnvironmentFile=/opt/vitalmesh/env
+ExecStart=/opt/vitalmesh/app/.venv/bin/python -m vitalmesh_api
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
