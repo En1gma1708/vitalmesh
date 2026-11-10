@@ -41,6 +41,7 @@ from vitalmesh_wellness.workouts import (
     SESSION_LABEL,
     WARMUP_MINUTES,
     Place,
+    WorkoutPlan,
     plan_workout,
 )
 
@@ -170,6 +171,7 @@ def build_meal_plan_recommendation(
 
 
 WORKOUT_SOURCE = f"vitalmesh_wellness.workouts@{WORKOUT_PLANNER_VERSION}"
+_EASE_IN_TEXT = " You have been fairly inactive lately, so this starts light."
 _WHY_TEXT = {
     "recovery": " Your recent sleep debt calls for an easy day.",
     "conditions": (
@@ -180,7 +182,7 @@ _WHY_TEXT = {
 }
 
 
-def build_workout_recommendation(
+def build_workout(
     profile: Profile,
     recent_sleep_hours: Sequence[float],
     recommendation_id: str,
@@ -188,7 +190,9 @@ def build_workout_recommendation(
     place: Place,
     minutes: int,
     focus: str | None = None,
-) -> Recommendation:
+    last_session: str | None = None,
+    ease_in: bool = False,
+) -> tuple[Recommendation, WorkoutPlan]:
     """The usual recommendation plus today's workout: easy cardio in the user's zone, or a
     beginner strength session of named exercises. Raises ``WorkoutError`` for impossible input.
 
@@ -197,7 +201,9 @@ def build_workout_recommendation(
     """
     base = build_recommendation(profile, recent_sleep_hours, recommendation_id)
     recovering = calc.sleep_debt_hours(recent_sleep_hours) >= SLEEP_DEBT_RECOVERY_HOURS
-    plan = plan_workout(base.user, day, place, minutes, recovering, focus)
+    plan = plan_workout(
+        base.user, day, place, minutes, recovering, focus, profile.goal.value, last_session, ease_in
+    )
     where = "at the gym" if place is Place.GYM else "at home"
     claims: list[Claim] = []
     if plan.cardio_zone is not None:
@@ -222,7 +228,7 @@ def build_workout_recommendation(
         label = SESSION_LABEL[plan.session]
         text = (
             f"Today: {label} {where}, about {plan.minutes} minutes including a "
-            f"{WARMUP_MINUTES}-minute easy warm-up."
+            f"{WARMUP_MINUTES}-minute easy warm-up." + (_EASE_IN_TEXT if plan.eased else "")
         )
         claims.append(_computed(METRIC_WORKOUT_MINUTES, float(plan.minutes), "min", text))
         for e in plan.entries:
@@ -245,4 +251,29 @@ def build_workout_recommendation(
                 "pick a weight you can control.",
             )
         )
-    return base.model_copy(update={"claims": (*base.claims, *claims), "workout_plan": plan.entries})
+    rec = base.model_copy(update={"claims": (*base.claims, *claims), "workout_plan": plan.entries})
+    return rec, plan
+
+
+def build_workout_recommendation(
+    profile: Profile,
+    recent_sleep_hours: Sequence[float],
+    recommendation_id: str,
+    day: date,
+    place: Place,
+    minutes: int,
+    focus: str | None = None,
+    last_session: str | None = None,
+    ease_in: bool = False,
+) -> Recommendation:
+    return build_workout(
+        profile,
+        recent_sleep_hours,
+        recommendation_id,
+        day,
+        place,
+        minutes,
+        focus,
+        last_session,
+        ease_in,
+    )[0]

@@ -100,6 +100,7 @@ def main() -> None:
     ap.add_argument(
         "--question", action="append", default=[], help="ask these instead (repeatable)"
     )
+    ap.add_argument("--goal", default="", choices=["", "maintain", "lose", "gain"])
     ap.add_argument("--rested", action="store_true", help="made-up sleep without a sleep debt")
     args = ap.parse_args()
     if urlparse(args.base).hostname not in ("127.0.0.1", "localhost", "::1"):
@@ -120,7 +121,13 @@ def main() -> None:
         version = c.get("/v1/auth/choices").json()["consent_version"]
         assert (
             c.put(
-                "/v1/me/profile", json={**PROFILE, "consent_version": version}, headers=csrf()
+                "/v1/me/profile",
+                json={
+                    **PROFILE,
+                    **({"goal": args.goal} if args.goal else {}),
+                    "consent_version": version,
+                },
+                headers=csrf(),
             ).status_code
             == 200
         )

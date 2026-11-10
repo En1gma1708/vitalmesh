@@ -68,8 +68,10 @@ def export_user(client: redis.Redis, user_id: str) -> dict[str, Any]:
         },
         "inbox": [_decode(v) for v in client.hgetall(f"nudge:inbox:{user_id}").values()],
     }
+    workouts = {_decode(k): _decode(v) for k, v in client.hgetall(f"workoutlog:{user_id}").items()}
     return {
         "labs": labs,
+        "suggested_workouts": workouts,
         "history": history,
         "nudges": nudges,
         "derived_state": _decode(state) if state is not None else None,

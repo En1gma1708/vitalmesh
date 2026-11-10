@@ -20,6 +20,7 @@ from vitalmesh_stores import (
     RedisPendingImports,
     RedisProfileStore,
     RedisRunLog,
+    RedisWorkoutLog,
     backfill,
     export_user,
     index_key,
@@ -80,6 +81,11 @@ def populate(c: redis.Redis, user: str) -> None:
     nudges.add(user, Item("n-1", "log_reminder", "gentle", "t", now))
     RedisStateStore(c).put(HealthState(user_id=user))
     RedisRunLog(c).append(f"run-{user}", user, {"event_id": f"e-{user}", "type": "question.asked"})
+    RedisWorkoutLog(c).record(user, now.date(), "push")
+
+
+def now_day() -> str:
+    return datetime.now(UTC).date().isoformat()
 
 
 def keys_naming(c: redis.Redis, user: str) -> set[str]:
@@ -95,11 +101,14 @@ def test_every_store_registers_what_it_writes_and_erase_leaves_nothing(client: r
     populate(client, b)
     try:
         written = keys_naming(client, a) - {index_key(a)}
-        assert len(written) >= 9  # profile, labs, 2 history, pending, 2 nudge, state, run keys
+        assert (
+            len(written) >= 10
+        )  # profile, labs, 2 history, pending, 2 nudge, state, run, workouts
         missing = written - set(tracked(client, a))
         # the run log's per-run keys are named by correlation id, which here embeds the user id
         assert missing == set(), f"keys that name the person but are not in the index: {missing}"
         held = export_user(client, a)
+        assert held["suggested_workouts"] == {now_day(): "push"}
         assert held["derived_state"] is not None and set(held["history"]) == {
             "body_weight",
             "step_count",
@@ -175,3 +184,24 @@ def test_an_unsafe_id_never_builds_a_key(client: redis.Redis) -> None:
             purge_user(client, bad)
         with pytest.raises(ValueError):
             index_key(bad)
+
+
+def test_the_workout_log_keeps_fourteen_days_and_is_erased(client: redis.Redis) -> None:
+    from datetime import date
+
+    user = uid()
+    log = RedisWorkoutLog(client)
+    first = date(2026, 11, 1)
+    try:
+        for i in range(20):
+            log.record(user, first + timedelta(days=i), "push" if i % 2 else "pull")
+        kept = log.recent(user)
+        assert len(kept) == 14
+        assert min(kept) == first + timedelta(days=6) and max(kept) == first + timedelta(days=19)
+        assert f"workoutlog:{user}" in tracked(client, user)
+        assert client.ttl(f"workoutlog:{user}") > 0
+        client.hset(f"workoutlog:{user}", "not-a-date", "push")  # garbage is ignored, not trusted
+        assert len(log.recent(user)) == 14
+    finally:
+        purge_user(client, user)
+    assert log.recent(user) == {}

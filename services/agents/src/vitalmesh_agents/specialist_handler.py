@@ -32,7 +32,7 @@ from vitalmesh_specialists import (
 )
 from vitalmesh_specialists.agent import RouterLike, ToolsLike
 from vitalmesh_specialists.tools import EvidenceLike
-from vitalmesh_stores import HistoryStore, LabStore, ProfileRecord, ProfileStore
+from vitalmesh_stores import HistoryStore, LabStore, ProfileRecord, ProfileStore, WorkoutLog
 from vitalmesh_tracing import NULL, Tracer
 
 from vitalmesh_agents.advice import advice_to_proto, failed_advice
@@ -56,6 +56,7 @@ class SpecialistDeps:
     labs: LabStore
     history: HistoryStore
     tracer: Tracer = NULL
+    workouts: WorkoutLog | None = None  # what workout was last suggested (D104)
     attempts: int = 2
     retry_pause_s: float = 5.0
     max_wait_s: float = 60.0
@@ -151,7 +152,9 @@ def build_tools(
     if kind is Specialist.NUTRITION:
         return NutritionTools(profile, sleep, deps.evidence, now.date())
     if kind is Specialist.MOVEMENT_RECOVERY:
-        return MovementTools(profile, sleep, deps.history, deps.evidence, now)
+        return MovementTools(
+            profile, sleep, deps.history, deps.evidence, now, workouts=deps.workouts
+        )
     return ConditionTools(profile, deps.labs.list(user_id), deps.evidence)
 
 

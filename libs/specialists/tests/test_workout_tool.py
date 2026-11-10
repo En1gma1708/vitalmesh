@@ -239,3 +239,121 @@ def test_with_no_model_the_helper_still_answers_with_a_concrete_workout() -> Non
 def test_the_fallback_text_includes_the_workout_claims() -> None:
     p = tools(now=day_for("cardio")).call("get_workout_plan", json.dumps({"minutes": 30}))
     assert "easy cardio" in fallback_text([p])
+
+
+# ----------------------------------------------------------------------------- D104: history
+def with_log(
+    log: Any, now: datetime = NOW, history: InMemoryHistoryStore | None = None, **extra: Any
+) -> MovementTools:
+    return MovementTools(
+        profile(**extra), [8.0] * 14, history or InMemoryHistoryStore(), NoEvidence(), now,
+        workouts=log,
+    )  # fmt: skip
+
+
+def test_the_suggested_session_is_remembered() -> None:
+    from vitalmesh_stores import InMemoryWorkoutLog
+
+    log = InMemoryWorkoutLog()
+    now = day_for("push")
+    call(with_log(log, now), place="gym", minutes=45)
+    assert log.recent("t") == {now.date(): "push"}
+
+
+def test_yesterdays_session_is_not_repeated() -> None:
+    from vitalmesh_stores import InMemoryWorkoutLog
+
+    log = InMemoryWorkoutLog()
+    now = day_for("push")
+    log.record("t", now.date() - timedelta(days=1), "push")
+    p = call(with_log(log, now), place="gym", minutes=45)
+    assert not texts(p)[0].startswith("Today: push day")
+
+
+def test_a_session_from_three_days_ago_no_longer_counts() -> None:
+    from vitalmesh_stores import InMemoryWorkoutLog
+
+    log = InMemoryWorkoutLog()
+    now = day_for("push")
+    log.record("t", now.date() - timedelta(days=3), "push")
+    p = call(with_log(log, now), place="gym", minutes=45)
+    assert texts(p)[0].startswith("Today: push day")
+
+
+def test_asking_twice_the_same_day_gives_the_same_workout() -> None:
+    from vitalmesh_stores import InMemoryWorkoutLog
+
+    log = InMemoryWorkoutLog()
+    now = day_for("push")
+    t = with_log(log, now)
+    assert texts(call(t, place="gym", minutes=45)) == texts(call(t, place="gym", minutes=45))
+
+
+def test_a_log_outage_does_not_stop_the_answer() -> None:
+    class Broken:
+        def recent(self, user_id: str) -> Any:
+            raise RuntimeError("down")
+
+        def record(self, *a: Any) -> None:
+            raise RuntimeError("down")
+
+    p = call(with_log(Broken(), day_for("push")), place="gym", minutes=45)
+    assert texts(p)[0].startswith("Today: push day")
+
+
+def test_a_blocked_plan_is_not_remembered() -> None:
+    from vitalmesh_stores import InMemoryWorkoutLog
+    from vitalmesh_wellness.guardian import Guardian, Violation
+
+    def never(_rec: Any) -> list[Any]:
+        return [Violation(rule="x", message="blocked")]
+
+    log = InMemoryWorkoutLog()
+    t = MovementTools(
+        profile(), [8.0] * 14, InMemoryHistoryStore(), NoEvidence(), NOW, Guardian(rules=(never,)),
+        workouts=log,
+    )  # fmt: skip
+    assert not t.call("get_workout_plan", "{}").ok
+    assert log.recent("t") == {}
+
+
+def _active(
+    history: InMemoryHistoryStore, now: datetime, minutes_by_days_ago: dict[int, float]
+) -> None:
+    from vitalmesh_stores import Point
+
+    for ago, value in minutes_by_days_ago.items():
+        history.add("t", "active_minutes", Point(now - timedelta(days=ago), value, "min"))
+
+
+def test_a_very_inactive_week_eases_the_session_in() -> None:
+    now = day_for("push")
+    h = InMemoryHistoryStore()
+    _active(h, now, {2: 10, 3: 15, 20: 200})  # 25 minutes this week
+    p = call(with_log(None, now, h), place="gym", minutes=60)
+    assert len(p["exercises"]) == 3
+    assert any("starts light" in x for x in texts(p))
+
+
+def test_an_active_week_or_no_data_does_not() -> None:
+    now = day_for("push")
+    h = InMemoryHistoryStore()
+    _active(h, now, {1: 40, 3: 40})  # 80 minutes: at or over the threshold
+    assert len(call(with_log(None, now, h), place="gym", minutes=60)["exercises"]) == 5
+    assert len(call(with_log(None, now), place="gym", minutes=60)["exercises"]) == 5  # no data
+    h2 = InMemoryHistoryStore()
+    _active(h2, now, {1: 30, 2: 29})  # 59: just under -> eased
+    assert len(call(with_log(None, now, h2), place="gym", minutes=60)["exercises"]) == 3
+    h3 = InMemoryHistoryStore()
+    _active(h3, now, {1: 30, 2: 30})  # exactly 60: not eased
+    assert len(call(with_log(None, now, h3), place="gym", minutes=60)["exercises"]) == 5
+
+
+def test_a_history_outage_means_no_ease_in() -> None:
+    class Broken:
+        def series(self, *a: Any, **k: Any) -> Any:
+            raise RuntimeError("down")
+
+    now = day_for("push")
+    t = MovementTools(profile(), [8.0] * 14, Broken(), NoEvidence(), now)  # type: ignore[arg-type]
+    assert t.call("get_workout_plan", json.dumps({"place": "gym", "minutes": 60})).ok

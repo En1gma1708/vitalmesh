@@ -20,6 +20,7 @@ from vitalmesh_stores.profiles import (
 )
 from vitalmesh_stores.runlog import InMemoryRunLog, RedisRunLog, RunLog, RunRecord
 from vitalmesh_stores.userdata import export_user, purge_user
+from vitalmesh_stores.workoutlog import InMemoryWorkoutLog, RedisWorkoutLog, WorkoutLog
 
 __all__ = [
     "HistoryStore",
@@ -29,6 +30,7 @@ __all__ = [
     "InMemoryPendingImports",
     "InMemoryProfileStore",
     "InMemoryRunLog",
+    "InMemoryWorkoutLog",
     "Item",
     "LabStore",
     "NudgeStore",
@@ -43,8 +45,10 @@ __all__ = [
     "RedisPendingImports",
     "RedisProfileStore",
     "RedisRunLog",
+    "RedisWorkoutLog",
     "RunLog",
     "RunRecord",
+    "WorkoutLog",
     "backfill",
     "erase",
     "export_user",

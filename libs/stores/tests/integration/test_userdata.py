@@ -55,6 +55,7 @@ def test_export_returns_what_is_held_and_purge_removes_only_that_person(
         "labs": [],
         "history": {},
         "nudges": {"settings": {}, "inbox": []},
+        "suggested_workouts": {},
         "derived_state": None,
     }
     assert RedisPendingImports(redis_client).get(a, "abcdefgh1234") is None

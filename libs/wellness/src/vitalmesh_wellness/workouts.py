@@ -222,10 +222,21 @@ SESSION_LABEL = {
     "full_body": "full-body session",
     "cardio": "easy cardio",
 }
+# The weekly pattern follows the person's goal (D104): building muscle trains more days and rests
+# on cardio less; losing weight alternates strength with easy cardio; maintaining is the base.
 ROTATION: dict[Place, tuple[str, ...]] = {
     Place.GYM: ("push", "pull", "legs", "cardio"),
     Place.HOME: ("full_body", "cardio"),
 }
+GOAL_ROTATION: dict[tuple[Place, str], tuple[str, ...]] = {
+    (Place.GYM, "maintain"): ROTATION[Place.GYM],
+    (Place.GYM, "gain"): ("push", "pull", "legs", "push", "pull", "legs", "cardio"),
+    (Place.GYM, "lose"): ("push", "cardio", "pull", "cardio", "legs", "cardio"),
+    (Place.HOME, "maintain"): ROTATION[Place.HOME],
+    (Place.HOME, "gain"): ("full_body", "cardio", "full_body"),
+    (Place.HOME, "lose"): ("full_body", "cardio", "cardio"),
+}
+EASE_IN_BELOW_MINUTES = 60  # under this much activity in the last 7 days a session starts light
 
 
 @dataclass(frozen=True)
@@ -236,6 +247,7 @@ class WorkoutPlan:
     entries: tuple[WorkoutEntry, ...]  # empty for cardio
     cardio_zone: int | None  # set for cardio
     why: str  # "rotation", "requested", "recovery", "conditions", "short"
+    eased: bool = False  # a light start because the last week was very inactive
 
 
 def strength_allowed(conditions: frozenset[str] | set[str]) -> bool:
@@ -258,10 +270,13 @@ def plan_workout(
     minutes: int,
     recovering: bool = False,
     focus: str | None = None,
+    goal: str = "maintain",
+    last_session: str | None = None,
+    ease_in: bool = False,
 ) -> WorkoutPlan:
     if not MIN_MINUTES <= minutes <= MAX_MINUTES:
         raise WorkoutError(f"a workout is {MIN_MINUTES} to {MAX_MINUTES} minutes")
-    rotation = ROTATION[place]
+    rotation = GOAL_ROTATION.get((place, goal), ROTATION[place])
     if not strength_allowed(user.conditions):
         return WorkoutPlan("cardio", place, minutes, (), CARDIO_ZONE, "conditions")
     if recovering:
@@ -270,13 +285,19 @@ def plan_workout(
     if wanted in rotation:
         session, why = wanted, "requested"
     else:
-        session, why = rotation[day.toordinal() % len(rotation)], "rotation"
+        start = day.toordinal() % len(rotation)
+        session, why = rotation[start], "rotation"
+        if session != "cardio" and session == last_session:
+            # the same muscle group two days in a row: take the next different session instead
+            later = [rotation[(start + i) % len(rotation)] for i in range(1, len(rotation))]
+            session = next((s for s in later if s != last_session), "cardio")
     if session == "cardio":
         return WorkoutPlan("cardio", place, minutes, (), CARDIO_ZONE, why)
     if minutes < MIN_STRENGTH_MINUTES:
         return WorkoutPlan("cardio", place, minutes, (), CARDIO_ZONE, "short")
     ids = SESSIONS[session]
-    chosen = ids[: exercise_count(minutes, len(ids))]
+    count = MIN_EXERCISES if ease_in else exercise_count(minutes, len(ids))
+    chosen = ids[:count]
     entries = tuple(
         WorkoutEntry(
             day=day,
@@ -287,4 +308,4 @@ def plan_workout(
         )
         for i in chosen
     )
-    return WorkoutPlan(session, place, minutes, entries, None, why)
+    return WorkoutPlan(session, place, minutes, entries, None, why, eased=ease_in)

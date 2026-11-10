@@ -12,6 +12,7 @@ beginner strength session of named exercises, from a deterministic catalogue, D1
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
@@ -23,7 +24,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from vitalmesh_llm import ToolSpec
 from vitalmesh_llm.types import Alias, DataClass
-from vitalmesh_stores import HistoryStore
+from vitalmesh_stores import HistoryStore, WorkoutLog
 from vitalmesh_tracing import NULL, Tracer
 from vitalmesh_wellness import calculators as calc
 from vitalmesh_wellness.calculators import OutOfRange
@@ -32,12 +33,13 @@ from vitalmesh_wellness.engine import (
     WORKOUT_SOURCE,
     Profile,
     build_recommendation,
+    build_workout,
     build_workout_recommendation,
 )
 from vitalmesh_wellness.guardian import METRIC_HR_ZONE, METRIC_SLEEP, Guardian
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
 from vitalmesh_wellness.workouts import BY_ID as EXERCISES
-from vitalmesh_wellness.workouts import Place, WorkoutError
+from vitalmesh_wellness.workouts import EASE_IN_BELOW_MINUTES, Place, WorkoutError
 
 from vitalmesh_specialists.agent import (
     MAX_MODEL_CALLS,
@@ -187,7 +189,9 @@ class MovementTools:
         evidence: EvidenceLike,
         now: datetime,
         guardian: Guardian | None = None,
+        workouts: WorkoutLog | None = None,
     ) -> None:
+        self._workouts = workouts
         self._profile = profile
         self._sleep = recent_sleep_hours
         self._history = history
@@ -255,9 +259,11 @@ class MovementTools:
         day = self._now.date()
         place = Place.HOME if args.place == "home" else Place.GYM
         try:
-            rec = build_workout_recommendation(
-                self._profile, self._sleep, "workout", day, place, args.minutes, args.focus
-            )
+            last = self._last_session(day)
+            rec, plan = build_workout(
+                self._profile, self._sleep, "workout", day, place, args.minutes, args.focus,
+                last, self._eased(),
+            )  # fmt: skip
             alt = None
             if args.place == "either" and rec.workout_plan:  # a strength day: add a no-gym option
                 alt = build_workout_recommendation(
@@ -271,6 +277,7 @@ class MovementTools:
                 return ToolResult(
                     name="get_workout_plan", ok=False, error="blocked by safety rules"
                 )
+        self._remember(day, plan.session)
         claims = _workout_claims(rec)
         if alt is not None:
             alt_claims = _workout_claims(alt)
@@ -289,6 +296,36 @@ class MovementTools:
         return ToolResult(
             name="get_workout_plan", ok=True, payload={"claims": claims, "exercises": exercises}
         )
+
+    def _last_session(self, day: date) -> str | None:
+        """The session suggested in the last two days (muscles need about that long), if known."""
+        if self._workouts is None:
+            return None
+        try:
+            recent = self._workouts.recent(self._profile.user_id)
+        except Exception:  # a log outage must not stop the answer
+            return None
+        previous = [(d, s) for d, s in recent.items() if day - timedelta(days=2) <= d < day]
+        return max(previous)[1] if previous else None
+
+    def _eased(self) -> bool:
+        """True when the person logged activity but very little of it in the last 7 days."""
+        try:
+            points = self._history.series(
+                self._profile.user_id, "active_minutes", self._now - timedelta(days=28)
+            )
+        except Exception:
+            return False
+        if not points:  # no data is not the same as inactive
+            return False
+        week = sum(p.value for p in points if p.t >= self._now - timedelta(days=7))
+        return week < EASE_IN_BELOW_MINUTES
+
+    def _remember(self, day: date, session: str) -> None:
+        if self._workouts is not None:
+            # remembering is a convenience; the answer stands without it
+            with contextlib.suppress(Exception):
+                self._workouts.record(self._profile.user_id, day, session)
 
     def _summary(self) -> ToolResult:
         uid = self._profile.user_id

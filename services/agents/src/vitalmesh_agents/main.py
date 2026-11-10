@@ -70,6 +70,7 @@ from vitalmesh_stores import (
     RedisNudgeStore,
     RedisProfileStore,
     RedisRunLog,
+    RedisWorkoutLog,
 )
 from vitalmesh_tracing import tracer_from_env
 
@@ -287,6 +288,7 @@ class Runtime:
             labs=RedisLabStore(self.redis),
             history=RedisHistoryStore(self.redis),
             tracer=self.tracer,
+            workouts=RedisWorkoutLog(self.redis),
         )
 
 
