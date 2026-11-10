@@ -88,6 +88,15 @@ def test_the_meal_plan_tool_returns_guardian_cleared_days_that_respect_the_profi
     assert default.ok and len(default.payload["days"]) == 3
 
 
+def test_the_model_is_not_shown_a_portion_number_that_no_claim_carries() -> None:
+    # a portion the model quotes ("1.25 portions") is in no claim, so the T3 gate blocks the answer
+    r = tools().call("get_meal_plan", '{"days": 2}')
+    assert r.ok
+    for day in r.payload["days"]:
+        for meal in day["meals"]:
+            assert set(meal) == {"meal", "title", "kcal"}
+
+
 def test_a_blocked_recommendation_returns_an_error_and_no_numbers() -> None:
     def always_violates(rec: Any) -> list[Any]:
         raise RuntimeError("rule crashed")  # a rule that cannot run blocks (fail closed)

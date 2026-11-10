@@ -77,7 +77,7 @@ SPECS: tuple[ToolSpec, ...] = (
         name="get_meal_plan",
         description=(
             "A Guardian-checked meal plan for the user's diet and allergens: per day the meals, "
-            "portions and kcal. Use it for what to eat."
+            "meals and kcal. Use it for what to eat."
         ),
         parameters={
             "type": "object",
@@ -217,7 +217,8 @@ class NutritionTools:
                 {
                     "meal": e.meal,
                     "title": r.title,
-                    "portion": e.scale,
+                    # the portion is NOT shown to the model: kcal already reflects it, and a
+                    # number the model can quote that is in no claim is blocked by the gate (D105)
                     "kcal": round(r.kcal * e.scale),
                 }
             )
