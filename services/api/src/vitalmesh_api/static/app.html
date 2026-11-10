@@ -414,7 +414,7 @@ async function main() {
 boot().then((ok) => { if (ok) { main(); loadHistory(); } });
 
 // ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
-const SAMPLES = ["How many calories should I eat?", "How much should I sleep?", "What should I eat and how should I train this week?"];
+const SAMPLES = ["How many calories should I eat?", "What workout should I do today?", "What should I eat today and what workout should I do?"];
 const BLOCKED = "I can't give an answer to this one. A doctor or dietitian can help.";
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let stream = null;

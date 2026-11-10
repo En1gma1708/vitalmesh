@@ -282,7 +282,7 @@ class MovementTools:
         if alt is not None:
             alt_claims = _workout_claims(alt)
             if alt_claims:
-                alt_claims[0]["text"] = "No gym? " + alt_claims[0]["text"].replace("Today: ", "", 1)
+                alt_claims[0]["text"] = "No gym: " + alt_claims[0]["text"].replace("Today: ", "", 1)
             claims += alt_claims
         exercises = [
             {
@@ -376,11 +376,21 @@ def _week_start(d: date) -> date:
 
 def fallback_text(results: Sequence[ToolResult]) -> str:
     parts: list[str] = []
-    for r in results:
+    # the concrete workout leads: it is what a "what should I do" question asks for, and a long
+    # answer may be cut at the end (D105)
+    ordered = sorted(results, key=lambda r: r.name != "get_workout_plan")
+    has_workout = any(r.ok and r.name == "get_workout_plan" for r in results)
+    for r in ordered:
         if not r.ok:
             continue
         if r.name in ("get_training_targets", "get_activity_summary", "get_workout_plan"):
-            parts += [c["text"] for c in r.payload.get("claims", [])]
+            # with a concrete workout the separate general zone line only confuses ("train in
+            # zone 3" next to "easy pace is zone 2"); the claim stays on record, the sentence goes
+            parts += [
+                c["text"]
+                for c in r.payload.get("claims", [])
+                if not (has_workout and c["metric"] == "target_hr_zone")
+            ]
         elif r.name == "search_guidelines":
             parts += [s["text"] for s in r.payload["sentences"]]
     if not parts:

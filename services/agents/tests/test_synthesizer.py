@@ -395,3 +395,47 @@ def test_the_draft_is_stamped_when_it_was_finished_but_the_deadline_counts_from_
     meta, _ = codec.decode(pub.sent[0].value)
     assert meta.occurred_at == NOW + timedelta(seconds=40)
     assert meta.deadline_at == NOW + timedelta(seconds=120)  # unchanged: counted from the start
+
+
+# --------------------------------------------------------- D105: a fair share for every part
+def test_fair_shares_never_starve_a_part_and_never_exceed_the_budget() -> None:
+    from vitalmesh_agents.synthesizer import fair_shares
+
+    assert fair_shares([20, 105, 110], 150) == [20, 65, 65]
+    assert fair_shares([10, 10], 150) == [10, 10]  # small parts keep everything
+    assert fair_shares([100, 100], 150) == [75, 75]
+    assert fair_shares([5, 200], 150) == [5, 145]  # the small part leaves its words to the big one
+    assert fair_shares([], 150) == []
+    for sizes in ([30, 60, 90], [1, 1, 400], [150, 150, 150, 150]):
+        got = fair_shares(sizes, 150)
+        assert sum(got) <= 150 and all(g <= s for g, s in zip(got, sizes, strict=True))
+
+
+def test_a_long_meal_plan_does_not_push_the_workout_out_of_a_combined_answer() -> None:
+    plan = " ".join(
+        f"Day {i}: breakfast oats, lunch dal, dinner rice and beans, snack fruit." for i in range(8)
+    )
+    workout = (
+        "Today: leg day at the gym, about 30 minutes. Leg press: 3 sets of 8-12 reps. "
+        "Goblet squat: 3 sets of 8-12 reps. That is 6 sets in total."
+    )
+    out = assemble(
+        (
+            PartView("nutrition", "answered", plan),
+            PartView("movement_recovery", "answered", workout),
+        )
+    )
+    assert "Leg press: 3 sets of 8-12 reps." in out and "Goblet squat" in out
+    assert "Day 0" in out  # the plan is shortened, not removed
+    assert len(out.split()) <= 150
+
+
+def test_the_shortening_is_at_sentence_ends() -> None:
+    long = " ".join(f"Sentence {i} is complete." for i in range(60))
+    out = assemble(
+        (
+            PartView("nutrition", "answered", long),
+            PartView("movement_recovery", "answered", long + " x"),
+        )
+    )
+    assert out.count("complete.") >= 2 and not out.rstrip().endswith("Sentence")

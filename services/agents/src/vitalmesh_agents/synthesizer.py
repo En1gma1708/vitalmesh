@@ -120,26 +120,50 @@ def _clip(text: str, max_words: int) -> str:
     return " ".join(out)
 
 
+def fair_shares(sizes: Sequence[int], budget: int) -> list[int]:
+    """Split ``budget`` words between parts so that none is starved (max-min fairness): a part
+    that needs less than its equal share takes only what it needs and the others share the rest."""
+    shares = [0] * len(sizes)
+    remaining = budget
+    left = len(sizes)
+    for i in sorted(range(len(sizes)), key=lambda k: sizes[k]):
+        share = remaining // left
+        shares[i] = min(sizes[i], share)
+        remaining -= shares[i]
+        left -= 1
+    return shares
+
+
 def assemble(parts: Sequence[PartView], max_words: int = FALLBACK_MAX_WORDS) -> str:
     """The specialists' own checked notes, joined in order, without repeats and within the word
     limit. Grounded parts come first; parts that rest on no claim are used only if nothing else
-    exists; whole parts are dropped from the end rather than cut mid-way."""
+    exists. Every part gets a fair share of the word limit and is cut at a sentence end, so a long
+    meal plan can no longer push the workout out of a combined answer (D105); a part that cannot
+    fit even its first sentence is dropped rather than cut mid-way."""
     ordered = [p for p in parts if p.grounded and p.status != "declined"]
     ordered += [p for p in parts if p.status == "declined"]
     if not ordered:
         ordered = list(parts)
     seen: set[str] = set()
-    out: list[str] = []
-    used = 0
+    texts: list[str] = []
     for p in ordered:
         t = p.text.strip()
-        n = _words(t)
-        if not t or t in seen or (out and used + n > max_words):
+        if t and t not in seen:
+            seen.add(t)
+            texts.append(t)
+    if not texts:
+        return NO_ANSWER
+    shares = fair_shares([_words(t) for t in texts], max_words)
+    out: list[str] = []
+    used = 0
+    for t, share in zip(texts, shares, strict=True):
+        piece = t if _words(t) <= share else _clip(t, max(share, 1))
+        n = _words(piece)
+        if out and used + n > max_words:
             continue
-        seen.add(t)
-        out.append(t if n <= max_words else _clip(t, max_words))
-        used += min(n, max_words)
-    return " ".join(out) if out else NO_ANSWER
+        out.append(piece)
+        used += n
+    return " ".join(out)
 
 
 def render_prompt(inp: SynthInput) -> str:

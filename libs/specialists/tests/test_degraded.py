@@ -102,9 +102,18 @@ def test_the_plain_advise_still_raises_so_callers_can_tell_the_difference() -> N
 def test_the_movement_text_has_the_users_zone_and_nothing_the_tools_did_not_say() -> None:
     helper = MovementSpecialist(DownRouter(), attempts=1, sleep=no_sleep)
     advice = helper.advise_or_degrade("should i do cardio or gym?", movement_tools())
-    claims = [c["text"] for r in advice.results for c in r.payload.get("claims", [])]
+    ordered = sorted(advice.results, key=lambda r: r.name != "get_workout_plan")  # D105: it leads
+    claims = [
+        c["text"]
+        for r in ordered
+        for c in r.payload.get("claims", [])
+        if c["metric"] != "target_hr_zone"  # a concrete workout replaces the general zone line
+    ]
     assert claims, "the tools returned no claims"
-    assert advice.text == " ".join(claims)  # exactly the tool claims, in order, nothing added
+    assert advice.text == " ".join(claims)  # exactly the tool claims, nothing added
+    assert any(
+        c["metric"] == "target_hr_zone" for r in advice.results for c in r.payload.get("claims", [])
+    )
 
 
 def test_the_activity_goal_appears_when_there_is_history() -> None:

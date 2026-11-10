@@ -96,14 +96,14 @@ def test_either_adds_a_no_gym_option_on_a_strength_day() -> None:
     p = call(tools(now=day_for("push")), place="either", minutes=45)
     t = texts(p)
     assert any(x.startswith("Today: push day") for x in t)
-    assert any(x.startswith("No gym? 45 minutes of easy cardio") for x in t)
+    assert any(x.startswith("No gym: 45 minutes of easy cardio") for x in t)
     assert len(p["exercises"]) == 5  # only the gym session's exercises are listed
 
 
 def test_either_on_a_cardio_day_is_not_duplicated() -> None:
     p = call(tools(now=day_for("cardio")), place="either", minutes=30)
     assert sum("easy cardio" in x for x in texts(p)) == 1
-    assert not any(x.startswith("No gym?") for x in texts(p))
+    assert not any(x.startswith("No gym:") for x in texts(p))
 
 
 def test_home_gives_a_session_that_needs_no_gym() -> None:
@@ -357,3 +357,39 @@ def test_a_history_outage_means_no_ease_in() -> None:
     now = day_for("push")
     t = MovementTools(profile(), [8.0] * 14, Broken(), NoEvidence(), now)  # type: ignore[arg-type]
     assert t.call("get_workout_plan", json.dumps({"place": "gym", "minutes": 60})).ok
+
+
+def test_the_movement_text_leads_with_the_concrete_workout() -> None:
+    t = tools(now=day_for("push"))
+    results = [
+        t.call("get_training_targets", "{}"),
+        t.call("get_activity_summary", "{}"),
+        t.call("get_workout_plan", json.dumps({"place": "gym", "minutes": 45})),
+    ]
+    text = fallback_text(results)
+    assert text.startswith("Today: push day")
+    assert text.index("Today: push day") < text.index("Aim for")  # workout first
+
+
+def test_the_no_gym_option_is_one_sentence_so_a_cut_cannot_leave_a_stub() -> None:
+    import re
+
+    p = call(tools(now=day_for("push")), place="either", minutes=45)
+    alt = next(x for x in texts(p) if x.startswith("No gym"))
+    assert len(re.split(r"(?<=[.!?])\s+", alt.strip())) == 1
+    assert "?" not in alt
+
+
+def test_a_workout_replaces_the_general_zone_sentence_but_not_the_claim() -> None:
+    t = tools(now=day_for("cardio"))
+    results = [
+        t.call("get_training_targets", "{}"),
+        t.call("get_workout_plan", json.dumps({"place": "gym", "minutes": 30})),
+    ]
+    text = fallback_text(results)
+    assert "Train in zone" not in text and "Easy pace is zone 2" in text
+    assert any(
+        c["metric"] == "target_hr_zone" for c in results[0].payload["claims"]
+    )  # still on record
+    without = fallback_text(results[:1])
+    assert "Train in zone" in without  # no workout: the zone line is the answer
