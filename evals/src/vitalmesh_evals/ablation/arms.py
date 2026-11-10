@@ -123,10 +123,14 @@ class UnionTools:
                     self._by_name[spec.name] = tools
                     specs.append(spec)
         self._specs = tuple(specs)
+        self._parts = (nut, mov, con)
 
     @property
     def specs(self) -> tuple[ToolSpec, ...]:
         return self._specs
+
+    def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
+        return tuple(dict.fromkeys(c for t in self._parts for c in t.default_calls(question)))
 
     def call(self, name: str, arguments: str) -> ToolResult:
         tools = self._by_name.get(name)

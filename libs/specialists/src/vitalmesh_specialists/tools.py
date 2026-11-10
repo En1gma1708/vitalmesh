@@ -159,6 +159,11 @@ class NutritionTools:
     def specs(self) -> tuple[ToolSpec, ...]:
         return SPECS
 
+    def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
+        # no model needed: the user's own numbers and a safe meal plan, both pure code. The
+        # guideline search is left out because the Evidence agent itself uses a model.
+        return (("get_energy_target", "{}"), ("get_meal_plan", "{}"))
+
     def call(self, name: str, arguments: str) -> ToolResult:
         try:
             raw: Any = json.loads(arguments) if arguments.strip() else {}

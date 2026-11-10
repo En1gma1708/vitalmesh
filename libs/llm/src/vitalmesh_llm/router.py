@@ -30,6 +30,7 @@ from vitalmesh_llm.types import AllProvidersFailed, LLMRequest, LLMResponse, Mes
 log = logging.getLogger("vitalmesh.llm")
 
 COOLDOWN_ERROR_S = 30.0
+REASONING_EFFORT = "low"  # "low" | "medium" | "high"; Groq gpt-oss models only
 REQUEST_TIMEOUT_S = 30.0
 
 MockFn = Callable[[LLMRequest], str]
@@ -211,6 +212,10 @@ class Router:
         }
         if req.json_output:
             body["response_format"] = {"type": "json_object"}
+        if spec.name == "groq" and spec.model.startswith("openai/gpt-oss"):
+            # reasoning models think before they answer, and the thinking counts against max_tokens:
+            # at the default effort many replies were cut off or empty (D100). Only Groq gets this.
+            body["reasoning_effort"] = REASONING_EFFORT
         if req.tools:
             body["tools"] = [
                 {

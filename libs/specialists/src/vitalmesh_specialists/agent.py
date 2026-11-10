@@ -95,6 +95,11 @@ class ToolsLike(Protocol):
 
     def call(self, name: str, arguments: str) -> ToolResult: ...
 
+    def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
+        """The tool calls (name, JSON arguments) that need NO model: pure code over the user's own
+        data. Used when the model is unavailable, so a helper can still contribute checked facts."""
+        ...
+
 
 @dataclass(frozen=True)
 class SpecialistConfig:
@@ -140,9 +145,12 @@ class ToolSpecialist:
         retry_pause_s: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
         max_model_calls: int = MAX_MODEL_CALLS,
+        time_budget_s: float | None = None,
     ) -> None:
         if not 1 <= max_model_calls <= MAX_MODEL_CALLS:
             raise ValueError(f"max_model_calls must be between 1 and {MAX_MODEL_CALLS}")
+        self._time_budget_s = time_budget_s  # all model work must stop by then (None: unbounded)
+        self._stop_at: float | None = None
         self._config = config
         self._max_calls = max_model_calls
         self._attempts = attempts
@@ -182,6 +190,9 @@ class ToolSpecialist:
 
     def _agent(self, state: _State) -> _State:
         assert self._tools is not None
+        if self._stop_at is not None and time.monotonic() >= self._stop_at:
+            # the run's deadline is near: stop asking the model, the caller falls back to the tools
+            raise SpecialistUnavailable("the time budget for model calls is used up")
         last_chance = state["calls"] >= self._max_calls - 1
         specs = () if last_chance else self._tools.specs  # the last call must be an answer
         resp = self._call(state["messages"], specs, 900)
@@ -290,6 +301,41 @@ class ToolSpecialist:
         return {"advice": advice}
 
     # ------------------------------------------------------------------------- run
+    def advise_or_degrade(
+        self,
+        question: str,
+        tools: ToolsLike,
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> Advice:
+        """``advise``, but when no model can be reached (or the time budget is used up) the helper
+        still answers from its pure-code tools instead of giving up. The result is marked
+        ``fallback`` with the reason, and it contains only what the tools returned."""
+        try:
+            return self.advise(question, tools, user_id=user_id, session_id=session_id)
+        except SpecialistUnavailable as exc:
+            return self.degraded(question, tools, str(exc))
+
+    def degraded(self, question: str, tools: ToolsLike, why: str) -> Advice:
+        """The helper's contribution with no model at all: run its ``default_calls`` and let the
+        configured fallback phrase the results (the same deterministic text a failed draft gets)."""
+        results: list[ToolResult] = []
+        for name, arguments in tools.default_calls(question):
+            try:
+                results.append(tools.call(name, arguments))
+            except Exception:  # a broken tool must not take the helper down with it
+                results.append(ToolResult(name=name, ok=False, error="the tool failed"))
+        used = tuple(dict.fromkeys(r.name for r in results if r.ok))
+        return Advice(
+            status="fallback",
+            text=self._config.fallback(results),
+            tools_used=used,
+            model_calls=0,
+            reason=f"no model was available ({why[:150]}); answered from the tools only",
+            results=tuple(results),
+        )
+
     def advise(
         self,
         question: str,
@@ -299,6 +345,9 @@ class ToolSpecialist:
         session_id: str | None = None,
     ) -> Advice:
         self._tools = tools
+        self._stop_at = (
+            None if self._time_budget_s is None else time.monotonic() + self._time_budget_s
+        )
         name = self._config.name
         with self._tracer.run(
             f"advise-{name}",

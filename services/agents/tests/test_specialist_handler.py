@@ -170,13 +170,18 @@ def test_a_missing_profile_is_published_as_a_failed_advice_not_raised() -> None:
     assert router.requests == []
 
 
-def test_a_provider_outage_is_published_as_a_failed_advice_after_bounded_retries() -> None:
+def test_a_provider_outage_is_published_as_a_fallback_advice_from_the_tools() -> None:
+    # CHANGED in D100 (written reason): this used to expect ADVICE_FAILED("llm.unavailable"), which
+    # left the run with a missing part and, with no claims at all, ended in a refusal for the user.
+    # An outage now makes the helper answer from its pure-code tools: a FALLBACK advice with the
+    # tool claims (the same deterministic text a failed draft gets), after the same bounded retries.
     router = FakeRouter(AllProvidersFailed(attempts=["groq: 503"]))
     _pub, decoded = run(
         Specialist.NUTRITION, deps(router), planned(common_pb2.SPECIALIST_NUTRITION)
     )
-    assert decoded[1].status == payloads_pb2.ADVICE_FAILED
-    assert decoded[1].failure_code == "llm.unavailable"
+    assert decoded[1].status == payloads_pb2.ADVICE_FALLBACK
+    assert decoded[1].failure_code == ""
+    assert len(decoded[1].claims) > 0  # real, computed claims, not an empty contribution
     assert len(router.requests) == 2  # attempts=2, not the interactive 3 with 30 s pauses
 
 

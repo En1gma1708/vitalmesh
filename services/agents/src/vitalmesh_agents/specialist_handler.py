@@ -9,6 +9,7 @@ Unexpected errors are raised so the processor retries them (bounded, then the DL
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from vitalmesh_tracing import NULL, Tracer
 
 from vitalmesh_agents.advice import advice_to_proto, failed_advice
 from vitalmesh_agents.events import emit, next_meta
+
+log = logging.getLogger("vitalmesh.specialist")
 
 INPUT_TYPE = "run.planned"
 OUTPUT_TYPE = "advice.completed"
@@ -67,6 +70,9 @@ SCOPE = {
 MIN_WAIT_S = 10.0
 MAX_WAIT_S = 240.0
 DEADLINE_MARGIN_S = 15.0
+# model work stops this long before the run's deadline, so the helper can still answer from its
+# pure-code tools and publish before the aggregator closes the run without it (D100)
+FALLBACK_RESERVE_S = 25.0
 
 
 def scoped_question(kind: Specialist, question: str) -> str:
@@ -86,8 +92,19 @@ def wait_budget(deps: SpecialistDeps, deadline: datetime | None, now: datetime) 
     return max(MIN_WAIT_S, min(left, MAX_WAIT_S))
 
 
+def time_budget(deadline: datetime | None, now: datetime) -> float | None:
+    """How long a helper may keep asking the model: until shortly before the run's deadline."""
+    if deadline is None:
+        return None
+    return max(MIN_WAIT_S, (deadline - now).total_seconds() - FALLBACK_RESERVE_S)
+
+
 def build_specialist(
-    kind: Specialist, deps: SpecialistDeps, max_calls: int, max_wait_s: float | None = None
+    kind: Specialist,
+    deps: SpecialistDeps,
+    max_calls: int,
+    max_wait_s: float | None = None,
+    budget_s: float | None = None,
 ) -> ToolSpecialist:
     common: dict[str, Any] = {
         "tracer": deps.tracer,
@@ -96,6 +113,7 @@ def build_specialist(
         "max_wait_s": deps.max_wait_s if max_wait_s is None else max_wait_s,
         "sleep": deps.sleep,
         "max_model_calls": max_calls,
+        "time_budget_s": budget_s,
     }
     if kind is Specialist.NUTRITION:
         return NutritionSpecialist(deps.router, **common)
@@ -138,15 +156,19 @@ def make_specialist_handler(
                 deps,
                 int(payload.max_model_calls) or 1,
                 wait_budget(deps, meta.deadline_at, now),
+                time_budget(meta.deadline_at, now),
             )
             tools = build_tools(kind, deps, record, meta.user_id, now)
             try:
-                result = specialist.advise(
+                result = specialist.advise_or_degrade(
                     scoped_question(kind, payload.question),
                     tools,
                     user_id=meta.user_id,
                     session_id=meta.correlation_id,
                 )
+                if result.status == "fallback" and result.model_calls == 0:
+                    # why the model could not be used (provider answers and our own budget wait)
+                    log.info("%s answered from tools only: %s", kind.value, result.reason)
                 advice = advice_to_proto(kind, result)
             except SpecialistUnavailable:
                 advice = failed_advice(kind, "llm.unavailable")

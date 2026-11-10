@@ -92,6 +92,21 @@ def test_success_maps_fields_and_sends_a_bounded_request() -> None:
     assert router(Server({GROQ: [(200, ok_body())]})).complete(req(json_output=True))
 
 
+def test_groq_reasoning_models_are_asked_for_low_reasoning_effort() -> None:
+    s = Server({GROQ: [(200, ok_body())]})
+    router(s).complete(req(alias="fast"))
+    assert s.calls[0][1]["model"].startswith("openai/gpt-oss")
+    assert s.calls[0][1]["reasoning_effort"] == "low"
+
+
+def test_no_other_provider_gets_the_reasoning_parameter() -> None:
+    s = Server({GROQ: [(503, {})], GEMINI: [(200, ok_body())]})
+    router(s).complete(req(alias="fast"))
+    hosts = {host: body for host, body in s.calls}
+    assert "reasoning_effort" in hosts[GROQ]
+    assert "reasoning_effort" not in hosts[GEMINI]
+
+
 def test_json_output_requests_json_mode() -> None:
     s = Server({GROQ: [(200, ok_body("{}"))]})
     router(s).complete(req(json_output=True))

@@ -126,6 +126,11 @@ class MovementTools:
     def specs(self) -> tuple[ToolSpec, ...]:
         return SPECS
 
+    def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
+        # no model needed: the user's own zone and sleep target, and their recent activity. The
+        # guideline search is left out because the Evidence agent itself uses a model.
+        return (("get_training_targets", "{}"), ("get_activity_summary", "{}"))
+
     def call(self, name: str, arguments: str) -> ToolResult:
         try:
             raw: Any = json.loads(arguments) if arguments.strip() else {}
@@ -236,6 +241,7 @@ class MovementSpecialist(ToolSpecialist):
         retry_pause_s: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
         max_model_calls: int = MAX_MODEL_CALLS,
+        time_budget_s: float | None = None,
     ) -> None:
         super().__init__(
             CONFIG,
@@ -248,6 +254,7 @@ class MovementSpecialist(ToolSpecialist):
             retry_pause_s=retry_pause_s,
             sleep=sleep,
             max_model_calls=max_model_calls,
+            time_budget_s=time_budget_s,
         )
 
 

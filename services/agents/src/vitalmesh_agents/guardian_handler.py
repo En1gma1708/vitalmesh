@@ -7,6 +7,7 @@ user is told generically and the reason stays internal (D40). No repair loop in 
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -20,6 +21,8 @@ from vitalmesh_wellness.guardian import Guardian
 
 from vitalmesh_agents.events import POST_BUNDLE_BUDGET_S, emit, next_meta
 from vitalmesh_agents.guardian_gate import GateVerdict, evaluate_draft
+
+log = logging.getLogger("vitalmesh.guardian")
 
 INPUT_TYPE = "recommendation.drafted"
 CLEARED_TYPE = "safety.cleared"
@@ -66,6 +69,10 @@ def make_guardian_handler(
             )
             emit(serde, publisher, DRAFTS_CLEARED, out, cleared)
         else:
+            # the rule names only, never the text: why a draft was held must be findable (D100)
+            log.info(
+                "draft %s blocked by: %s", revision, ", ".join(v.rule for v in verdict.violations)
+            )
             out = next_meta(
                 meta,
                 BLOCKED_TYPE,

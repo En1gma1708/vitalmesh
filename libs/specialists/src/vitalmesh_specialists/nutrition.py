@@ -94,6 +94,7 @@ class NutritionSpecialist(ToolSpecialist):
         retry_pause_s: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
         max_model_calls: int = MAX_MODEL_CALLS,
+        time_budget_s: float | None = None,
     ) -> None:
         super().__init__(
             CONFIG,
@@ -106,4 +107,5 @@ class NutritionSpecialist(ToolSpecialist):
             retry_pause_s=retry_pause_s,
             sleep=sleep,
             max_model_calls=max_model_calls,
+            time_budget_s=time_budget_s,
         )

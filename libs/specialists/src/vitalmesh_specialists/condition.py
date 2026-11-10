@@ -143,6 +143,11 @@ class ConditionTools:
     def specs(self) -> tuple[ToolSpec, ...]:
         return SPECS
 
+    def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
+        # no model needed: what the safety graph says about the declared conditions, and the labs.
+        # The guideline search is left out because the Evidence agent itself uses a model.
+        return (("get_constraints", "{}"), ("get_lab_summary", "{}"))
+
     def call(self, name: str, arguments: str) -> ToolResult:
         try:
             raw: Any = json.loads(arguments) if arguments.strip() else {}
@@ -251,6 +256,7 @@ class ConditionSpecialist(ToolSpecialist):
         retry_pause_s: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
         max_model_calls: int = MAX_MODEL_CALLS,
+        time_budget_s: float | None = None,
     ) -> None:
         super().__init__(
             CONFIG,
@@ -263,6 +269,7 @@ class ConditionSpecialist(ToolSpecialist):
             retry_pause_s=retry_pause_s,
             sleep=sleep,
             max_model_calls=max_model_calls,
+            time_budget_s=time_budget_s,
         )
 
 
