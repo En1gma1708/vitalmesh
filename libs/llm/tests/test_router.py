@@ -62,8 +62,8 @@ class Server:
         step = self.script[host].pop(0) if len(self.script[host]) > 1 else self.script[host][0]
         if isinstance(step, Exception):
             raise step
-        status, body = step
-        return httpx.Response(status, json=body)
+        status, body, *rest = step
+        return httpx.Response(status, json=body, headers=rest[0] if rest else None)
 
 
 def router(
@@ -321,6 +321,89 @@ def test_a_429_is_waited_out_on_the_primary_when_waiting_is_allowed() -> None:
 def test_without_waiting_a_429_still_falls_through_at_once() -> None:
     s = Server({GROQ: [(429, {})], GEMINI: [(200, ok_body("g"))]})
     assert router(s).complete(req()).provider == "gemini"
+
+
+def waiting_router(s: Server) -> tuple[Router, Clock, list[float]]:
+    clock = Clock()
+    slept: list[float] = []
+
+    def sleep(x: float) -> None:
+        slept.append(x)
+        clock.t += x
+
+    rt = Router(
+        KEYS, client=httpx.Client(transport=httpx.MockTransport(s)), clock=clock, sleep=sleep
+    )
+    return rt, clock, slept
+
+
+def test_a_rate_limit_longer_than_the_patience_fails_over_at_once() -> None:
+    # Groq says "try again in 100 s" (a daily token cap); the caller will wait only 60 s
+    s = Server({GROQ: [(429, {}, {"retry-after": "100"})], GEMINI: [(200, ok_body("gem"))]})
+    rt, _clock, slept = waiting_router(s)
+    r = rt.complete(req(), max_wait_s=60)
+    assert (r.provider, r.text) == ("gemini", "gem")
+    assert slept == []  # nothing was slept: the answer came from the next provider immediately
+    assert [c[0] for c in s.calls] == [GROQ, GEMINI]
+
+
+def test_a_rate_limit_that_fits_the_patience_is_still_waited_out() -> None:
+    s = Server(
+        {
+            GROQ: [(429, {}, {"retry-after": "30"}), (200, ok_body("after"))],
+            GEMINI: [(200, ok_body("g"))],
+        }
+    )
+    rt, _clock, slept = waiting_router(s)
+    r = rt.complete(req(), max_wait_s=60)
+    assert (r.provider, r.text) == ("groq", "after")
+    assert slept == [30.0]
+
+
+def test_the_patience_boundary_is_inclusive() -> None:
+    s = Server({GROQ: [(429, {}, {"retry-after": "60"}), (200, ok_body("after"))]})
+    rt, _clock, slept = waiting_router(s)
+    assert rt.complete(req(), max_wait_s=60).provider == "groq"
+    assert slept == [60.0]
+
+
+def test_a_cooling_provider_is_skipped_while_its_cooldown_exceeds_the_patience() -> None:
+    s = Server(
+        {
+            GROQ: [(429, {}, {"retry-after": "100"})],
+            GEMINI: [(200, ok_body("g1")), (200, ok_body("g2"))],
+        }
+    )
+    rt, _clock, slept = waiting_router(s)
+    assert rt.complete(req("one"), max_wait_s=60).provider == "gemini"
+    second = rt.complete(req("two"), max_wait_s=60)  # Groq is still cooling for ~100 s
+    assert second.provider == "gemini" and slept == []
+    assert [c[0] for c in s.calls] == [GROQ, GEMINI, GEMINI]  # Groq was not asked again
+
+
+def test_a_cooldown_that_ends_within_the_patience_is_waited_for() -> None:
+    s = Server(
+        {
+            GROQ: [(429, {}, {"retry-after": "100"}), (200, ok_body("late"))],
+            GEMINI: [(500, {})],
+            OPENR: [(500, {})],
+        }
+    )
+    rt, clock, slept = waiting_router(s)
+    with pytest.raises(AllProvidersFailed):
+        rt.complete(req("one"), max_wait_s=60)  # Groq 429 (long), Gemini 500: nothing works
+    clock.t += 50  # 50 s later Groq has 50 s of cooldown left, which fits a 60 s patience
+    r = rt.complete(req("two"), max_wait_s=60)
+    assert r.provider == "groq" and slept and slept[0] == pytest.approx(50.0)
+
+
+def test_with_no_budget_for_longer_than_the_patience_the_next_provider_answers() -> None:
+    clock = Clock()
+    s = Server({GROQ: [(200, ok_body("g"))], GEMINI: [(200, ok_body("gem"))]})
+    rt = Router(KEYS, client=httpx.Client(transport=httpx.MockTransport(s)), clock=clock)
+    rt.complete(req("x" * 20_000, max_tokens=1000), max_wait_s=120)  # empties Groq's token bucket
+    nxt = rt.complete(req("y" * 20_000, max_tokens=1000), max_wait_s=5)  # refill needs far more
+    assert nxt.provider == "gemini"
 
 
 # ------------------------------------------------------------------------ tool calling

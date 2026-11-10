@@ -68,7 +68,9 @@ SCOPE = {
     Specialist.CONDITION_MEDICATION: "declared conditions, medications and lab results",
 }
 MIN_WAIT_S = 10.0
-MAX_WAIT_S = 240.0
+# one model call may wait this long for a provider's rate limit; a longer wait (a daily token
+# cap asks for minutes) fails over to the next provider at once (D102)
+MAX_WAIT_S = 60.0
 DEADLINE_MARGIN_S = 15.0
 # model work stops this long before the run's deadline, so the helper can still answer from its
 # pure-code tools and publish before the aggregator closes the run without it (D100)

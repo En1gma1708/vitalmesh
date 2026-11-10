@@ -146,7 +146,9 @@ class Router:
         waited = 0.0
         while True:
             try:
-                return self._call_chain(req, wait_primary=waited < max_wait_s)
+                return self._call_chain(
+                    req, wait_primary=waited < max_wait_s, patience=max_wait_s - waited
+                )
             except AllProvidersFailed as exc:
                 if not exc.budget_only or waited >= max_wait_s:
                     raise
@@ -154,7 +156,13 @@ class Router:
                 self._sleep(pause)
                 waited += pause
 
-    def _call_chain(self, req: LLMRequest, wait_primary: bool = False) -> LLMResponse:
+    def _call_chain(
+        self, req: LLMRequest, wait_primary: bool = False, patience: float = 0.0
+    ) -> LLMResponse:
+        """One pass over the providers. A provider that is rate-limited is waited for only when
+        the wait fits ``patience`` (what is left of the caller's ``max_wait_s``); a longer wait,
+        such as a daily token cap that asks for minutes, goes to the next provider at once
+        (D102): a live question has a deadline, a batch run has patience."""
         attempts: list[str] = []
         waits: list[float] = []
         budget_only = True
@@ -166,7 +174,12 @@ class Router:
             remaining = self._cooldown_until.get(tag, 0.0) - self._clock()
             if remaining > 0:
                 attempts.append(f"{tag}: cooling down")
-                if wait_primary and budget_only and tag in self._cooldown_rate_limited:
+                if (
+                    wait_primary
+                    and budget_only
+                    and tag in self._cooldown_rate_limited
+                    and remaining <= patience
+                ):
                     waits.append(remaining)  # a 429 is a rate signal: waiting it out can work
                     break
                 budget_only = False
@@ -180,7 +193,7 @@ class Router:
                     budget_only = False  # can never fit: waiting will not help
                 else:
                     waits.append(w)
-                    if wait_primary and budget_only:
+                    if wait_primary and budget_only and w <= patience:
                         break  # no real failure so far: wait for this provider, do not downgrade
                 continue
             try:
@@ -195,7 +208,7 @@ class Router:
                     self._cooldown_rate_limited.discard(tag)
                 self.stats[spec.name]["errors"] += 1
                 attempts.append(f"{tag}: {exc.reason}")
-                if limited and wait_primary and budget_only:
+                if limited and wait_primary and budget_only and cool <= patience:
                     waits.append(cool)
                     break  # wait out the rate limit on this provider instead of downgrading
                 budget_only = False

@@ -225,9 +225,10 @@ def test_the_model_call_wait_follows_the_run_deadline_with_bounds() -> None:
     from vitalmesh_agents.specialist_handler import wait_budget
 
     d = deps(FakeRouter(resp("x")))
-    assert wait_budget(d, NOW + timedelta(seconds=100), NOW) == 85.0  # deadline minus margin
+    assert wait_budget(d, NOW + timedelta(seconds=60), NOW) == 45.0  # deadline minus margin
+    assert wait_budget(d, NOW + timedelta(seconds=100), NOW) == 60.0  # capped: fail over instead
     assert wait_budget(d, NOW + timedelta(seconds=5), NOW) == 10.0  # never below the floor
-    assert wait_budget(d, NOW + timedelta(hours=1), NOW) == 240.0  # never above the ceiling
+    assert wait_budget(d, NOW + timedelta(hours=1), NOW) == 60.0  # never above the ceiling
     assert wait_budget(d, None, NOW) == d.max_wait_s
 
 
