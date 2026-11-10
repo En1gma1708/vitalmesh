@@ -23,10 +23,26 @@ from vitalmesh_wellness.guardian import (
     METRIC_HR_ZONE,
     METRIC_PLAN_ENERGY,
     METRIC_SLEEP,
+    METRIC_WORKOUT_EXERCISE_SETS,
+    METRIC_WORKOUT_MINUTES,
+    METRIC_WORKOUT_TOTAL_SETS,
+    METRIC_WORKOUT_ZONE,
 )
 from vitalmesh_wellness.knowledge import DEFAULT_INDEX
 from vitalmesh_wellness.mealplan import plan_days
 from vitalmesh_wellness.recipes import BY_ID
+from vitalmesh_wellness.workouts import (
+    BY_ID as EXERCISES,
+)
+from vitalmesh_wellness.workouts import (
+    PLANNER_VERSION as WORKOUT_PLANNER_VERSION,
+)
+from vitalmesh_wellness.workouts import (
+    SESSION_LABEL,
+    WARMUP_MINUTES,
+    Place,
+    plan_workout,
+)
 
 ENGINE_VERSION = "1"
 _SOURCE = f"vitalmesh_wellness.calculators@{calc.CALCULATOR_VERSION}/engine@{ENGINE_VERSION}"
@@ -151,3 +167,82 @@ def build_meal_plan_recommendation(
         f"Your {days}-day plan averages about {mean:.0f} kcal per day.",
     )
     return base.model_copy(update={"claims": (*base.claims, claim), "meal_plan": entries})
+
+
+WORKOUT_SOURCE = f"vitalmesh_wellness.workouts@{WORKOUT_PLANNER_VERSION}"
+_WHY_TEXT = {
+    "recovery": " Your recent sleep debt calls for an easy day.",
+    "conditions": (
+        " Because of the health conditions you listed, keep it easy and check with your "
+        "doctor before starting a training plan."
+    ),
+    "short": " With this little time, easy cardio is the best fit.",
+}
+
+
+def build_workout_recommendation(
+    profile: Profile,
+    recent_sleep_hours: Sequence[float],
+    recommendation_id: str,
+    day: date,
+    place: Place,
+    minutes: int,
+    focus: str | None = None,
+) -> Recommendation:
+    """The usual recommendation plus today's workout: easy cardio in the user's zone, or a
+    beginner strength session of named exercises. Raises ``WorkoutError`` for impossible input.
+
+    Every number is a ``computed`` claim; the Guardian re-checks the bounds, the conditions and
+    (when the plan is attached) every exercise against the catalogue.
+    """
+    base = build_recommendation(profile, recent_sleep_hours, recommendation_id)
+    recovering = calc.sleep_debt_hours(recent_sleep_hours) >= SLEEP_DEBT_RECOVERY_HOURS
+    plan = plan_workout(base.user, day, place, minutes, recovering, focus)
+    where = "at the gym" if place is Place.GYM else "at home"
+    claims: list[Claim] = []
+    if plan.cardio_zone is not None:
+        zone = calc.heart_rate_zones(profile.age_years, profile.resting_hr_bpm)[
+            plan.cardio_zone - 1
+        ]
+        text = (
+            f"Today: {plan.minutes} minutes of easy cardio (a brisk walk, cycling or a light "
+            f"jog), at a pace where you can still talk." + _WHY_TEXT.get(plan.why, "")
+        )
+        claims.append(_computed(METRIC_WORKOUT_MINUTES, float(plan.minutes), "min", text))
+        claims.append(
+            _computed(
+                METRIC_WORKOUT_ZONE,
+                float(plan.cardio_zone),
+                "zone",
+                f"Easy pace is zone {plan.cardio_zone}: "
+                f"{zone.low_bpm:.0f}-{zone.high_bpm:.0f} bpm.",
+            )
+        )
+    else:
+        label = SESSION_LABEL[plan.session]
+        text = (
+            f"Today: {label} {where}, about {plan.minutes} minutes including a "
+            f"{WARMUP_MINUTES}-minute easy warm-up."
+        )
+        claims.append(_computed(METRIC_WORKOUT_MINUTES, float(plan.minutes), "min", text))
+        for e in plan.entries:
+            ex = EXERCISES[e.exercise_id]
+            claims.append(
+                _computed(
+                    METRIC_WORKOUT_EXERCISE_SETS,
+                    float(e.sets),
+                    "sets",
+                    f"{ex.name}: {e.sets} sets of {e.reps_low}-{e.reps_high} {ex.unit}.",
+                )
+            )
+        total = sum(e.sets for e in plan.entries)
+        claims.append(
+            _computed(
+                METRIC_WORKOUT_TOTAL_SETS,
+                float(total),
+                "sets",
+                f"That is {total} sets in total. Rest about 60 to 90 seconds between sets and "
+                "pick a weight you can control.",
+            )
+        )
+    return base.model_copy(update={"claims": (*base.claims, *claims), "workout_plan": plan.entries})

@@ -51,7 +51,8 @@ _MOVEMENT = _words(
     "workout", "workouts", "exercise", "exercising", "train", "training", "run", "running",
     "walk", "walking", "cardio", "strength", "lift", "lifting", "zone", "zones", "heart rate",
     "steps", "active", "activity", "sleep", "sleeping", "rest", "recovery", "gym", "stretch",
-    "stretching", "fitness",
+    "stretching", "fitness", "muscle", "muscles", "bench", "squat", "squats", "deadlift",
+    "dumbbell", "dumbbells", "reps",
 )  # fmt: skip
 _CONDITION = _words(
     "condition", "conditions", "medication", "medications", "medicine", "pill", "pills", "drug",

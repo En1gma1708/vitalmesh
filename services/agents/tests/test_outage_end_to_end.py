@@ -82,3 +82,49 @@ def test_when_every_model_call_fails_the_answer_is_built_from_the_checked_notes(
     assert out.text.strip()
     drafted = next(s for s in out.events if s.meta.type == "recommendation.drafted")
     assert drafted.payload.used_fallback is True  # the writer was down too: notes, not prose
+
+
+# ----------------------------------------------------------------------------- D101: workouts
+def workout_texts(out: Any) -> str:
+    released = next(s for s in out.events if s.meta.type == "recommendation.released")
+    return " ".join(c.text for c in released.payload.claims)
+
+
+def test_a_workout_question_gets_a_concrete_workout_with_every_model_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_when(monkeypatch, lambda purpose: True)
+    bus, _router, _clock = world()
+    out = ask(bus, "u-1", "What workout should I do today?", T0)
+    assert out.final == "released", (out.final, out.errors)
+    assert "fallback" in set(advice_statuses(out).values())  # the helper used its tools
+    claims = workout_texts(out)
+    assert "Today:" in claims
+    assert "easy cardio" in claims or "sets of" in claims  # a real session, not a zone only
+    assert out.text.strip()
+
+
+def test_a_push_request_names_the_bench_press_with_sets_and_reps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_when(monkeypatch, lambda purpose: True)
+    bus, _router, _clock = world()
+    out = ask(bus, "u-1", "Give me a 45 minute push workout at the gym", T0)
+    assert out.final == "released", (out.final, out.errors)
+    assert "Bench press: 3 sets of 8-12 reps." in out.text
+    assert "push day" in out.text
+
+
+def test_a_user_with_a_declared_condition_gets_easy_cardio_never_a_lift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fail_when(monkeypatch, lambda purpose: True)
+    bus, _router, _clock = world(conditions=["cardiac"])
+    out = ask(bus, "u-1", "Give me a push workout at the gym", T0)
+    # exercise with an intensity-limiting condition is medium risk: with the checker's model down
+    # it waits for a clinician instead of releasing
+    assert out.final == "review_requested", (out.final, out.errors)
+    drafted = next(s for s in out.events if s.meta.type == "recommendation.drafted")
+    shown = drafted.payload.text + " " + " ".join(c.text for c in drafted.payload.claims)
+    assert "Bench press" not in shown and "sets of" not in shown
+    assert "check with your doctor" in shown

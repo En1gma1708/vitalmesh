@@ -20,19 +20,37 @@ from pydantic import BaseModel, ConfigDict
 from vitalmesh_wellness.claims import Claim, Provenance, Quantity, Recommendation
 from vitalmesh_wellness.knowledge import DEFAULT_INDEX
 from vitalmesh_wellness.recipes import ALLERGENS, BY_ID, DIET_NAMES, PORTION_MAX, PORTION_MIN
+from vitalmesh_wellness.workouts import (
+    BEGINNER_MAX_ZONE,
+    MAX_EXERCISES,
+    MAX_MINUTES,
+    MAX_SETS_PER_EXERCISE,
+    MAX_TOTAL_SETS,
+    MIN_MINUTES,
+    strength_allowed,
+)
+from vitalmesh_wellness.workouts import BY_ID as EXERCISES
 
-RULES_VERSION = "3"
+RULES_VERSION = "4"
 
 # Metric names the rules understand, with the only unit each may use.
 METRIC_ENERGY = "daily_energy_target"
 METRIC_HR_ZONE = "target_hr_zone"
 METRIC_SLEEP = "sleep_target"
 METRIC_PLAN_ENERGY = "meal_plan_avg_day_energy"
+METRIC_WORKOUT_MINUTES = "workout_minutes"
+METRIC_WORKOUT_ZONE = "workout_cardio_zone"
+METRIC_WORKOUT_EXERCISE_SETS = "workout_exercise_sets"
+METRIC_WORKOUT_TOTAL_SETS = "workout_total_sets"
 EXPECTED_UNIT = {
     METRIC_ENERGY: "kcal",
     METRIC_HR_ZONE: "zone",
     METRIC_SLEEP: "h",
     METRIC_PLAN_ENERGY: "kcal",
+    METRIC_WORKOUT_MINUTES: "min",
+    METRIC_WORKOUT_ZONE: "zone",
+    METRIC_WORKOUT_EXERCISE_SETS: "sets",
+    METRIC_WORKOUT_TOTAL_SETS: "sets",
 }
 PLAN_TARGET_TOLERANCE = 0.15  # each planned day must land within 15% of the energy target
 PLAN_TOTAL_EPSILON_KCAL = 0.5
@@ -138,7 +156,8 @@ def rule_intensity_cap(rec: Recommendation) -> list[Violation]:
             "for a user with an intensity-limiting condition",
             claim_text=c.text,
         )
-        for c, q in _quantities(rec, METRIC_HR_ZONE)
+        for metric in (METRIC_HR_ZONE, METRIC_WORKOUT_ZONE)
+        for c, q in _quantities(rec, metric)
         if q.value > cap
     ]
 
@@ -245,6 +264,76 @@ def rule_meal_plan_energy(rec: Recommendation) -> list[Violation]:
     return out
 
 
+def rule_workout_safe(rec: Recommendation) -> list[Violation]:
+    """Bounds on the workout claims, and every planned exercise re-checked against the catalogue.
+
+    Strength work needs every declared condition to be one the knowledge graph knows and that does
+    not limit intensity; an unknown condition is never assumed safe. In the T3 graph only claims
+    reach this rule, so their bounds and the condition check apply there; the entry-level checks
+    apply wherever the plan itself is present (the movement tool evaluates it before answering).
+    """
+    exercise_claims = _quantities(rec, METRIC_WORKOUT_EXERCISE_SETS)
+    totals = _quantities(rec, METRIC_WORKOUT_TOTAL_SETS)
+    minutes = _quantities(rec, METRIC_WORKOUT_MINUTES)
+    zones = _quantities(rec, METRIC_WORKOUT_ZONE)
+    strength = bool(exercise_claims or totals or rec.workout_plan)
+    if not (strength or minutes or zones):
+        return []
+    out: list[Violation] = []
+
+    def block(message: str, claim: Claim | None = None) -> None:
+        out.append(
+            Violation(
+                rule="workout_safe", message=message, claim_text=claim.text if claim else None
+            )
+        )
+
+    if strength and not strength_allowed(rec.user.conditions):
+        block("strength work is not allowed for the conditions this user declared")
+    for c, q in minutes:
+        if not MIN_MINUTES <= q.value <= MAX_MINUTES:
+            block(f"workout of {q.value:g} min is outside [{MIN_MINUTES}, {MAX_MINUTES}]", c)
+    for c, q in zones:
+        if not 1 <= q.value <= BEGINNER_MAX_ZONE:
+            block(f"workout zone {q.value:g} is outside [1, {BEGINNER_MAX_ZONE}]", c)
+    for c, q in exercise_claims:
+        if not (1 <= q.value <= MAX_SETS_PER_EXERCISE and q.value == int(q.value)):
+            block(f"{q.value:g} sets is outside [1, {MAX_SETS_PER_EXERCISE}] sets", c)
+    if len(exercise_claims) > MAX_EXERCISES:
+        block(f"{len(exercise_claims)} exercises is more than {MAX_EXERCISES}")
+    claimed_total: float | None = None
+    if strength:
+        if len(totals) != 1:
+            block("a workout needs exactly one total-sets claim")
+        else:
+            claimed_total = totals[0][1].value
+            if claimed_total > MAX_TOTAL_SETS:
+                block(f"{claimed_total:g} total sets is more than {MAX_TOTAL_SETS}", totals[0][0])
+            if exercise_claims:
+                listed = sum(q.value for _, q in exercise_claims)
+                if listed != claimed_total:  # whole numbers: exact is right
+                    block(f"the exercises add up to {listed:g} sets, not {claimed_total:g}")
+    for e in rec.workout_plan:
+        label = f"{e.day} {e.exercise_id}"
+        ex = EXERCISES.get(e.exercise_id)
+        if ex is None:
+            block(f"unknown exercise ({label})")
+            continue
+        if not 1 <= e.sets <= MAX_SETS_PER_EXERCISE:
+            block(f"sets out of range ({label})")
+        if not ex.reps_low <= e.reps_low <= e.reps_high <= ex.reps_high:
+            block(f"reps out of range ({label})")
+    if rec.workout_plan:
+        planned = sum(e.sets for e in rec.workout_plan)
+        if len({e.day for e in rec.workout_plan}) > 1:
+            block("a workout covers one day")
+        if len(rec.workout_plan) > MAX_EXERCISES or planned > MAX_TOTAL_SETS:
+            block("too much volume for one workout")
+        if claimed_total is not None and planned != claimed_total:
+            block(f"the plan has {planned} sets, the claim says {claimed_total:g}")
+    return out
+
+
 DEFAULT_RULES: tuple[Rule, ...] = (
     rule_has_claims,
     rule_no_unknown_provenance,
@@ -254,6 +343,7 @@ DEFAULT_RULES: tuple[Rule, ...] = (
     rule_sleep_bounds,
     rule_meal_plan_safe,
     rule_meal_plan_energy,
+    rule_workout_safe,
 )
 
 

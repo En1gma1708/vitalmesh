@@ -95,7 +95,7 @@ def test_the_union_agent_gets_seven_distinct_tools() -> None:
         ConditionTools(rec.profile, [], NoEvidence()),
     )
     names = [s.name for s in tools.specs]
-    assert len(names) == len(set(names)) == 7
+    assert len(names) == len(set(names)) == 8  # 7 until D101 added get_workout_plan
     assert not tools.call("rm_rf", "{}").ok
 
 

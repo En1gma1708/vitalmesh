@@ -112,7 +112,7 @@ def risk_for(case: AblationCase, profiles: InMemoryProfileStore, labs: InMemoryL
 
 # ------------------------------------------------------------------------------ single agent
 class UnionTools:
-    """All seven tools behind one dispatcher: what a single do-everything agent would get."""
+    """All eight tools behind one dispatcher: what a single do-everything agent would get."""
 
     def __init__(self, nut: NutritionTools, mov: MovementTools, con: ConditionTools) -> None:
         self._by_name: dict[str, Any] = {}

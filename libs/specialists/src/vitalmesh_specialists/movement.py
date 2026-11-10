@@ -3,7 +3,9 @@
 
 Tools (all deterministic; the model only chooses which to call and phrases the result):
 ``get_training_targets`` (the user's heart-rate zone and sleep target from the rule engine, plus
-their five zones in bpm), ``get_activity_summary`` (weekly active minutes against the public
+their five zones in bpm), ``get_workout_plan`` (today's concrete workout: easy cardio or a
+beginner strength session of named exercises, from a deterministic catalogue, D101),
+``get_activity_summary`` (weekly active minutes against the public
 150-minute goal and the 7-night sleep average, from the user's own history) and
 ``search_guidelines`` (cited physical-activity guidance from the Evidence agent).
 """
@@ -12,10 +14,11 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from vitalmesh_llm import ToolSpec
@@ -24,9 +27,17 @@ from vitalmesh_stores import HistoryStore
 from vitalmesh_tracing import NULL, Tracer
 from vitalmesh_wellness import calculators as calc
 from vitalmesh_wellness.calculators import OutOfRange
-from vitalmesh_wellness.engine import ENGINE_VERSION, Profile, build_recommendation
+from vitalmesh_wellness.engine import (
+    ENGINE_VERSION,
+    WORKOUT_SOURCE,
+    Profile,
+    build_recommendation,
+    build_workout_recommendation,
+)
 from vitalmesh_wellness.guardian import METRIC_HR_ZONE, METRIC_SLEEP, Guardian
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
+from vitalmesh_wellness.workouts import BY_ID as EXERCISES
+from vitalmesh_wellness.workouts import Place, WorkoutError
 
 from vitalmesh_specialists.agent import (
     MAX_MODEL_CALLS,
@@ -41,12 +52,17 @@ SOURCE_TRENDS = "vitalmesh_wellness.trends@1"
 
 SYSTEM_PROMPT = (
     "You are a general-wellness movement and recovery assistant (exercise, training zones, "
-    "sleep). Answer the user's question in at most 100 words, in plain language.\n"
+    "sleep). Answer the user's question in at most 120 words, in plain language.\n"
     "Rules:\n"
     "1. Get facts ONLY from your tools: get_training_targets (the user's own heart-rate zone and "
-    "sleep target), get_activity_summary (their recent weekly activity and sleep), "
+    "sleep target), get_workout_plan (today's concrete workout), get_activity_summary (their "
+    "recent weekly activity and sleep), "
     "search_guidelines (general cited physical-activity recommendations). Call a tool whenever "
     "the answer needs a number or a recommendation.\n"
+    "When the user asks what workout or exercise to do, call get_workout_plan and give the plan "
+    "exactly as the tool returns it: the session, then each exercise with its sets and reps, or "
+    "the minutes and heart-rate range of easy cardio. If they did not say where they can "
+    "train, use place 'either'. Never invent an exercise.\n"
     "2. Every number in your answer must appear in a tool result. Never calculate, convert, round "
     "or estimate a number yourself.\n"
     "3. You are not a clinician: never diagnose, and never advise on medication. For pain, "
@@ -67,6 +83,25 @@ SPECS: tuple[ToolSpec, ...] = (
             "Takes no arguments."
         ),
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    ToolSpec(
+        name="get_workout_plan",
+        description=(
+            "Today's concrete workout for this user from a deterministic beginner catalogue: "
+            "either easy cardio (minutes and the heart-rate range) or a strength session with "
+            "named exercises, sets and reps. place: 'gym', 'home', or 'either' (when the user "
+            "did not say; adds a no-gym alternative). minutes: 10 to 90 (default 30). focus: "
+            "optionally push, pull, legs or full_body. Use it for 'what workout should I do'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "place": {"type": "string", "enum": ["gym", "home", "either"]},
+                "minutes": {"type": "integer", "minimum": 10, "maximum": 90},
+                "focus": {"type": "string", "enum": ["push", "pull", "legs", "full_body"]},
+            },
+            "additionalProperties": False,
+        },
     ),
     ToolSpec(
         name="get_activity_summary",
@@ -93,6 +128,44 @@ SPECS: tuple[ToolSpec, ...] = (
         },
     ),
 )
+
+
+class _WorkoutArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    place: Literal["gym", "home", "either"] = "either"
+    minutes: int = Field(default=30, ge=10, le=90)
+    focus: Literal["push", "pull", "legs", "full_body"] | None = None
+
+
+_WORKOUT_WORDS = re.compile(
+    r"\b(?:workout|work out|exercise|exercises|train|training|gym|cardio|lift|lifting|muscle|"
+    r"strength|run|running|jog|push|pull|legs?)\b",
+    re.IGNORECASE,
+)
+_NO_GYM = re.compile(
+    r"\b(?:at home|home workout|no gym|without (?:a |the )?gym|(?:can'?t|cannot|cant) (?:go|get) "
+    r"to (?:the )?gym|(?:don'?t|dont) have (?:a )?gym|no equipment)\b",
+    re.IGNORECASE,
+)
+_FOCUS_WORDS = (("push", "push"), ("pull", "pull"), ("leg", "legs"), ("full body", "full_body"))
+_MINUTES = re.compile(r"\b(\d{2,3})\s*(?:min|mins|minutes)\b", re.IGNORECASE)
+
+
+def workout_args_from_question(question: str) -> dict[str, Any]:
+    """What a model-free helper asks the workout tool: where, how long, which focus. Only the
+    obvious words are read; anything else gets the defaults (the question is untrusted data and
+    the tool validates every value)."""
+    low = question.lower()
+    args: dict[str, Any] = {"place": "home" if _NO_GYM.search(low) else "either"}
+    m = _MINUTES.search(low)
+    if m and 10 <= int(m.group(1)) <= 90:
+        args["minutes"] = int(m.group(1))
+    for word, focus in _FOCUS_WORDS:
+        if re.search(rf"\b{word}", low):
+            args["focus"] = focus
+            break
+    return args
 
 
 class _SearchArgs(BaseModel):
@@ -129,13 +202,18 @@ class MovementTools:
     def default_calls(self, question: str) -> tuple[tuple[str, str], ...]:
         # no model needed: the user's own zone and sleep target, and their recent activity. The
         # guideline search is left out because the Evidence agent itself uses a model.
-        return (("get_training_targets", "{}"), ("get_activity_summary", "{}"))
+        base = (("get_training_targets", "{}"), ("get_activity_summary", "{}"))
+        if _WORKOUT_WORDS.search(question):  # a workout question gets a concrete workout
+            return (*base, ("get_workout_plan", json.dumps(workout_args_from_question(question))))
+        return base
 
     def call(self, name: str, arguments: str) -> ToolResult:
         try:
             raw: Any = json.loads(arguments) if arguments.strip() else {}
             if not isinstance(raw, dict):
                 raise ValueError("arguments must be a JSON object")
+            if name == "get_workout_plan":
+                return self._workout(_WorkoutArgs.model_validate(raw))
             if name in ("get_training_targets", "get_activity_summary"):
                 if raw:
                     raise ValueError("this tool takes no arguments")
@@ -173,6 +251,45 @@ class MovementTools:
             name="get_training_targets", ok=True, payload={"claims": claims, "zones": table}
         )
 
+    def _workout(self, args: _WorkoutArgs) -> ToolResult:
+        day = self._now.date()
+        place = Place.HOME if args.place == "home" else Place.GYM
+        try:
+            rec = build_workout_recommendation(
+                self._profile, self._sleep, "workout", day, place, args.minutes, args.focus
+            )
+            alt = None
+            if args.place == "either" and rec.workout_plan:  # a strength day: add a no-gym option
+                alt = build_workout_recommendation(
+                    self._profile, self._sleep, "workout-alt", day, Place.HOME, args.minutes,
+                    "cardio",
+                )  # fmt: skip
+        except (OutOfRange, WorkoutError):
+            return ToolResult(name="get_workout_plan", ok=False, error="no safe workout for input")
+        for r in (rec, alt):
+            if r is not None and not self._guardian.evaluate(r).cleared:
+                return ToolResult(
+                    name="get_workout_plan", ok=False, error="blocked by safety rules"
+                )
+        claims = _workout_claims(rec)
+        if alt is not None:
+            alt_claims = _workout_claims(alt)
+            if alt_claims:
+                alt_claims[0]["text"] = "No gym? " + alt_claims[0]["text"].replace("Today: ", "", 1)
+            claims += alt_claims
+        exercises = [
+            {
+                "name": EXERCISES[e.exercise_id].name,
+                "sets": e.sets,
+                "reps": f"{e.reps_low}-{e.reps_high} {EXERCISES[e.exercise_id].unit}",
+                "cue": EXERCISES[e.exercise_id].cue,
+            }
+            for e in rec.workout_plan
+        ]
+        return ToolResult(
+            name="get_workout_plan", ok=True, payload={"claims": claims, "exercises": exercises}
+        )
+
     def _summary(self) -> ToolResult:
         uid = self._profile.user_id
         since = self._now - timedelta(days=7 * SUMMARY_WEEKS)
@@ -208,6 +325,14 @@ class MovementTools:
         return ToolResult(name="get_activity_summary", ok=True, payload=payload)
 
 
+def _workout_claims(rec: Any) -> list[dict[str, Any]]:
+    return [
+        _claim(c.quantity.metric, c.quantity.value, c.quantity.unit, c.text, WORKOUT_SOURCE)
+        for c in rec.claims
+        if c.quantity and c.quantity.metric.startswith("workout_")
+    ]
+
+
 def _week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
@@ -217,7 +342,7 @@ def fallback_text(results: Sequence[ToolResult]) -> str:
     for r in results:
         if not r.ok:
             continue
-        if r.name in ("get_training_targets", "get_activity_summary"):
+        if r.name in ("get_training_targets", "get_activity_summary", "get_workout_plan"):
             parts += [c["text"] for c in r.payload.get("claims", [])]
         elif r.name == "search_guidelines":
             parts += [s["text"] for s in r.payload["sentences"]]

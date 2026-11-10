@@ -97,6 +97,10 @@ def main() -> None:
     ap.add_argument("--only", type=int, default=0, help="only the first N questions")
     ap.add_argument("--clear-llm-cache", action="store_true")
     ap.add_argument("--json", default="")
+    ap.add_argument(
+        "--question", action="append", default=[], help="ask these instead (repeatable)"
+    )
+    ap.add_argument("--rested", action="store_true", help="made-up sleep without a sleep debt")
     args = ap.parse_args()
     if urlparse(args.base).hostname not in ("127.0.0.1", "localhost", "::1"):
         raise SystemExit("refusing: loopback only")
@@ -104,7 +108,8 @@ def main() -> None:
         r = redis.Redis.from_url("redis://127.0.0.1:6379/0")
         n = sum(1 for k in r.scan_iter(match="llm:cache:*", count=1000) if r.delete(k))
         print(f"cleared {n} cached model answers from the local Redis")
-    questions = QUESTIONS[: args.only] if args.only else QUESTIONS
+    questions = args.question or (QUESTIONS[: args.only] if args.only else QUESTIONS)
+    sleep_hours = [8.0] * len(SLEEP) if args.rested else SLEEP
 
     c = httpx.Client(base_url=args.base, timeout=60)
     email, pw = f"measure-{secrets.token_hex(3)}@example.org", secrets.token_urlsafe(14) + "Aa1!"
@@ -120,7 +125,7 @@ def main() -> None:
             == 200
         )
         now = datetime.now(UTC)
-        for i, hours in enumerate(SLEEP):
+        for i, hours in enumerate(sleep_hours):
             when = (now - timedelta(days=len(SLEEP) - i)).replace(hour=7, minute=30).isoformat()
             c.post(
                 "/v1/measurements",
@@ -143,7 +148,7 @@ def main() -> None:
                 "n": n, "question": question, "outcome": outcome, "seconds": round(secs, 1),
                 "status": (view or {}).get("status"),
                 "steps": [str(s.get("text", "")) for s in (view or {}).get("steps", [])],
-                "answer_start": str(answer.get("text", ""))[:200],
+                "answer_start": str(answer.get("text", ""))[:900],
                 "partial_note": answer.get("partial_note"),
             })  # fmt: skip
             print(f"{n:>2} {outcome:<9} {secs:7.1f}  {question}", flush=True)

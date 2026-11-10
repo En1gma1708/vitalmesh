@@ -108,6 +108,19 @@ class MealEntry(BaseModel):
         return v
 
 
+class WorkoutEntry(BaseModel):
+    """One planned strength exercise. Only identifiers and a prescription: the Guardian looks the
+    exercise up in the catalogue and checks the sets and reps itself, never trusting the planner."""
+
+    model_config = ConfigDict(frozen=True)
+
+    day: date
+    exercise_id: str = Field(min_length=1)
+    sets: int
+    reps_low: int
+    reps_high: int
+
+
 class Recommendation(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -115,3 +128,4 @@ class Recommendation(BaseModel):
     user: UserConstraints
     claims: tuple[Claim, ...]
     meal_plan: tuple[MealEntry, ...] = ()
+    workout_plan: tuple[WorkoutEntry, ...] = ()

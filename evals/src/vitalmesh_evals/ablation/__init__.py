@@ -2,7 +2,7 @@
 
 Three arms answer the same questions for the same synthetic users:
 
-* ``single``: ONE agent with all seven tools and a general prompt, then the same Guardian gate;
+* ``single``: ONE agent with all the tools and a general prompt, then the same Guardian gate;
 * ``t2``: the single specialist Triage picks, then the same gate;
 * ``t3``: the full graph (Triage, parallel specialists, Aggregator, Synthesizer, Guardian,
   Checker for medium and high risk, Release; a run that needs a human stops there).
