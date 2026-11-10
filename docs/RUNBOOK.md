@@ -66,9 +66,12 @@ To inspect (in Git Bash on Windows prefix with `MSYS_NO_PATHCONV=1`; topics are 
 
 CI runs these on every push except the live-model evals (quota-bound) and the load tests (manual).
 
-## 6. Cloud (Azure) in one paragraph
+## 6. Cloud (Azure)
 
-Only used for measurement, never as a running service. `infra/azure` (Terraform) creates one resource group (`vitalmesh-bench`) in one region with up to three small VMs and an optional Key Vault; **it needs the owner's explicit go-ahead each time**. Always tear down with `infra/azure/teardown.ps1` (deletes the group and purges the soft-deleted vault) and check that nothing is left. Cost and results: [COST.md](COST.md), [SCALING.md](SCALING.md).
+Only used for measurement and for short, announced demos, never as a standing service. Both setups need **the owner's explicit go-ahead each time** and a signed-in Azure CLI; always delete with the matching teardown script and check that nothing is left. Cost and results: [COST.md](COST.md), [SCALING.md](SCALING.md).
+
+* **Benchmarks:** `infra/azure` (Terraform) creates one resource group (`vitalmesh-bench`) with up to three small VMs and an optional Key Vault; `infra/azure/teardown.ps1` deletes the group and purges the soft-deleted vault.
+* **Demo for one reviewer (scripted, not yet applied):** `infra/azure-app` creates one resource group (`vitalmesh-demo`) with ONE 2-vCPU, 8 GB VM, a static address with a free DNS name, and a firewall that opens only 80 and 443 (plus SSH to the operator's address). `pwsh infra/azure-app/deploy.ps1 -DeleteBy <date>` plans; `-Apply` creates it, installs the app from the public repo, starts three services, gets an HTTPS certificate and sets one shared password (written once to a git-ignored local file). `pwsh infra/azure-app/teardown.ps1` deletes everything. Model-provider keys are copied over SSH and never stored in Terraform state; tracing is off; a banner on every page asks for made-up data only. Whether it works end to end on a real VM has not been tested yet.
 
 ## 7. Gaps (stated, not hidden)
 

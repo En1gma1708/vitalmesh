@@ -49,3 +49,7 @@ common path (tiers, caches, load shedding) for exactly this reason.
 * A cost log written during the session, and a teardown script written before the first deploy.
 * SSH and the HTTPS check were open only to one operator address; the VMs had no other public
   exposure.
+
+## A short demo deployment for one reviewer (estimate, not yet run)
+
+One Standard_D2as_v4 VM (2 vCPU, 8 GB), a 64 GB disk and a static public address, kept for 1 to 2 days and then deleted (`infra/azure-app`). **Arithmetic from list prices, not billed:** the VM at about 0.096 USD an hour (the same assumption as the capacity model; check the portal), the disk and address about 0.3 USD a day, so about **2.6 USD a day**: roughly 5 to 6 USD for two days and about 18 USD if it were left for a week. The model providers are free tiers (no spend, but a rate limit). Azure for Students has a fixed credit and no card attached, so spending cannot exceed it; the end date is also written on the resource as a tag. Everything is deleted with `infra/azure-app/teardown.ps1`.
