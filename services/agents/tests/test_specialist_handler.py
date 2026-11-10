@@ -18,6 +18,7 @@ from vitalmesh_stores import (
     InMemoryHistoryStore,
     InMemoryLabStore,
     InMemoryProfileStore,
+    Point,
     ProfileRecord,
 )
 from vitalmesh_wellness.synthetic import synthetic_user
@@ -251,3 +252,60 @@ def test_advice_is_stamped_when_the_work_finished_not_when_it_started() -> None:
     meta, _ = codec.decode(pub.sent[0].value)
     assert meta.occurred_at == NOW + timedelta(seconds=30)
     assert meta.deadline_at == DEADLINE  # the run's deadline is unchanged
+
+
+# ----------------------------------------------------------------------------- D103: real sleep
+def _logged(history: InMemoryHistoryStore, hours: list[float], user_id: str = UID) -> None:
+    for i, h in enumerate(hours):
+        history.add(user_id, "sleep_duration", Point(NOW - timedelta(days=len(hours) - i), h, "h"))
+
+
+def test_the_helpers_use_the_nights_the_person_logged() -> None:
+    from vitalmesh_agents.specialist_handler import recent_sleep
+
+    d = deps(FakeRouter(resp("x")))
+    record = d.profiles.get(UID)
+    assert record is not None
+    assert isinstance(d.history, InMemoryHistoryStore)
+    _logged(d.history, [8.0, 8.5, 8.0, 9.0])
+    assert recent_sleep(record, d.history, UID, NOW) == [8.0, 8.5, 8.0, 9.0]
+
+
+def test_too_few_logged_nights_keep_the_stored_value() -> None:
+    from vitalmesh_agents.specialist_handler import MIN_LOGGED_NIGHTS, recent_sleep
+
+    d = deps(FakeRouter(resp("x")))
+    record = d.profiles.get(UID)
+    assert record is not None and isinstance(d.history, InMemoryHistoryStore)
+    _logged(d.history, [8.0] * (MIN_LOGGED_NIGHTS - 1))
+    assert recent_sleep(record, d.history, UID, NOW) == list(record.recent_sleep_hours)
+    _logged(d.history, [8.0] * MIN_LOGGED_NIGHTS)  # exactly enough
+    assert recent_sleep(record, d.history, UID, NOW) == [8.0] * MIN_LOGGED_NIGHTS
+
+
+def test_only_the_last_fourteen_valid_nights_count() -> None:
+    from vitalmesh_agents.specialist_handler import RECENT_NIGHTS, recent_sleep
+
+    d = deps(FakeRouter(resp("x")))
+    record = d.profiles.get(UID)
+    assert record is not None and isinstance(d.history, InMemoryHistoryStore)
+    _logged(d.history, [5.0] * 3 + [8.0] * RECENT_NIGHTS)
+    got = recent_sleep(record, d.history, UID, NOW)
+    assert got == [8.0] * RECENT_NIGHTS
+    _logged(d.history, [99.0, -1.0] + [7.0] * 3, user_id="other")  # invalid values are dropped
+    assert recent_sleep(record, d.history, "other", NOW) == [7.0] * 3  # the three valid ones
+    _logged(d.history, [99.0, -1.0] + [7.0] * 2, user_id="few")  # only two valid nights
+    assert recent_sleep(record, d.history, "few", NOW) == list(record.recent_sleep_hours)
+
+
+def test_a_history_outage_does_not_stop_the_answer() -> None:
+    from vitalmesh_agents.specialist_handler import recent_sleep
+
+    class Broken:
+        def series(self, *a: Any, **k: Any) -> Any:
+            raise RuntimeError("down")
+
+    d = deps(FakeRouter(resp("x")))
+    record = d.profiles.get(UID)
+    assert record is not None
+    assert recent_sleep(record, Broken(), UID, NOW) == list(record.recent_sleep_hours)  # type: ignore[arg-type]

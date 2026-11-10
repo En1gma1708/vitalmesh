@@ -13,7 +13,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from vitalmesh_common.envelope import EventMeta, Tier, utcnow
@@ -124,10 +124,30 @@ def build_specialist(
     return ConditionSpecialist(deps.router, **common)
 
 
+RECENT_NIGHTS = 14
+MIN_LOGGED_NIGHTS = 3
+
+
+def recent_sleep(
+    record: ProfileRecord, history: HistoryStore, user_id: str, now: datetime
+) -> list[float]:
+    """The person's own last nights when they have logged enough of them, else the stored
+    neutral value. The stored value is a constant seven hours, which reads as a 14-hour sleep debt
+    for everyone: every answer said "keep it easy" and no workout day could ever be a strength day
+    (D103)."""
+    try:
+        points = history.series(user_id, "sleep_duration", now - timedelta(days=RECENT_NIGHTS))
+    except Exception:  # a history outage must not stop the answer
+        points = []
+    nights = [p.value for p in points if 0.0 <= p.value <= 24.0][-RECENT_NIGHTS:]
+    return nights if len(nights) >= MIN_LOGGED_NIGHTS else list(record.recent_sleep_hours)
+
+
 def build_tools(
     kind: Specialist, deps: SpecialistDeps, record: ProfileRecord, user_id: str, now: datetime
 ) -> ToolsLike:
-    profile, sleep = record.profile, list(record.recent_sleep_hours)
+    profile = record.profile
+    sleep = recent_sleep(record, deps.history, user_id, now)
     if kind is Specialist.NUTRITION:
         return NutritionTools(profile, sleep, deps.evidence, now.date())
     if kind is Specialist.MOVEMENT_RECOVERY:
