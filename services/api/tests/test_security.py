@@ -45,7 +45,9 @@ PROFILE: dict[str, Any] = {
 
 
 class World:
-    def __init__(self, require_verified: bool = False, google: Any = None) -> None:
+    def __init__(
+        self, require_verified: bool = False, google: Any = None, notice: str = ""
+    ) -> None:
         self.now = datetime.now(UTC)
         self.mailer = OutboxMailer()
         self.mono = 0.0
@@ -72,7 +74,7 @@ class World:
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
             imports=self.imports, nudges=self.nudges, google=google,
             token_box=TokenBox(Fernet.generate_key()),
-            ops=lambda: {"tiers": {}, "cohort": {}},
+            ops=lambda: {"tiers": {}, "cohort": {}}, notice=notice,
         )  # fmt: skip
 
     def client(self) -> TestClient:

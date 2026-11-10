@@ -72,6 +72,22 @@ def warm_profiles(store: PostgresAccountStore, cache: RedisProfileStore) -> int:
     return restored
 
 
+NOTICE_MAX = 400
+
+
+def notice_from_env(env: Mapping[str, str]) -> str:
+    """The optional banner text (``VITALMESH_NOTICE``) shown on every page, for example "Demo: use
+    made-up data only". Plain text, at most 400 characters, no control characters; a bad value
+    stops the process at start rather than being silently dropped (the banner may carry a safety
+    message)."""
+    text = env.get("VITALMESH_NOTICE", "").strip()
+    if len(text) > NOTICE_MAX or any(ord(c) < 32 for c in text):
+        raise SystemExit(
+            f"VITALMESH_NOTICE must be plain text of at most {NOTICE_MAX} characters, one line"
+        )
+    return text
+
+
 def secure_cookies_from_env(env: Mapping[str, str]) -> bool:
     """Cookies are Secure (and HSTS is sent) whenever the public address is https (D92).
 
@@ -147,6 +163,7 @@ def build_app() -> FastAPI:
             "cohort": _counts(client, "cohort:stats"),
         },
         auth=auth,
+        notice=notice_from_env(os.environ),
     )
 
 

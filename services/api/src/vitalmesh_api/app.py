@@ -25,6 +25,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as dtime
+from html import escape
 from pathlib import Path
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -369,6 +370,7 @@ def create_app(
     graph: Callable[[], GraphOut | None] | None = None,
     reviews: ReviewQueue | None = None,
     evals: Callable[[], list[EvalRow]] | None = None,
+    notice: str = "",
 ) -> FastAPI:
     app = FastAPI(title="VitalMesh API", version="0.1.0")
     gate = guardian or Guardian()
@@ -754,7 +756,15 @@ def create_app(
         nonce = getattr(request.state, "nonce", "")
         html = (STATIC / name).read_text(encoding="utf-8")
         html = html.replace("<script>", f'<script nonce="{nonce}">')
-        return HTMLResponse(html.replace("<style>", f'<style nonce="{nonce}">'))
+        html = html.replace("<style>", f'<style nonce="{nonce}">')
+        if notice:  # an operator-set banner (for example "made-up data only"), escaped, every page
+            banner = (
+                '<div role="note" style="background:var(--accent-soft,#e8f1ee);'
+                "color:var(--fg,#1b1f24);padding:10px 16px;text-align:center;font-size:14px;"
+                f'border-bottom:1px solid var(--grid,#c9d3d0)">{escape(notice)}</div>'
+            )
+            html = html.replace("<body>", "<body>" + banner, 1)
+        return HTMLResponse(html)
 
     if reviews is not None:
         install_clinician(app, reviews, serde, publisher, clock, auth)
