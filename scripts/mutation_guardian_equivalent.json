@@ -1,5 +1,5 @@
 {
-  "226:0 -> -1": "rule_meal_plan_energy returns early unless `len(targets) == 1 and len(claimed) == 1` (the line above it), so on line 226 `targets[0]` and `targets[-1]` (and `claimed[0]` / `claimed[-1]`) are the same element: the mutant cannot change behaviour. Keyed by line and change; if the Guardian's lines move, re-check and update.",
-  "309:0 -> -1": "rule_workout_safe reads `totals[0]` only in the `else` of `len(totals) != 1`, so `totals` has exactly one element and `totals[0]` and `totals[-1]` are the same element: the mutant cannot change behaviour. Keyed by line and change; if the Guardian's lines move, re-check and update.",
-  "311:0 -> -1": "same branch as 309: `totals` has exactly one element here, so `totals[0][0]` and `totals[-1][0]` are the same claim. Keyed by line and change."
+  "246:0 -> -1": "rule_meal_plan_energy returns early unless `len(targets) == 1 and len(claimed) == 1` (the line above it), so on line 226 `targets[0]` and `targets[-1]` (and `claimed[0]` / `claimed[-1]`) are the same element: the mutant cannot change behaviour. Keyed by line and change; if the Guardian's lines move, re-check and update.",
+  "329:0 -> -1": "rule_workout_safe reads `totals[0]` only in the `else` of `len(totals) != 1`, so `totals` has exactly one element and `totals[0]` and `totals[-1]` are the same element: the mutant cannot change behaviour. Keyed by line and change; if the Guardian's lines move, re-check and update.",
+  "331:0 -> -1": "same branch as 309: `totals` has exactly one element here, so `totals[0][0]` and `totals[-1][0]` are the same claim. Keyed by line and change."
 }

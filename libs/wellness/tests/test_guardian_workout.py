@@ -98,7 +98,7 @@ def messages(r: Recommendation) -> str:
 
 
 def test_rules_version_was_bumped_for_the_new_rule() -> None:
-    assert RULES_VERSION == "4"
+    assert RULES_VERSION == "5"  # v5 added the weight rules (D108)
     assert rule_workout_safe in guardian_module.DEFAULT_RULES
 
 

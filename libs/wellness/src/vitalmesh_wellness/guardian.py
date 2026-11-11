@@ -17,9 +17,11 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from vitalmesh_wellness.bodystatus import BMI_UNDERWEIGHT
 from vitalmesh_wellness.claims import Claim, Provenance, Quantity, Recommendation
 from vitalmesh_wellness.knowledge import DEFAULT_INDEX
 from vitalmesh_wellness.recipes import ALLERGENS, BY_ID, DIET_NAMES, PORTION_MAX, PORTION_MIN
+from vitalmesh_wellness.weightgoal import MAX_LOSS_FRACTION_PER_WEEK, MAX_LOSS_KG_PER_WEEK
 from vitalmesh_wellness.workouts import (
     BEGINNER_MAX_ZONE,
     MAX_EXERCISES,
@@ -31,7 +33,7 @@ from vitalmesh_wellness.workouts import (
 )
 from vitalmesh_wellness.workouts import BY_ID as EXERCISES
 
-RULES_VERSION = "4"
+RULES_VERSION = "5"
 
 # Metric names the rules understand, with the only unit each may use.
 METRIC_ENERGY = "daily_energy_target"
@@ -42,7 +44,23 @@ METRIC_WORKOUT_MINUTES = "workout_minutes"
 METRIC_WORKOUT_ZONE = "workout_cardio_zone"
 METRIC_WORKOUT_EXERCISE_SETS = "workout_exercise_sets"
 METRIC_WORKOUT_TOTAL_SETS = "workout_total_sets"
+METRIC_BMI = "bmi"
+METRIC_BODY_WEIGHT = "body_weight"
+METRIC_HEALTHY_LOW = "healthy_weight_low"
+METRIC_HEALTHY_HIGH = "healthy_weight_high"
+METRIC_WEIGHT_MILESTONE = "weight_milestone"
+METRIC_MILESTONE_BMI = "weight_milestone_bmi"
+METRIC_LOSS_RATE = "weight_loss_rate"
+METRIC_LOSS_RATE_PCT = "weight_loss_rate_pct"
 EXPECTED_UNIT = {
+    METRIC_BMI: "kg/m2",
+    METRIC_BODY_WEIGHT: "kg",
+    METRIC_HEALTHY_LOW: "kg",
+    METRIC_HEALTHY_HIGH: "kg",
+    METRIC_WEIGHT_MILESTONE: "kg",
+    METRIC_MILESTONE_BMI: "kg/m2",
+    METRIC_LOSS_RATE: "kg/week",
+    METRIC_LOSS_RATE_PCT: "%/week",
     METRIC_ENERGY: "kcal",
     METRIC_HR_ZONE: "zone",
     METRIC_SLEEP: "h",
@@ -55,6 +73,8 @@ EXPECTED_UNIT = {
 PLAN_TARGET_TOLERANCE = 0.15  # each planned day must land within 15% of the energy target
 PLAN_TOTAL_EPSILON_KCAL = 0.5
 
+BMI_PLAN_REVIEW_BELOW = 16.0  # a weight plan at a BMI this low or at 40 and over needs a clinician
+BMI_PLAN_REVIEW_FROM = 40.0
 ENERGY_FLOOR_KCAL = {"female": 1200.0, "male": 1500.0}
 ENERGY_CEILING_KCAL = 6000.0
 SLEEP_TARGET_HOURS = (7.0, 10.0)
@@ -334,6 +354,76 @@ def rule_workout_safe(rec: Recommendation) -> list[Violation]:
     return out
 
 
+def rule_weight_target_safe(rec: Recommendation) -> list[Violation]:
+    """A target weight must carry its BMI, and that BMI must not be under the underweight line.
+
+    A milestone claim without its BMI claim cannot be checked, so it blocks (fail closed)."""
+    out: list[Violation] = []
+    milestones = _quantities(rec, METRIC_WEIGHT_MILESTONE)
+    bmis = _quantities(rec, METRIC_MILESTONE_BMI)
+    if milestones and not bmis:
+        out.append(
+            Violation(
+                rule="weight_target_safe",
+                message="a target weight must come with the BMI it gives, so it can be checked",
+                claim_text=milestones[0][0].text,
+            )
+        )
+    for c, q in bmis:
+        if q.value < BMI_UNDERWEIGHT:
+            out.append(
+                Violation(
+                    rule="weight_target_safe",
+                    message=f"a target weight giving a BMI of {q.value:.1f} is under "
+                    f"{BMI_UNDERWEIGHT} (underweight)",
+                    claim_text=c.text,
+                )
+            )
+    return out
+
+
+def rule_weight_loss_rate_safe(rec: Recommendation) -> list[Violation]:
+    """No loss pace above 1 kg a week or 1 percent of body weight a week."""
+    out: list[Violation] = []
+    for c, q in _quantities(rec, METRIC_LOSS_RATE):
+        if q.value > MAX_LOSS_KG_PER_WEEK:
+            out.append(
+                Violation(
+                    rule="weight_loss_rate_safe",
+                    message=f"{q.value:g} kg a week is faster than {MAX_LOSS_KG_PER_WEEK:g} kg",
+                    claim_text=c.text,
+                )
+            )
+    for c, q in _quantities(rec, METRIC_LOSS_RATE_PCT):
+        if q.value > MAX_LOSS_FRACTION_PER_WEEK * 100:
+            out.append(
+                Violation(
+                    rule="weight_loss_rate_safe",
+                    message=f"{q.value:g} percent of body weight a week is faster than "
+                    f"{MAX_LOSS_FRACTION_PER_WEEK * 100:g} percent",
+                    claim_text=c.text,
+                )
+            )
+    return out
+
+
+def rule_bmi_extreme_review(rec: Recommendation) -> list[Violation]:
+    """A BMI under 16 or at 40 and over may be stated, but never with a weight plan: that needs a
+    clinician, not an automated target or pace."""
+    plan = bool(_quantities(rec, METRIC_WEIGHT_MILESTONE) or _quantities(rec, METRIC_LOSS_RATE))
+    if not plan:
+        return []
+    return [
+        Violation(
+            rule="bmi_extreme_review",
+            message=f"a weight plan at a BMI of {q.value:.1f} needs a clinician, not a target",
+            claim_text=c.text,
+        )
+        for c, q in _quantities(rec, METRIC_BMI)
+        if q.value < BMI_PLAN_REVIEW_BELOW or q.value >= BMI_PLAN_REVIEW_FROM
+    ]
+
+
 DEFAULT_RULES: tuple[Rule, ...] = (
     rule_has_claims,
     rule_no_unknown_provenance,
@@ -344,6 +434,9 @@ DEFAULT_RULES: tuple[Rule, ...] = (
     rule_meal_plan_safe,
     rule_meal_plan_energy,
     rule_workout_safe,
+    rule_weight_target_safe,
+    rule_weight_loss_rate_safe,
+    rule_bmi_extreme_review,
 )
 
 

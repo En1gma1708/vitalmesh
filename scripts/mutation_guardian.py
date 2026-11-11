@@ -37,6 +37,7 @@ TESTS = [
     "libs/wellness/tests/test_mealplan.py",
     "libs/wellness/tests/test_guardian_boundaries.py",
     "libs/wellness/tests/test_guardian_workout.py",
+    "libs/wellness/tests/test_guardian_weight.py",
     "libs/wellness/tests/test_workouts.py",
     "libs/wellness/tests/test_engine.py",
     "libs/wellness/tests/test_knowledge.py",
