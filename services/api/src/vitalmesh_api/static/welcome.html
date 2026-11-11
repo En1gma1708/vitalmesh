@@ -122,9 +122,9 @@ legend { font-size: 13px; color: var(--muted); padding: 0 6px; }
       <form id="onboarding-form" novalidate>
         <nav class="progress" aria-label="Progress">
           <ol>
-            <li id="p1" class="on now" aria-current="step"><span>1</span><b>About you</b></li>
-            <li id="p2"><span>2</span><b>Goals and food</b></li>
-            <li id="p3"><span>3</span><b>Health and consent</b></li>
+            <li id="p1" class="on now" aria-current="step"><span aria-hidden="true">1</span><b>About you</b></li>
+            <li id="p2"><span aria-hidden="true">2</span><b>Goals and food</b></li>
+            <li id="p3"><span aria-hidden="true">3</span><b>Health and consent</b></li>
           </ol>
         </nav>
 
@@ -235,6 +235,7 @@ function showStep(n) {
     li.classList.toggle("on", i <= n);
     li.classList.toggle("now", i === n);
     if (i === n) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    li.firstElementChild.textContent = i < n ? "\u2713" : String(i);  // a check mark once a step is done
   }
   $("back-btn").hidden = n === 1;
   $("next-btn").hidden = n === STEPS;

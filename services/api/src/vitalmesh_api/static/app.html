@@ -86,6 +86,11 @@ ol.steps.done li.last::before { background: var(--ok); animation: none; }
 .skel { min-height: var(--h, 120px); border-radius: var(--r-s); background: linear-gradient(90deg, var(--card-2) 30%, var(--line) 50%, var(--card-2) 70%); background-size: 300% 100%; animation: shimmer 1.5s ease-in-out infinite; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
+/* a headline figure above each chart, with a plain (never good-or-bad) change line */
+.kpi { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: -2px 0 10px; }
+.kpi b { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
+.kpi span { color: var(--muted); font-size: 13px; }
+
 /* chart tooltip (pointer, touch and keyboard) */
 .tip { position: absolute; transform: translate(-50%, -100%); background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 560; padding: 5px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: var(--shadow); }
 .probe { fill: var(--card); stroke: var(--fg); stroke-width: 2; }
@@ -138,6 +143,9 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
   .menu-body { right: auto; left: 0; }
 }
 @media (max-width: 560px) {
+  /* suggestions become one swipeable row instead of a tall stack */
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; scroll-snap-type: x proximity; margin-right: -18px; padding: 0 18px 6px 0; }
+  .chips button { flex: none; scroll-snap-align: start; }
   #ask-form button { width: 100%; }
   #ask-card { padding: 18px; }
 }
@@ -226,10 +234,10 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
     <div class="group" id="trends">
       <h2 class="group-title">Trends</h2>
       <div class="grid">
-        <section class="card"><h2>Weight</h2><div id="weight"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
-        <section class="card"><h2>Sleep</h2><div id="sleep"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
-        <section class="card"><h2>Active minutes per week</h2><div id="active"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
-        <section class="card"><h2>Calories</h2><div id="energy"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Weight</h2><div class="kpi" id="weight-kpi" hidden></div><div id="weight"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Sleep</h2><div class="kpi" id="sleep-kpi" hidden></div><div id="sleep"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Active minutes per week</h2><div class="kpi" id="active-kpi" hidden></div><div id="active"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Calories</h2><div class="kpi" id="energy-kpi" hidden></div><div id="energy"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
       </div>
     </div>
 
@@ -542,6 +550,36 @@ function tickUp(node) {
 const last = (a) => a[a.length - 1];
 const day = (p) => ({ label: fmtDay(p.t), v: p.v });
 
+// A big current value and a plain change line above each chart (no colour says "good" or "bad": it depends on the goal).
+function kpi(id, big, small) {
+  const box = $(`${id}-kpi`);
+  box.replaceChildren();
+  if (big === null) { box.hidden = true; return; }
+  const b = document.createElement("b"), s = document.createElement("span");
+  b.textContent = big; s.textContent = small || "";
+  box.append(b, s); box.hidden = false;
+}
+const signed = (v, d = 1) => `${v < 0 ? "\u2212" : "+"}${Math.abs(Math.round(v * 10 ** d) / 10 ** d)}`;
+const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+function kpis(weight, sleep, active, energy) {
+  const wp = weight?.points || [];
+  if (wp.length) {
+    const end = last(wp), t30 = +new Date(end.t) - 30 * 864e5;
+    const from = wp.reduce((a, p) => (Math.abs(+new Date(p.t) - t30) < Math.abs(+new Date(a.t) - t30) ? p : a));
+    const days = Math.round((+new Date(end.t) - +new Date(from.t)) / 864e5);
+    kpi("weight", `${end.v} kg`, days >= 14 ? `${signed(end.v - from.v)} kg over ${days} days` : "");
+  } else kpi("weight", null);
+  const sp = sleep?.points || [];
+  if (sp.length) kpi("sleep", `${last(sp).v} h`, sp.length >= 7 ? `last night · ${Math.round(mean(sp.slice(-7).map((p) => p.v)) * 10) / 10} h average over 7 nights` : "last night");
+  else kpi("sleep", null);
+  const aw = active?.weekly || [];
+  if (aw.length) kpi("active", `${Math.round(last(aw).total)} min`, active.weekly_goal ? `this week · goal ${active.weekly_goal} min` : "this week");
+  else kpi("active", null);
+  const ep = energy?.points || [];
+  if (ep.length) kpi("energy", `${Math.round(last(ep).v)} kcal`, ep.length >= 7 ? `latest day · ${Math.round(mean(ep.slice(-7).map((p) => p.v)))} kcal average over 7 days` : "latest day");
+  else kpi("energy", null);
+}
+
 async function main() {
   loadErrors = 0;
   const [weight, sleep, active, energy, rec, labs, plan] = await Promise.all([
@@ -574,6 +612,7 @@ async function main() {
     ? `<table><caption class="sub">Latest result of each test</caption><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Range</th><th scope="col">Status</th></tr>${latestLabs.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.value ?? l.text ?? "")} ${esc(l.unit ?? "")}</td><td>${esc(l.reference_range || "-")}</td><td><span class="tag ${esc(l.status.replace(" ", ""))}">${esc(l.status)}</span></td></tr>`).join("")}</table>`
     : '<div class="empty">No lab results yet.</div>';
 
+  kpis(weight, sleep, active, energy);
   const hasData = [weight, sleep, active, energy].some((s) => s && s.points && s.points.length) || latestLabs.length > 0;
   $("start-card").hidden = hasData || loadErrors > 0;  // never say "empty" when the real problem is a failed load
 

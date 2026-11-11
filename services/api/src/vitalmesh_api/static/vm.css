@@ -87,6 +87,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 560; font-size: 12px; }
 caption { text-align: left; padding-bottom: 6px; }
+.tag::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
 .tag { padding: 2px 9px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
 .tag.high, .tag.low { background: var(--warn-soft); color: var(--warn); }
 .tag.unclassified, .tag.not { background: var(--card-2); color: var(--muted); }
