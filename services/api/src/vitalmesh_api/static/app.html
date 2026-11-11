@@ -4,90 +4,79 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VitalMesh</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23208a5f'/%3E%3Cpath d='M5 17h6l3-8 4 15 3-7h6' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230a0e14'/%3E%3Cpath d='M4 17h6l3-8 4 15 3-7h8' fill='none' stroke='%234dd0e1' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
-:root {
-  --bg: #f6f7f4; --card: #ffffff; --fg: #1d2a24; --muted: #5a6a61; --line: #dfe5e0;
-  --accent: #16724b; --on-accent: #ffffff; --accent-soft: #d8efe3; --warn: #b34f16; --grid: #e9eeea; --avg: #1b5fa8;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
-    --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #121714; --card: #1b221e; --fg: #e7efe9; --muted: #93a39a; --line: #2b352f;
-  --accent: #4cc38a; --on-accent: #0b1a12; --accent-soft: #1f3a2d; --warn: #e8894a; --grid: #26302a; --avg: #6aa8f0;
-  color-scheme: dark;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 1040px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-.sub { color: var(--muted); font-size: 13px; }
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); margin-top: 20px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
-.wide { grid-column: 1 / -1; }
-.rings { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-around; }
-.ring { text-align: center; }
-.ring .big { font-size: 20px; font-weight: 650; }
-.ring .lab { font-size: 12px; color: var(--muted); }
-svg { width: 100%; height: auto; display: block; }
-[hidden] { display: none !important; }
-caption { text-align: left; padding-bottom: 6px; }
-.ring svg { width: 104px; height: 104px; margin: 0 auto; }
-.axis { fill: var(--muted); font-size: 10px; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
-.dot { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
-th { color: var(--muted); font-weight: 600; font-size: 12px; }
-.tag { padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
-.tag.high, .tag.low { background: rgba(194, 87, 26, .15); color: var(--warn); }
-.tag.unclassified, .tag.not { background: var(--grid); color: var(--muted); }
-ul.plain { margin: 0; padding-left: 18px; }
-ul.plain li { margin: 4px 0; }
-.meals { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-.meal { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-.meal b { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
-form.row { display: flex; gap: 8px; flex-wrap: wrap; }
-input, select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; min-width: 0; }
-input.grow { flex: 1 1 240px; }
-button { cursor: pointer; background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
-button.ghost { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; font-size: 13px; padding: 5px 10px; }
-button:disabled { opacity: .6; cursor: progress; }
-.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
-ol.steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
-ol.steps li { padding-left: 22px; position: relative; font-size: 14px; color: var(--muted); }
-ol.steps li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+/*@vm.css*/
+/* ---- app shell */
+.shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
+.rail { position: sticky; top: 0; align-self: start; height: 100vh; background: var(--rail); border-right: 1px solid var(--line); padding: 22px 14px; display: flex; flex-direction: column; gap: 28px; }
+.rail .brand { padding: 0 6px; }
+.nav { display: grid; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 9px; color: var(--muted); text-decoration: none; font-weight: 540; font-size: 14px; }
+.nav a svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav a:hover { background: var(--card-2); color: var(--fg); }
+.nav a.on { background: var(--accent-soft); color: var(--accent); }
+.content { min-width: 0; padding: 26px clamp(16px, 3.2vw, 44px) 72px; max-width: 1240px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+.top .sub { margin-top: 3px; }
+.menu { position: relative; }
+.menu summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 9px; padding: 5px 12px 5px 5px; border: 1px solid var(--line-2); border-radius: 999px; max-width: 100%; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary:hover { background: var(--card-2); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 13px; font-weight: 650; flex: none; }
+.menu summary .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.menu-body { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); padding: 8px; display: grid; gap: 6px; min-width: 210px; box-shadow: 0 14px 34px rgba(0, 0, 0, .38); }
+.menu-body button { text-align: left; }
+
+/* ---- the question panel is the hero of the page */
+#ask-card { padding: 22px; border-color: var(--line-2); }
+#ask-card h2 { font-size: 17px; letter-spacing: -0.01em; }
+#ask-form input { font-size: 16px; padding: 14px 16px; border-radius: 11px; }
+#ask-form button { padding: 14px 24px; border-radius: 11px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+.chips button.ghost { color: var(--muted); border-radius: 999px; padding: 7px 14px; }
+.chips button.ghost:hover:not(:disabled) { color: var(--fg); }
+ol.steps { list-style: none; margin: 18px 0 0; padding: 14px 16px; display: grid; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-s); font: 13px/1.45 var(--mono); }
+ol.steps:empty { display: none; }
+ol.steps li { position: relative; padding: 4px 0 4px 24px; color: var(--muted); overflow-wrap: anywhere; }
+ol.steps li::before { content: ""; position: absolute; left: 3px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); box-shadow: 0 0 0 3px var(--bg); }
+ol.steps li::after { content: ""; position: absolute; left: 6.5px; top: 19px; bottom: -9px; width: 1px; background: var(--line-2); }
+ol.steps li:last-child::after { display: none; }
 ol.steps li.last { color: var(--fg); }
-.answer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
-.answer .text { font-size: 16px; margin: 0 0 8px; white-space: pre-line; }
+ol.steps li.last::before { background: var(--accent); animation: ping 1.7s ease-out infinite; }
+ol.steps.done li.last::before { background: var(--ok); animation: none; }
+@keyframes ping { 0% { box-shadow: 0 0 0 3px var(--bg), 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px var(--bg), 0 0 0 11px transparent; } }
+.answer { margin-top: 18px; padding: 18px 20px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r-s); background: var(--bg); }
+.answer .text { font-size: 16px; line-height: 1.65; max-width: 68ch; margin: 0 0 10px; white-space: pre-line; }
+.answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; max-width: 76ch; }
+.answer li { margin: 3px 0; }
 .note { color: var(--warn); font-size: 14px; margin: 6px 0; }
-.answer ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
-.answer h3 { font-size: 13px; margin: 12px 0 0; color: var(--muted); font-weight: 600; }
-#history details { border-top: 1px solid var(--line); padding: 10px 0; }
-#history details:first-child { border-top: 0; }
+.safe { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ok); margin: 0 0 10px; }
+.safe svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#history details { border-top: 1px solid var(--line); padding: 11px 0; }
+#history details:first-child { border-top: 0; padding-top: 0; }
 #history summary { cursor: pointer; display: block; font-size: 15px; list-style: none; }
 #history summary .sub { display: block; margin-left: 22px; }
 #history summary::-webkit-details-marker { display: none; }
 #history summary::before { content: "\25B8" / ""; color: var(--accent); margin-right: 8px; display: inline-block; transition: transform 0.15s; }
 #history details[open] summary::before { transform: rotate(90deg); }
-#history .answer { margin-top: 10px; padding-top: 10px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.msg { font-size: 14px; margin-top: 8px; }
-.msg.err { color: var(--warn); }
-.banner { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
-ul.plain { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
-.nudge-item { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
-.nudge-item span { flex: 1 1 240px; min-width: 0; }
+#history .answer { margin-top: 10px; }
+
+/* ---- goals, charts, meals */
+.rings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.ring { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 16px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--bg); }
+.ring svg { width: 72px; height: 72px; grid-row: 1 / span 2; }
+.ring .big { font-size: 22px; font-weight: 650; line-height: 1.15; align-self: end; }
+.ring .big .lab { font-size: 12px; font-weight: 500; }
+.ring .lab { font-size: 13px; color: var(--muted); }
+.ring > .lab { align-self: start; margin-top: 2px; }
+.meals { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.meal { border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px 14px; background: var(--bg); }
+.meal b { display: block; font-size: 12px; font-weight: 560; color: var(--muted); margin-bottom: 4px; }
+ul.nums { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+ul.nums li { padding-left: 14px; position: relative; }
+ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
 /* blood-report confirm table: one stacked card per result on a narrow screen, so the value and the line it came from are always on screen together */
 @media (max-width: 640px) {
   #labup-table, #labup-table tbody, #labup-table tr, #labup-table td { display: block; width: 100%; }
@@ -98,19 +87,50 @@ ul.plain { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8p
   #labup-table td[data-label="Save"]::before { content: none; }
   #labup-table input[type=text], #labup-table input[type=number] { width: 100%; }
 }
+
+/* ---- phone: the rail becomes a bottom bar */
+@media (max-width: 880px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: auto; flex-direction: row; padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); border-right: 0; border-top: 1px solid var(--line); z-index: 30; gap: 0; }
+  .rail .brand { display: none; }
+  .nav { grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; gap: 0; }
+  .nav a { flex-direction: column; gap: 3px; font-size: 11px; padding: 7px 2px; text-align: center; }
+  .content { padding-bottom: 100px; }
+  .menu-body { right: auto; left: 0; }
+}
+@media (max-width: 560px) {
+  #ask-form button { width: 100%; }
+  #ask-card { padding: 18px; }
+}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>Your health, at a glance</h1>
-    <span class="sub" id="who"></span>
-    <span id="account-bar" hidden>
-      <button type="button" class="ghost" id="export-btn">Download my data</button>
-      <button type="button" class="ghost" id="delete-btn">Delete account</button>
-      <button type="button" class="ghost" id="signout-btn">Sign out</button>
-    </span>
-  </header>
+<div class="shell">
+  <nav class="rail" aria-label="Sections">
+    <a class="brand" href="/app" aria-label="VitalMesh home"><svg viewBox="0 0 32 32" aria-hidden="true"><rect class="mark-bg" x="1" y="1" width="30" height="30" rx="9"/><path class="mark-pulse" d="M5 17h6l3-8 4 15 3-7h6"/></svg><span>VitalMesh</span></a>
+    <div class="nav" id="nav">
+      <a href="#ask-card" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Ask</span></a>
+      <a href="#today"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg><span>Goals</span></a>
+      <a href="#trends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-8"/><path d="M14 7h6v6"/></svg><span>Trends</span></a>
+      <a href="#health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg><span>Health</span></a>
+      <a href="#tools"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6a4 4 0 0 0 5 5l-9 9a2 2 0 0 1-3-3l9-9z"/><path d="M14 6l3-3 4 4-3 3"/></svg><span>Tools</span></a>
+    </div>
+  </nav>
+  <main class="content">
+    <header class="top">
+      <div>
+        <h1>Your health, at a glance</h1>
+        <div class="sub">Guidance from specialist helpers, checked by safety rules.</div>
+      </div>
+      <details class="menu" id="menu">
+        <summary><span class="avatar" id="avatar" aria-hidden="true">?</span><span class="sub" id="who"></span></summary>
+        <div class="menu-body" id="account-bar" hidden>
+          <button type="button" class="ghost" id="export-btn">Download my data</button>
+          <button type="button" class="ghost" id="delete-btn">Delete account</button>
+          <button type="button" class="ghost" id="signout-btn">Sign out</button>
+        </div>
+      </details>
+    </header>
   <div class="banner" id="verify-banner" hidden role="status">
     <span>Confirm your email to ask questions. We sent you a link.</span>
     <button type="button" class="ghost" id="resend-btn">Send it again</button>
@@ -126,104 +146,129 @@ ul.plain { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8p
     </div>
     <div class="msg err" id="delete-msg" role="alert"></div>
   </form>
-  <div class="grid">
-    <section class="card wide" id="ask-card">
-      <h2>Ask about your health</h2>
-      <form class="row" id="ask-form">
-        <input class="grow" id="q" maxlength="500" required autocomplete="off"
-               aria-label="Your question" placeholder="e.g. How many calories should I eat?">
-        <button id="ask-btn" type="submit">Ask</button>
-      </form>
-      <div class="chips" id="chips"></div>
-      <ol class="steps" id="steps" aria-live="polite"></ol>
-      <div id="answer" class="answer" hidden aria-live="polite"></div>
-    </section>
-    <section class="card wide" id="history-card" hidden>
-      <h2>Recent questions</h2>
-      <div id="history"></div>
-    </section>
-    <section class="card wide" id="log-card">
-      <h2>Log something</h2>
-      <form class="row" id="log-form">
-        <select id="metric" aria-label="What to log"></select>
-        <input id="value" type="number" step="any" required aria-label="Value" placeholder="Value">
-        <span class="sub" id="unit" style="align-self:center"></span>
-        <button id="log-btn" type="submit">Save</button>
-      </form>
-      <div class="msg" id="log-msg" role="status"></div>
-    </section>
-    <section class="card wide" id="nudge-card" hidden>
-      <h2>Gentle reminders</h2>
-      <p class="sub">Off until you turn them on. At most two a day, never at night in your own time zone, and fewer of any kind you dismiss. They only appear here in the app.</p>
-      <label class="row" style="align-items:center"><input type="checkbox" id="nudge-on" aria-label="Send me gentle reminders in the app"> <span>Send me gentle reminders in the app</span></label>
-      <ul id="nudge-list" class="plain" aria-live="polite"></ul>
-      <div class="msg" id="nudge-msg" role="status"></div>
-    </section>
-    <section class="card wide" id="import-card" hidden>
-      <h2>Bring in your health data</h2>
-      <p class="sub">Choose an Apple Health export (export.zip) or a CSV. You see what is in it before anything is saved.</p>
-      <form class="row" id="import-form">
-        <input type="file" id="import-file" accept=".zip,.xml,.csv,.txt" aria-label="Health export file" required>
-        <button id="import-btn" type="submit">Read the file</button>
-      </form>
-      <div id="import-preview" hidden>
-        <table id="import-table"></table>
-        <p class="sub" id="import-note"></p>
-        <div class="row">
-          <button type="button" id="import-confirm">Save these readings</button>
-          <button type="button" class="ghost" id="import-cancel">Cancel</button>
-        </div>
+
+    <div class="grid">
+      <section class="card wide" id="ask-card">
+            <h2>Ask about your health</h2>
+            <form class="row" id="ask-form">
+              <input class="grow" id="q" maxlength="500" required autocomplete="off"
+                     aria-label="Your question" placeholder="e.g. How many calories should I eat?">
+              <button id="ask-btn" type="submit">Ask</button>
+            </form>
+            <div class="chips" id="chips"></div>
+            <ol class="steps" id="steps" aria-live="polite"></ol>
+            <div id="answer" class="answer" hidden aria-live="polite"></div>
+          </section>
+      <section class="card wide" id="history-card" hidden>
+            <h2>Recent questions</h2>
+            <div id="history"></div>
+          </section>
+    </div>
+
+    <div class="group" id="today">
+      <div class="grid">
+        <section class="card wide"><h2>Goals</h2><div class="rings" id="rings"></div></section>
       </div>
-      <div class="msg" id="import-msg" role="status"></div>
-    </section>
-    <section class="card wide" id="labup-card" hidden>
-      <h2>Bring in a blood report</h2>
-      <p class="sub">Choose a PDF, or a photo or scan of the report. It is read on this server, not sent to any outside service. Check every number against the line shown beside it before saving: a photo can be misread.</p>
-      <form class="row" id="labup-form">
-        <input type="file" id="labup-file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Blood report file" required>
-        <button id="labup-btn" type="submit">Read the report</button>
-      </form>
-      <div id="labup-preview" hidden>
-        <p class="sub" id="labup-method"></p>
-        <label class="sub">Date the sample was collected <input type="date" id="labup-date" required></label>
-        <div style="overflow-x:auto"><table id="labup-table"></table></div>
-        <p class="sub" id="labup-note"></p>
-        <div class="row">
-          <button type="button" id="labup-confirm">Save the ticked results</button>
-          <button type="button" class="ghost" id="labup-cancel">Cancel</button>
-        </div>
+    </div>
+
+    <div class="group" id="trends">
+      <h2 class="group-title">Trends</h2>
+      <div class="grid">
+        <section class="card"><h2>Weight</h2><div id="weight"></div></section>
+        <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
+        <section class="card"><h2>Active minutes per week</h2><div id="active"></div></section>
+        <section class="card"><h2>Calories</h2><div id="energy"></div></section>
       </div>
-      <div class="msg" id="labup-msg" role="status"></div>
-    </section>
-    <section class="card wide" id="cal-card" hidden>
-      <h2>Plan workouts around your calendar</h2>
-      <p class="sub" id="cal-intro">Connect Google Calendar and I will suggest workout times that fit around your events. Nothing is added until you say so.</p>
-      <div class="row" id="cal-connect-row"><button type="button" id="cal-connect">Connect Google Calendar</button></div>
-      <div id="cal-plan-row" hidden>
-        <form class="row" id="cal-form">
-          <select id="cal-minutes" aria-label="Length of each workout"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select>
-          <button type="submit" id="cal-find">Find times</button>
-          <button type="button" class="ghost" id="cal-disconnect">Disconnect</button>
-        </form>
-        <ul class="plain" id="cal-list"></ul>
-        <div class="row" id="cal-confirm-row" hidden>
-          <button type="button" id="cal-confirm">Add these to my calendar</button>
-          <button type="button" class="ghost" id="cal-cancel">Cancel</button>
-        </div>
+    </div>
+
+    <div class="group" id="health">
+      <h2 class="group-title">Health</h2>
+      <div class="grid">
+        <section class="card wide"><h2>Your numbers</h2><ul class="nums" id="numbers"></ul></section>
+        <section class="card wide"><h2>Lab results</h2><div id="labs"></div></section>
+        <section class="card wide"><h2>Today's meals</h2><div id="meals"></div></section>
       </div>
-      <div class="msg" id="cal-msg" role="status"></div>
-    </section>
-    <section class="card wide"><h2>This week</h2><div class="rings" id="rings"></div></section>
-    <section class="card"><h2>Weight</h2><div id="weight"></div></section>
-    <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
-    <section class="card"><h2>Active minutes per week</h2><div id="active"></div></section>
-    <section class="card"><h2>Calories</h2><div id="energy"></div></section>
-    <section class="card"><h2>Your numbers</h2><ul class="plain" id="numbers"></ul></section>
-    <section class="card"><h2>Lab results</h2><div id="labs"></div></section>
-    <section class="card wide"><h2>Today's meals</h2><div id="meals"></div></section>
-  </div>
-  <footer>General wellness information, not medical advice. Demo data.</footer>
-</main>
+    </div>
+
+    <div class="group" id="tools">
+      <h2 class="group-title">Tools</h2>
+      <div class="grid">
+        <section class="card wide" id="log-card">
+              <h2>Log something</h2>
+              <form class="row" id="log-form">
+                <select id="metric" aria-label="What to log"></select>
+                <input id="value" type="number" step="any" required aria-label="Value" placeholder="Value">
+                <span class="sub" id="unit" style="align-self:center"></span>
+                <button id="log-btn" type="submit">Save</button>
+              </form>
+              <div class="msg" id="log-msg" role="status"></div>
+            </section>
+        <section class="card wide" id="nudge-card" hidden>
+              <h2>Gentle reminders</h2>
+              <p class="sub">Off until you turn them on. At most two a day, never at night in your own time zone, and fewer of any kind you dismiss. They only appear here in the app.</p>
+              <label class="row" style="align-items:center"><input type="checkbox" id="nudge-on" aria-label="Send me gentle reminders in the app"> <span>Send me gentle reminders in the app</span></label>
+              <ul id="nudge-list" class="plain" aria-live="polite"></ul>
+              <div class="msg" id="nudge-msg" role="status"></div>
+            </section>
+        <section class="card wide" id="import-card" hidden>
+              <h2>Bring in your health data</h2>
+              <p class="sub">Choose an Apple Health export (export.zip) or a CSV. You see what is in it before anything is saved.</p>
+              <form class="row" id="import-form">
+                <input type="file" id="import-file" accept=".zip,.xml,.csv,.txt" aria-label="Health export file" required>
+                <button id="import-btn" type="submit">Read the file</button>
+              </form>
+              <div id="import-preview" hidden>
+                <table id="import-table"></table>
+                <p class="sub" id="import-note"></p>
+                <div class="row">
+                  <button type="button" id="import-confirm">Save these readings</button>
+                  <button type="button" class="ghost" id="import-cancel">Cancel</button>
+                </div>
+              </div>
+              <div class="msg" id="import-msg" role="status"></div>
+            </section>
+        <section class="card wide" id="labup-card" hidden>
+              <h2>Bring in a blood report</h2>
+              <p class="sub">Choose a PDF, or a photo or scan of the report. It is read on this server, not sent to any outside service. Check every number against the line shown beside it before saving: a photo can be misread.</p>
+              <form class="row" id="labup-form">
+                <input type="file" id="labup-file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" aria-label="Blood report file" required>
+                <button id="labup-btn" type="submit">Read the report</button>
+              </form>
+              <div id="labup-preview" hidden>
+                <p class="sub" id="labup-method"></p>
+                <label class="sub">Date the sample was collected <input type="date" id="labup-date" required></label>
+                <div style="overflow-x:auto"><table id="labup-table"></table></div>
+                <p class="sub" id="labup-note"></p>
+                <div class="row">
+                  <button type="button" id="labup-confirm">Save the ticked results</button>
+                  <button type="button" class="ghost" id="labup-cancel">Cancel</button>
+                </div>
+              </div>
+              <div class="msg" id="labup-msg" role="status"></div>
+            </section>
+        <section class="card wide" id="cal-card" hidden>
+              <h2>Plan workouts around your calendar</h2>
+              <p class="sub" id="cal-intro">Connect Google Calendar and I will suggest workout times that fit around your events. Nothing is added until you say so.</p>
+              <div class="row" id="cal-connect-row"><button type="button" id="cal-connect">Connect Google Calendar</button></div>
+              <div id="cal-plan-row" hidden>
+                <form class="row" id="cal-form">
+                  <select id="cal-minutes" aria-label="Length of each workout"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select>
+                  <button type="submit" id="cal-find">Find times</button>
+                  <button type="button" class="ghost" id="cal-disconnect">Disconnect</button>
+                </form>
+                <ul class="plain" id="cal-list"></ul>
+                <div class="row" id="cal-confirm-row" hidden>
+                  <button type="button" id="cal-confirm">Add these to my calendar</button>
+                  <button type="button" class="ghost" id="cal-cancel">Cancel</button>
+                </div>
+              </div>
+              <div class="msg" id="cal-msg" role="status"></div>
+            </section>
+      </div>
+    </div>
+    <footer>General wellness information, not medical advice. Demo data.</footer>
+  </main>
+</div>
 <script>
 // Signed in: the page is /app and who you are comes from your session. The older /app/<id> form
 // (no accounts) still reads the id from the address.
@@ -244,6 +289,7 @@ async function boot() {
     document.getElementById("nudge-card").hidden = false;
     loadNudges();
     document.getElementById("who").textContent = me.email;
+    document.getElementById("avatar").textContent = (me.email[0] || "?").toUpperCase();
     if (me.verification_required && !me.email_verified) {
       document.getElementById("verify-banner").hidden = false;
       document.getElementById("resend-btn").addEventListener("click", async () => {
@@ -331,11 +377,11 @@ function lineChart(host, s, unit) {
   const y = axes(svg, x0, x1, y0, y1, yd, xd);
   const x = scale(xd, [x0, x1]);
   const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(+new Date(p.t)).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
-  svg.appendChild(el("path", { d: path(s.points), fill: "none", stroke: css("--accent"), "stroke-width": 1.2, opacity: 0.55 }));
-  s.points.forEach((p) => svg.appendChild(el("circle", { cx: x(+new Date(p.t)), cy: y(p.v), r: 2, fill: css("--accent"), opacity: 0.6 })));
+  svg.appendChild(el("path", { d: path(s.points), fill: "none", stroke: css("--c-weight"), "stroke-width": 1.2, opacity: 0.6 }));
+  s.points.forEach((p) => svg.appendChild(el("circle", { cx: x(+new Date(p.t)), cy: y(p.v), r: 2.2, fill: css("--c-weight"), opacity: 0.8 })));
   if (s.average.length) svg.appendChild(el("path", { d: path(s.average), fill: "none", stroke: css("--avg"), "stroke-width": 2.4 }));
   svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${last(s.points).v} ${unit} on ${fmtDay(last(s.points).t)}, ${s.points.length} days shown`);
-  legend(host, [[css("--accent"), `Daily (${unit})`], ...(s.average.length ? [[css("--avg"), "7-day average"]] : [])]);
+  legend(host, [[css("--c-weight"), `Daily (${unit})`], ...(s.average.length ? [[css("--avg"), "7-day average"]] : [])]);
 }
 
 function barChart(host, bars, opts) {
@@ -349,7 +395,7 @@ function barChart(host, bars, opts) {
   bars.forEach((b, i) => {
     const hit = opts.line && b.v >= opts.line;
     const top = y(b.v);
-    svg.appendChild(el("rect", { x: x0 + i * bw + bw * 0.15, y: top, width: bw * 0.7, height: y1 - top, rx: 2, fill: hit || !opts.line ? css("--accent") : css("--accent"), opacity: hit || !opts.line ? 1 : 0.55 }));
+    svg.appendChild(el("rect", { x: x0 + i * bw + bw * 0.15, y: top, width: bw * 0.7, height: y1 - top, rx: 3, fill: css(opts.color || "--accent"), opacity: hit || !opts.line ? 1 : 0.5 }));
     if (bars.length <= 7 || i % Math.ceil(bars.length / 7) === 0) {
       svg.appendChild(el("text", { x: x0 + i * bw + bw / 2, y: y1 + 16, "text-anchor": "middle", class: "axis" }, b.label));
     }
@@ -358,17 +404,17 @@ function barChart(host, bars, opts) {
     svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(opts.line), y2: y(opts.line), stroke: css("--warn"), "stroke-width": 1.6, "stroke-dasharray": "5 4" }));
   }
   svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${Math.round(last(bars).v * 10) / 10} on ${last(bars).label}${opts.line ? `, target ${Math.round(opts.line * 10) / 10}` : ""}`);
-  legend(host, [[css("--accent"), opts.label], ...(opts.line ? [[css("--warn"), opts.lineLabel]] : [])]);
+  legend(host, [[css(opts.color || "--accent"), opts.label], ...(opts.line ? [[css("--warn"), opts.lineLabel]] : [])]);
 }
 
-function ring(host, value, goal, label, unit) {
+function ring(host, value, goal, label, unit, color) {
   const r = 38, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(value / goal, 1));
   const wrap = document.createElement("div");
   wrap.className = "ring";
   const svg = el("svg", { viewBox: "0 0 100 100", width: 104, height: 104, role: "img", "aria-label": `${label}: ${Math.round(frac * 100)} percent of your goal` });
   svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--grid"), "stroke-width": 9 }));
-  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
-  svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:17px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
+  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css(color || "--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
+  svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:18px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
   wrap.appendChild(svg);
   wrap.insertAdjacentHTML("beforeend", `<div class="big">${Math.round(value)} <span class="lab">/ ${Math.round(goal)} ${unit}</span></div><div class="lab">${label}</div>`);
   host.appendChild(wrap);
@@ -389,14 +435,14 @@ async function main() {
   ]);
 
   lineChart($("weight"), weight, "kg");
-  barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target" });
-  barChart($("active"), (active?.weekly || []).slice(-12).map((w) => ({ label: fmtDay(w.week_start), v: w.total })), { label: "Minutes per week", line: active?.weekly_goal, lineLabel: "150 min goal" });
-  barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target" });
+  barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target", color: "--c-sleep" });
+  barChart($("active"), (active?.weekly || []).slice(-12).map((w) => ({ label: fmtDay(w.week_start), v: w.total })), { label: "Minutes per week", line: active?.weekly_goal, lineLabel: "150 min goal", color: "--c-active" });
+  barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target", color: "--c-energy" });
 
   const rings = $("rings");
-  if (sleep?.points.length && sleep.target) ring(rings, last(sleep.points).v, sleep.target, "Last night's sleep", "h");
-  if (energy?.points.length && energy.target) ring(rings, last(energy.points).v, energy.target, "Calories today", "kcal");
-  if (active?.weekly.length) ring(rings, last(active.weekly).total, active.weekly_goal, "Active minutes this week", "min");
+  if (sleep?.points.length && sleep.target) ring(rings, last(sleep.points).v, sleep.target, "Last night's sleep", "h", "--c-sleep");
+  if (energy?.points.length && energy.target) ring(rings, last(energy.points).v, energy.target, "Calories today", "kcal", "--c-energy");
+  if (active?.weekly.length) ring(rings, last(active.weekly).total, active.weekly_goal, "Active minutes this week", "min", "--c-active");
   if (!rings.children.length) rings.innerHTML = '<div class="empty">Log some data to see your goals.</div>';
 
   $("numbers").innerHTML = rec ? rec.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("") : '<li class="empty">No recommendation is available right now.</li>';
@@ -453,7 +499,7 @@ const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 function answerHtml(a) {
   const items = a.items.map((i) => `<li>${esc(i.text)} <span class="sub">(${esc(i.basis.toLowerCase())})</span></li>`).join("");
   const sources = a.sources.map((s) => `<li>${esc(s.document)} ${esc(s.locator)} <span class="sub">(${esc(s.licence)})</span>${/^https:\/\//.test(s.url) ? ` <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">open</a>` : ""}</li>`).join("");
-  return `<p class="text">${rich(a.text)}</p>`
+  return `<p class="safe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>Checked by the safety rules</p><p class="text">${rich(a.text)}</p>`
     + (a.partial_note ? `<p class="note">${esc(a.partial_note)}</p>` : "")
     + (items ? `<h3>Why</h3><ul>${items}</ul>` : "")
     + (sources ? `<h3>Sources</h3><ul>${sources}</ul>` : "");
@@ -489,7 +535,7 @@ $("ask-form").addEventListener("submit", async (ev) => {
   const q = $("q").value.trim();
   if (!q) return;
   if (stream) { stream.close(); stream = null; }
-  $("steps").innerHTML = ""; $("answer").hidden = true; $("ask-btn").disabled = true;
+  $("steps").innerHTML = ""; $("steps").classList.remove("done"); $("answer").hidden = true; $("ask-btn").disabled = true;
   let live = false;  // while a stream is open the button stays disabled
   try {
     const r = await fetch(`/v1/users/${encodeURIComponent(uid)}/questions`, {
@@ -502,8 +548,8 @@ $("ask-form").addEventListener("submit", async (ev) => {
     live = true;
     stream = new EventSource(`/v1/users/${encodeURIComponent(uid)}/runs/${out.correlation_id}/stream`);
     stream.addEventListener("step", (e) => addStep(JSON.parse(e.data).text));
-    stream.addEventListener("done", (e) => { showAnswer(JSON.parse(e.data)); stream.close(); stream = null; $("ask-btn").disabled = false; });
-    stream.addEventListener("timeout", () => { addStep("This is taking longer than expected. Please try again in a minute."); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.addEventListener("done", (e) => { $("steps").classList.add("done"); showAnswer(JSON.parse(e.data)); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.addEventListener("timeout", () => { $("steps").classList.add("done"); addStep("This is taking longer than expected. Please try again in a minute."); stream.close(); stream = null; $("ask-btn").disabled = false; });
     stream.onerror = () => { if (stream) { addStep("Lost the connection to the live updates."); stream.close(); stream = null; $("ask-btn").disabled = false; } };
   } catch (err) {
     addStep("Couldn't reach the service. Please try again.");
@@ -762,6 +808,20 @@ $("delete-form").addEventListener("submit", async (ev) => {
   if (r.ok) { location.href = "/"; return; }
   $("delete-msg").textContent = "That password is not right.";
 });
+
+// ---- left rail / bottom bar: highlight the section in view
+(() => {
+  const links = [...document.querySelectorAll("#nav a")];
+  const targets = links.map((a) => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
+  if (!("IntersectionObserver" in window) || !targets.length) return;
+  const visible = new Set();
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) (e.isIntersecting ? visible.add(e.target) : visible.delete(e.target));
+    const first = targets.find((t) => visible.has(t));  // the topmost section in view wins
+    if (first) links.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === `#${first.id}`));
+  }, { rootMargin: "-10% 0px -55% 0px" });
+  targets.forEach((t) => io.observe(t));
+})();
 </script>
 </body>
 </html>

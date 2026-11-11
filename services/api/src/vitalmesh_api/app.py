@@ -757,6 +757,8 @@ def create_app(
         html = (STATIC / name).read_text(encoding="utf-8")
         html = html.replace("<script>", f'<script nonce="{nonce}">')
         html = html.replace("<style>", f'<style nonce="{nonce}">')
+        if "/*@vm.css*/" in html:  # the shared design system (D106), inside the nonce'd style block
+            html = html.replace("/*@vm.css*/", (STATIC / "vm.css").read_text(encoding="utf-8"))
         if notice:  # an operator-set banner (for example "made-up data only"), escaped, every page
             banner = (
                 '<div role="note" style="background:var(--accent-soft,#e8f1ee);'

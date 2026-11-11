@@ -405,6 +405,20 @@ def test_pages_carry_the_response_nonce_that_the_policy_allows(w: World) -> None
         assert "<script>" not in r.text and "<style>" not in r.text
 
 
+def test_pages_get_the_shared_design_system_inside_the_nonce_tagged_style_block(w: World) -> None:
+    """D106: the shared stylesheet is injected server-side (the policy allows no external one)."""
+    from vitalmesh_api.app import STATIC
+
+    shared = (STATIC / "vm.css").read_text(encoding="utf-8")
+    assert "<" not in shared  # no tags in the stylesheet: it must not be able to open a block
+    c = w.client()
+    for path in ("/", "/app"):
+        html = c.get(path).text
+        assert "/*@vm.css*/" not in html  # the include marker was always replaced
+        assert "--c-sleep:" in html and "--accent:" in html  # the tokens arrived
+        assert html.index("--accent:") > html.index("<style nonce=")  # inside the style block
+
+
 def test_the_old_id_in_the_url_form_redirects_to_the_session_based_page(w: World) -> None:
     r = w.client().get("/app/demo-1", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/app"
