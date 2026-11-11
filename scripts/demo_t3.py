@@ -3,7 +3,7 @@
 Needs the stack, a seeded user and the agents running, e.g. in one terminal:
     uv run python scripts/seed_demo.py demo-1
     VITALMESH_RUN_DEADLINE_S=240 uv run python -m vitalmesh_agents \
-        triage nutrition movement condition aggregator synthesizer guardian checker release
+        triage nutrition movement condition progress aggregator synthesizer guardian checker release
 then:
     uv run python scripts/demo_t3.py demo-1 "What should I eat and how should I train this week?"
 

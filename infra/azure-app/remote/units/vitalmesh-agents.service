@@ -7,7 +7,7 @@ Requires=vitalmesh-infra.service
 User=vmadmin
 WorkingDirectory=/opt/vitalmesh/app
 EnvironmentFile=/opt/vitalmesh/env
-ExecStart=/opt/vitalmesh/app/.venv/bin/python -m vitalmesh_agents triage nutrition movement condition aggregator synthesizer guardian checker release tracker
+ExecStart=/opt/vitalmesh/app/.venv/bin/python -m vitalmesh_agents triage nutrition movement condition progress aggregator synthesizer guardian checker release tracker
 Restart=always
 RestartSec=5
 

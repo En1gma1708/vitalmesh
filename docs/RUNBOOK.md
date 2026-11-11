@@ -14,7 +14,7 @@ Prerequisites: Docker Desktop running, `uv`, a `.env` with provider keys (only n
 | Generate code (once) | `uv sync` then `uv run python scripts/gen_proto.py` | no error |
 | Event processor | `uv run python -m vitalmesh_processor` | log shows `consuming <topic>`; no traceback |
 | API | `VITALMESH_AUTH_SECRET=<32+ random bytes> uv run python -m vitalmesh_api` | `GET /healthz` returns `{"status":"ok"}` |
-| Agents (optional, spends model quota) | `uv run python scripts/reset_topics.py` **first**, then `uv run python -m vitalmesh_agents triage nutrition movement condition aggregator synthesizer guardian checker release tracker` | one line per role on start |
+| Agents (optional, spends model quota) | `uv run python scripts/reset_topics.py` **first**, then `uv run python -m vitalmesh_agents triage nutrition movement condition progress aggregator synthesizer guardian checker release tracker` | one line per role on start |
 | Engagement (optional) | add roles `engagement delivery`; `uv run python scripts/engagement_tick.py <user>` | a notification appears for an opted-in person |
 
 Stop in the reverse order, then `docker compose -f infra/docker-compose.yml stop` (keep data) or `down -v` (delete data). Redis runs **without persistence** in this stack, so a restart empties it: re-seed the demo person with `uv run python scripts/seed_demo.py demo-1`.
