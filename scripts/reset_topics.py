@@ -26,8 +26,11 @@ def main() -> None:
     admin = AdminClient({"bootstrap.servers": settings.bootstrap_servers})
     names = [s.name for s in all_topic_specs(RetryPolicy().max_retries)]
     existing = [n for n in names if n in admin.list_topics(timeout=15).topics]
-    for future in admin.delete_topics(existing, operation_timeout=30).values():
-        future.result()
+    # A brand-new broker (the Azure demo VM, D99) has none of them yet, and the client library
+    # rejects an empty delete list.
+    if existing:
+        for future in admin.delete_topics(existing, operation_timeout=30).values():
+            future.result()
     deadline = time.monotonic() + 30
     while existing and time.monotonic() < deadline:
         if not set(existing) & set(admin.list_topics(timeout=15).topics):
