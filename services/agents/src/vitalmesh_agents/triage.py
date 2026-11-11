@@ -94,6 +94,8 @@ _PROGRESS = _words(
     "(?:on|of) the scales?", "my body weight", "my weight",
     "should i (?:lose|gain|weigh)", "(?:do|would) i need to (?:lose|gain) (?:some )?weight",
     "am i too (?:heavy|thin|light|skinny)", "am i (?:heavier|lighter) than",
+    "how (?:heavy|light) am i", "(?:good|right|healthy|ideal) weight for me",
+    "health check.?in", "check.?in on my health",
 )  # fmt: skip
 
 

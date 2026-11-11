@@ -13,7 +13,7 @@ BASELINE = json.loads(
         encoding="utf-8"
     )
 )
-GROUPS = ("tuning", "heldout", "heldout2")
+GROUPS = ("tuning", "heldout", "heldout2", "heldout3")
 
 
 def test_the_case_set_matches_the_recorded_baseline_sizes() -> None:
@@ -28,5 +28,5 @@ def test_the_tuning_set_passes_completely_and_no_held_out_set_has_regressed() ->
     assert not failed, failed
     s = summary(results)
     assert s["tuning"]["passed"] == s["tuning"]["cases"]
-    for g in ("heldout", "heldout2"):
+    for g in ("heldout", "heldout2", "heldout3"):
         assert s[g]["passed"] >= BASELINE[g]["passed"], (g, s[g])
