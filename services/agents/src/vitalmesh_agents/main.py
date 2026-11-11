@@ -8,7 +8,7 @@ role                    consumes                         publishes
 ======================  ===============================  ==================================
 triage                  questions.asked                  runs.planned
 nutrition / movement /  runs.planned                     advice.completed
-condition
+condition / progress
 aggregator              runs.planned, advice.completed   advice.bundles (and on a timer)
 synthesizer             advice.bundles, reviews.completed recommendations.drafted
 guardian                recommendations.drafted          drafts.cleared | safety.blocked
@@ -104,6 +104,7 @@ INPUTS: dict[str, tuple[str, ...]] = {
     "nutrition": (RUNS_PLANNED,),
     "movement": (RUNS_PLANNED,),
     "condition": (RUNS_PLANNED,),
+    "progress": (RUNS_PLANNED,),
     "aggregator": (RUNS_PLANNED, ADVICE_COMPLETED),
     "synthesizer": (ADVICE_BUNDLES, REVIEWS_COMPLETED),
     "guardian": (RECOMMENDATIONS_DRAFTED,),
@@ -119,6 +120,7 @@ _SPECIALISTS = {
     "nutrition": Specialist.NUTRITION,
     "movement": Specialist.MOVEMENT_RECOVERY,
     "condition": Specialist.CONDITION_MEDICATION,
+    "progress": Specialist.PROGRESS,
 }
 
 

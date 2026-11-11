@@ -38,6 +38,7 @@ enum Specialist {
   SPECIALIST_NUTRITION = 1;
   SPECIALIST_MOVEMENT_RECOVERY = 2;
   SPECIALIST_CONDITION_MEDICATION = 3;
+  SPECIALIST_PROGRESS = 4;  // D108: everyday progress, sleep, weight and BMI questions
 }
 
 // Risk assigned by Triage in code. Decides whether the Checker (medium and up) and a human

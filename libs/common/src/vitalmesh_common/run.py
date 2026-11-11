@@ -17,6 +17,7 @@ class Specialist(StrEnum):
     NUTRITION = "nutrition"
     MOVEMENT_RECOVERY = "movement_recovery"
     CONDITION_MEDICATION = "condition_medication"
+    PROGRESS = "progress"
 
 
 class Risk(StrEnum):
@@ -38,6 +39,7 @@ _SPECIALIST_TO_PROTO = {
     Specialist.NUTRITION: common_pb2.SPECIALIST_NUTRITION,
     Specialist.MOVEMENT_RECOVERY: common_pb2.SPECIALIST_MOVEMENT_RECOVERY,
     Specialist.CONDITION_MEDICATION: common_pb2.SPECIALIST_CONDITION_MEDICATION,
+    Specialist.PROGRESS: common_pb2.SPECIALIST_PROGRESS,
 }
 _PROTO_TO_SPECIALIST = {v: k for k, v in _SPECIALIST_TO_PROTO.items()}
 

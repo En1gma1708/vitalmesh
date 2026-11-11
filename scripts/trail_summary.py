@@ -46,6 +46,7 @@ SPEC = {
     common_pb2.SPECIALIST_NUTRITION: "nutrition",
     common_pb2.SPECIALIST_MOVEMENT_RECOVERY: "movement",
     common_pb2.SPECIALIST_CONDITION_MEDICATION: "condition",
+    common_pb2.SPECIALIST_PROGRESS: "progress",
 }
 STATUS = {
     payloads_pb2.ADVICE_ANSWERED: "answered",
@@ -137,7 +138,7 @@ def main() -> None:
     rows = summarise(read_events(KafkaSettings.from_env()), since, args.user_contains)
     for i, r in enumerate(rows, start=1):
         parts = "  ".join(
-            r["parts"].get(k, f"{k}:-") for k in ("nutrition", "movement", "condition")
+            r["parts"].get(k, f"{k}:-") for k in ("nutrition", "movement", "condition", "progress")
         )
         question = r["question"][:46]
         print(f"{i:>2} {r['final']:<22} {question!r}")

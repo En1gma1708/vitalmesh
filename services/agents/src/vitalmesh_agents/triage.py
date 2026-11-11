@@ -67,6 +67,20 @@ _MEDICATION = _words(
 )  # fmt: skip
 
 
+# Everyday progress questions (D108): how am I doing, my sleep, my weight, BMI, target weight.
+# Phrases, not single words: "weight" and "sleep" alone also appear in food and workout
+# questions ("what should I eat to lose weight") that belong to the other specialists.
+_PROGRESS = _words(
+    "how am i doing", "how i am doing", "how i'm doing", "how im doing", "how are things",
+    "my progress", "progress", "my status", "how am i progressing", "am i on track",
+    "bmi", "body mass index", "body mass", "target weight", "goal weight", "ideal weight",
+    "healthy weight", "my weight", "how much should i weigh", "how much do i weigh",
+    "am i overweight", "am i underweight", "am i a healthy weight", "my sleep",
+    "how was my sleep", "how did i sleep", "how have i been sleeping", "sleeping enough",
+    "sleep enough", "enough sleep", "how is my sleep",
+)  # fmt: skip
+
+
 @dataclass(frozen=True)
 class Signals:
     """Facts about the user that shape the plan. Built from the stores, never from the model."""
@@ -125,10 +139,18 @@ def plan_run(question: str, signals: Signals, load: Load = Load.NORMAL) -> Plan:
     rules: list[str] = []
     chosen: list[Specialist] = []
 
-    if _NUTRITION.search(question):
+    asks_progress = bool(_PROGRESS.search(question))
+    if asks_progress:
+        chosen.append(Specialist.PROGRESS)
+        rules.append("route.progress_terms")
+        # the progress phrases are taken out first: "my weight" is not a food question
+        question_rest = _PROGRESS.sub(" ", question)
+    else:
+        question_rest = question
+    if _NUTRITION.search(question_rest):
         chosen.append(Specialist.NUTRITION)
         rules.append("route.nutrition_terms")
-    if _MOVEMENT.search(question):
+    if _MOVEMENT.search(question_rest):
         chosen.append(Specialist.MOVEMENT_RECOVERY)
         rules.append("route.movement_terms")
     asks_condition = bool(_CONDITION.search(question))

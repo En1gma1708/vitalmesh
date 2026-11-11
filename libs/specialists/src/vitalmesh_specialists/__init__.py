@@ -10,6 +10,7 @@ from vitalmesh_specialists.agent import (
 from vitalmesh_specialists.condition import ConditionSpecialist, ConditionTools
 from vitalmesh_specialists.movement import MovementSpecialist, MovementTools
 from vitalmesh_specialists.nutrition import NutritionAdvice, NutritionSpecialist
+from vitalmesh_specialists.progress import ProgressSpecialist, ProgressTools
 from vitalmesh_specialists.tools import NutritionTools, ToolResult
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "NutritionAdvice",
     "NutritionSpecialist",
     "NutritionTools",
+    "ProgressSpecialist",
+    "ProgressTools",
     "SpecialistConfig",
     "SpecialistUnavailable",
     "ToolResult",

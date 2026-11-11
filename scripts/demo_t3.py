@@ -55,6 +55,7 @@ SPEC = {
     common_pb2.SPECIALIST_NUTRITION: "nutrition",
     common_pb2.SPECIALIST_MOVEMENT_RECOVERY: "movement_recovery",
     common_pb2.SPECIALIST_CONDITION_MEDICATION: "condition_medication",
+    common_pb2.SPECIALIST_PROGRESS: "progress",
 }
 RISK = {common_pb2.RISK_LOW: "low", common_pb2.RISK_MEDIUM: "medium", common_pb2.RISK_HIGH: "high"}
 STATUS = {

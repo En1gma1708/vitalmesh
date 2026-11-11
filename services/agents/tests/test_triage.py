@@ -156,3 +156,72 @@ def test_every_plan_is_bounded_and_valid(
         assert len(plan.specialists) == 1 and plan.risk is Risk.LOW
     if cond:
         assert plan.risk is not Risk.LOW
+
+
+# ---- D108: everyday progress questions go to the progress specialist, and only it ------------
+@pytest.mark.parametrize(
+    "question",
+    [
+        "how am i doing",
+        "How am I doing this month?",
+        "how i'm doing overall",
+        "what is my bmi",
+        "what's my BMI?",
+        "how is my weight",
+        "what should my target weight be",
+        "what is my ideal weight",
+        "am i at a healthy weight",
+        "am i overweight",
+        "how much should i weigh",
+        "how was my sleep",
+        "how did i sleep this week",
+        "am i sleeping enough",
+        "is my sleep okay",
+        "show my progress",
+        "am i on track",
+    ],
+)
+def test_everyday_progress_questions_go_to_the_progress_specialist_alone(question: str) -> None:
+    plan = plan_run(question, NONE)
+    assert plan.specialists == (Specialist.PROGRESS,), (question, plan.rule_ids)
+    assert plan.tier is Tier.T2 and plan.risk is Risk.LOW
+    assert "route.progress_terms" in plan.rule_ids
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("what should i eat to lose weight", (Specialist.NUTRITION,)),
+        ("give me a high protein breakfast", (Specialist.NUTRITION,)),
+        ("what workout should i do today", (Specialist.MOVEMENT_RECOVERY,)),
+        ("how can i sleep better before a run", (Specialist.MOVEMENT_RECOVERY,)),
+    ],
+)
+def test_questions_that_only_mention_weight_or_sleep_keep_their_old_route(
+    question: str, expected: tuple[Specialist, ...]
+) -> None:
+    assert plan_run(question, NONE).specialists == expected
+
+
+def test_a_mixed_question_gets_both_the_progress_and_the_other_specialist() -> None:
+    plan = plan_run("how is my weight and what should i eat", NONE)
+    assert plan.specialists == (Specialist.PROGRESS, Specialist.NUTRITION)
+    plan = plan_run("how was my sleep and what workout should i do", NONE)
+    assert plan.specialists == (Specialist.PROGRESS, Specialist.MOVEMENT_RECOVERY)
+
+
+def test_the_progress_phrase_is_not_also_matched_as_a_food_or_workout_word() -> None:
+    # "my weight" contains the nutrition word "weight", "my sleep" the movement word "sleep"
+    assert Specialist.NUTRITION not in plan_run("how is my weight", NONE).specialists
+    assert Specialist.MOVEMENT_RECOVERY not in plan_run("how was my sleep", NONE).specialists
+
+
+def test_a_declared_condition_still_adds_the_review_to_a_progress_question() -> None:
+    plan = plan_run("what is my bmi", Signals(conditions=frozenset({"hypertension"})))
+    assert plan.specialists == (Specialist.PROGRESS, Specialist.CONDITION_MEDICATION)
+    assert plan.risk is Risk.MEDIUM and plan.tier is Tier.T3
+
+
+def test_progress_questions_are_shed_to_the_calculators_under_critical_load() -> None:
+    plan = plan_run("how am i doing", NONE, Load.CRITICAL)
+    assert plan.tier is Tier.T0 and plan.specialists == (Specialist.PROGRESS,)

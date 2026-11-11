@@ -28,9 +28,10 @@ from vitalmesh_common.topics import RECOMMENDATIONS_DRAFTED, RUNS_PLANNED
 from vitalmesh_evidence import EvidenceAnswer
 from vitalmesh_specialists.movement import fallback_text as movement_notes
 from vitalmesh_specialists.nutrition import fallback_text as nutrition_notes
+from vitalmesh_specialists.progress import fallback_text as progress_notes
 from vitalmesh_specialists.tools import ToolResult
 
-from vitalmesh_agents.advice import claims_from_results
+from vitalmesh_agents.advice import citations_from_results, claims_from_results
 from vitalmesh_agents.cohort import (
     CITED,
     COMPUTED,
@@ -233,19 +234,26 @@ def _shed_answer(
     if record is None:
         return None
     kinds = [specialist_from_proto(s) for s in payload.specialists]
-    if not set(kinds) <= set(FILL_TOOLS):
+    if not set(kinds) <= set(FILL_TOOLS) | {Specialist.PROGRESS}:
         return None
     results: dict[Specialist, list[ToolResult]] = {}
     for kind in kinds:
         tools = build_tools(kind, deps, record, meta.user_id, now)
-        for name in FILL_TOOLS[kind]:
-            result = tools.call(name, "{}")
+        if kind is Specialist.PROGRESS:
+            # D108: the progress tools are all pure code; which ones the question needs is a
+            # keyword rule, so a progress question is answered under load with no model
+            calls = tools.default_calls(payload.question)
+        else:
+            calls = tuple((name, "{}") for name in FILL_TOOLS[kind])
+        for name, args in calls:
+            result = tools.call(name, args)
             if not result.ok:
                 return None
             results.setdefault(kind, []).append(result)
     notes = {
         Specialist.NUTRITION: nutrition_notes,
         Specialist.MOVEMENT_RECOVERY: movement_notes,
+        Specialist.PROGRESS: progress_notes,
     }
     parts = [PartView(k.value, "fallback", notes[k](results[k])) for k in kinds]
     draft = payloads_pb2.RecommendationDrafted(
@@ -257,7 +265,9 @@ def _shed_answer(
         revision=0,
         used_fallback=True,
     )
-    draft.claims.extend(claims_from_results([r for rs in results.values() for r in rs]))
+    everything = [r for rs in results.values() for r in rs]
+    draft.claims.extend(claims_from_results(everything))
+    draft.citations.extend(citations_from_results(everything))
     return draft
 
 

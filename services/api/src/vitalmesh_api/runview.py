@@ -17,6 +17,7 @@ _PART = {
     "nutrition": "Food",
     "movement_recovery": "Training and sleep",
     "condition_medication": "Your conditions and labs",
+    "progress": "Your progress",
 }
 _BASIS = {
     "computed": "Calculated from your profile and recent data",

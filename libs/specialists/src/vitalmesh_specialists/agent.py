@@ -89,6 +89,16 @@ class Advice(BaseModel):
     results: tuple[ToolResult, ...] = ()
 
 
+# The handler appends a scope note after this marker ("(You are the ... specialist. ...)"); code
+# that reads the person's own words (keyword rules) must not see it (D108).
+SCOPE_MARKER = "\n\n(You are the "
+
+
+def strip_scope(question: str) -> str:
+    """The question as the person wrote it, without the scope note a handler appended."""
+    return question.split(SCOPE_MARKER, 1)[0]
+
+
 class ToolsLike(Protocol):
     @property
     def specs(self) -> tuple[ToolSpec, ...]: ...
@@ -321,7 +331,9 @@ class ToolSpecialist:
         """The helper's contribution with no model at all: run its ``default_calls`` and let the
         configured fallback phrase the results (the same deterministic text a failed draft gets)."""
         results: list[ToolResult] = []
-        for name, arguments in tools.default_calls(question):
+        # the keyword rules must read what the PERSON asked: the scope note the handler appends
+        # names the helper's own topics ("exercise", "sleep", "weight") and would match them all
+        for name, arguments in tools.default_calls(strip_scope(question)):
             try:
                 results.append(tools.call(name, arguments))
             except Exception:  # a broken tool must not take the helper down with it

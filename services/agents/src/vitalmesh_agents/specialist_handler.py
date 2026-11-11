@@ -27,10 +27,12 @@ from vitalmesh_specialists import (
     MovementTools,
     NutritionSpecialist,
     NutritionTools,
+    ProgressSpecialist,
+    ProgressTools,
     SpecialistUnavailable,
     ToolSpecialist,
 )
-from vitalmesh_specialists.agent import RouterLike, ToolsLike
+from vitalmesh_specialists.agent import SCOPE_MARKER, RouterLike, ToolsLike
 from vitalmesh_specialists.tools import EvidenceLike
 from vitalmesh_stores import HistoryStore, LabStore, ProfileRecord, ProfileStore, WorkoutLog
 from vitalmesh_tracing import NULL, Tracer
@@ -67,6 +69,7 @@ SCOPE = {
     Specialist.NUTRITION: "food and nutrition",
     Specialist.MOVEMENT_RECOVERY: "exercise, training and sleep",
     Specialist.CONDITION_MEDICATION: "declared conditions, medications and lab results",
+    Specialist.PROGRESS: "everyday progress, sleep, weight and BMI",
 }
 MIN_WAIT_S = 10.0
 # one model call may wait this long for a provider's rate limit; a longer wait (a daily token
@@ -81,7 +84,7 @@ FALLBACK_RESERVE_S = 25.0
 def scoped_question(kind: Specialist, question: str) -> str:
     """Each specialist answers only its own part: overlap wastes quota and contradicts."""
     return (
-        f"{question}\n\n(You are the {SCOPE[kind]} specialist. Answer only the "
+        f"{question}{SCOPE_MARKER}{SCOPE[kind]} specialist. Answer only the "
         f"{SCOPE[kind]} part of this question; other specialists cover the rest.)"
     )
 
@@ -122,6 +125,8 @@ def build_specialist(
         return NutritionSpecialist(deps.router, **common)
     if kind is Specialist.MOVEMENT_RECOVERY:
         return MovementSpecialist(deps.router, **common)
+    if kind is Specialist.PROGRESS:
+        return ProgressSpecialist(deps.router, **common)
     return ConditionSpecialist(deps.router, **common)
 
 
@@ -155,6 +160,8 @@ def build_tools(
         return MovementTools(
             profile, sleep, deps.history, deps.evidence, now, workouts=deps.workouts
         )
+    if kind is Specialist.PROGRESS:
+        return ProgressTools(profile, deps.history, now)
     return ConditionTools(profile, deps.labs.list(user_id), deps.evidence)
 
 

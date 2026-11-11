@@ -69,6 +69,7 @@ ROLES = [
     "nutrition",
     "movement",
     "condition",
+    "progress",
     "aggregator",
     "synthesizer",
     "guardian",
