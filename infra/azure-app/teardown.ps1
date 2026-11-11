@@ -30,5 +30,5 @@ if ($exists) {
 }
 
 Remove-Item (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) ".reviewer-credentials.txt") -ErrorAction SilentlyContinue
-Remove-Item "$env:TEMP\vitalmesh_demo_known_hosts" -ErrorAction SilentlyContinue
+Remove-Item (Join-Path ([System.IO.Path]::GetTempPath()) "vitalmesh_demo_known_hosts") -ErrorAction SilentlyContinue
 Write-Output "Done: '$group' no longer exists. Nothing from the demo is running or billing."

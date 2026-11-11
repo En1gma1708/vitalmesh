@@ -25,6 +25,9 @@ REPO=https://github.com/En1gma1708/vitalmesh.git
 CADDY_IMAGE=caddy:2.8.4
 
 step() { printf '\n== %s\n' "$*"; }
+# The SSH user joins the docker group at first boot but this session predates it (first real run,
+# "permission denied ... docker.sock"): every docker call goes through sudo. Stdin is passed through.
+docker() { sudo docker "$@"; }
 
 step "wait for first-boot setup (docker, uv)"
 for _ in $(seq 1 120); do [ -f /var/lib/cloud/instance/vitalmesh-ready ] && break; sleep 5; done
