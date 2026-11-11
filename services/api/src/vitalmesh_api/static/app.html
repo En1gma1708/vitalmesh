@@ -79,6 +79,13 @@ ol.steps.done li.last::before { background: var(--ok); animation: none; }
 .flow.done li.on:last-child::before { background: var(--ok); border-color: var(--ok); }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--accent-soft), 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 9px transparent, 0 0 0 3px transparent; } }
 
+.flow li.now::after { background: linear-gradient(90deg, var(--line-2), var(--accent), var(--line-2)); background-size: 200% 100%; animation: beam 1.3s linear infinite; }
+@keyframes beam { from { background-position: 200% 0; } to { background-position: -100% 0; } }
+
+/* loading skeletons: the shape of what is coming, so the page does not jump */
+.skel { min-height: var(--h, 120px); border-radius: var(--r-s); background: linear-gradient(90deg, var(--card-2) 30%, var(--line) 50%, var(--card-2) 70%); background-size: 300% 100%; animation: shimmer 1.5s ease-in-out infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
 /* chart tooltip (pointer, touch and keyboard) */
 .tip { position: absolute; transform: translate(-50%, -100%); background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 560; padding: 5px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: var(--shadow); }
 .probe { fill: var(--card); stroke: var(--fg); stroke-width: 2; }
@@ -212,17 +219,17 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
 
     <div class="group" id="today">
       <div class="grid">
-        <section class="card wide"><h2>Goals</h2><div class="rings" id="rings"></div></section>
+        <section class="card wide"><h2>Goals</h2><div class="rings" id="rings"><div class="skel" style="--h:100px" aria-hidden="true"></div></div></section>
       </div>
     </div>
 
     <div class="group" id="trends">
       <h2 class="group-title">Trends</h2>
       <div class="grid">
-        <section class="card"><h2>Weight</h2><div id="weight"></div></section>
-        <section class="card"><h2>Sleep</h2><div id="sleep"></div></section>
-        <section class="card"><h2>Active minutes per week</h2><div id="active"></div></section>
-        <section class="card"><h2>Calories</h2><div id="energy"></div></section>
+        <section class="card"><h2>Weight</h2><div id="weight"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Sleep</h2><div id="sleep"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Active minutes per week</h2><div id="active"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
+        <section class="card"><h2>Calories</h2><div id="energy"><div class="skel" style="--h:220px" aria-hidden="true"></div></div></section>
       </div>
     </div>
 
@@ -230,8 +237,8 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
       <h2 class="group-title">Health</h2>
       <div class="grid">
         <section class="card wide"><h2>Your numbers</h2><ul class="nums" id="numbers"></ul></section>
-        <section class="card wide"><h2>Lab results</h2><div id="labs"></div></section>
-        <section class="card wide"><h2>Today's meals</h2><div id="meals"></div></section>
+        <section class="card wide"><h2>Lab results</h2><div id="labs"><div class="skel" style="--h:120px" aria-hidden="true"></div></div></section>
+        <section class="card wide"><h2>Today's meals</h2><div id="meals"><div class="skel" style="--h:100px" aria-hidden="true"></div></div></section>
       </div>
     </div>
 
@@ -513,8 +520,23 @@ function ring(host, value, goal, label, unit, color) {
   svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", class: "ring-fg", stroke: css(color || "--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
   svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:18px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
   wrap.appendChild(svg);
-  wrap.insertAdjacentHTML("beforeend", `<div class="big">${Math.round(value)} <span class="lab">/ ${Math.round(goal)} ${unit}</span></div><div class="lab">${label}</div>`);
+  wrap.insertAdjacentHTML("beforeend", `<div class="big"><span class="tick" data-to="${Math.round(value)}">${Math.round(value)}</span> <span class="lab">/ ${Math.round(goal)} ${unit}</span></div><div class="lab">${label}</div>`);
   host.appendChild(wrap);
+  wrap.querySelectorAll(".tick").forEach(tickUp);
+}
+
+// Count up once on load; with reduced motion the final number simply appears.
+function tickUp(node) {
+  const to = Number(node.dataset.to);
+  if (!(to > 0) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const t0 = performance.now(), ms = 800;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / ms);
+    node.textContent = String(Math.round(to * (1 - (1 - k) ** 3)));
+    if (k < 1) requestAnimationFrame(step); else node.textContent = String(to);
+  };
+  node.textContent = "0";
+  requestAnimationFrame(step);
 }
 
 const last = (a) => a[a.length - 1];
@@ -538,6 +560,7 @@ async function main() {
   barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target", color: "--c-energy", unit: "kcal" });
 
   const rings = $("rings");
+  rings.replaceChildren();
   if (sleep?.points.length && sleep.target) ring(rings, last(sleep.points).v, sleep.target, "Last night's sleep", "h", "--c-sleep");
   if (energy?.points.length && energy.target) ring(rings, last(energy.points).v, energy.target, "Calories today", "kcal", "--c-energy");
   if (active?.weekly.length) ring(rings, last(active.weekly).total, active.weekly_goal, "Active minutes this week", "min", "--c-active");
