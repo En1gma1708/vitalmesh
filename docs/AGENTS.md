@@ -97,3 +97,6 @@ Google's Personal Health Agent uses three roles: data science, domain expert, he
 | Domain expert agent (grounded in authoritative sources) | Evidence agent + specialists + knowledge graph | citations required per claim; contraindications are graph queries |
 | Health coach agent (multi-turn goal setting) | Concierge with a coaching style | same idea; ours hands off to tiered compute |
 Our additions: Kafka choreography, tiered compute, Guardian at every boundary, human review.
+
+## Answer fallback (D107)
+The Synthesizer checks its own draft (numbers must come from the claims, at most two drafts). If both drafts fail, the answer is built by code from the specialists' own notes. Those notes passed the specialist's own, weaker check, so before they are joined the code drops any whole sentence that states a number no claim backs (never rewording it); the Guardian gate then checks the result exactly as strictly as any other draft. Found when a good sleep answer was refused because the model had added "the typical 7-9 hours" from memory.
