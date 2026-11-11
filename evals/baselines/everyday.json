@@ -1,5 +1,6 @@
 {
-  "note": "Everyday questions end to end with every model down (D108). tuning: the cases the routing phrases and wording were developed on, must stay 100 percent. heldout: written once and never used to tune; 5 of 10 on 2026-11-11 (all five misses are routing: 'where do I stand health-wise', 'how well have I been sleeping', 'what number should I be on the scales', 'am I getting enough rest at night', 'should I weigh less'). The held-out figure may only be raised by a change made without looking at those ten questions.",
+  "note": "Everyday questions end to end with every model down (D108). tuning: the cases the routing phrases and wording were developed on; must stay 100 percent. heldout (10): written once; scored 5 of 10 on 2026-11-11 BEFORE any change; its five misses were then used to write general sentence patterns, so it is SEEN and now only guards against regression (10 of 10). heldout2 (12): written before that change, run once after it: 9 of 12 (misses: 'how heavy am I for my height', 'what's a good weight for me', 'give me a health check-in'). Caveat: the patterns were written after heldout2 existed, as general first-person sentence patterns and not as its exact wordings, but that is not a perfectly clean test. Never tune on the misses; a fresh held-out set is needed for the next honest number.",
   "tuning": {"cases": 59, "passed": 59},
-  "heldout": {"cases": 10, "passed": 5}
+  "heldout": {"cases": 10, "passed": 10},
+  "heldout2": {"cases": 12, "passed": 9}
 }

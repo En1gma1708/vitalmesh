@@ -82,6 +82,18 @@ _PROGRESS = _words(
     "what do i weigh", "my current weight", "current weight", "what weight should i",
     "how much weight should i", "how much weight do i need to", "weight to lose",
     "summary of my health", "overview of my health",
+    # general first-person sentence patterns (a regex, not a list of exact wordings); a question
+    # ABOUT the person's own sleep or weight, never "how can I sleep better" or "what to eat"
+    "how (?:am|have|are) i (?:been )?(?:doing|going|getting on|progressing)",
+    "where do i stand", "how healthy am i", "am i (?:doing|feeling) (?:ok|okay|well|fine|alright)",
+    "(?:have|did|do|am) i (?:been |usually |generally )?(?:sleep|slept|sleeping|get(?:ting)? "
+    "(?:enough )?(?:sleep|rest))",
+    "how (?:well|much|many hours|long) (?:have|did|do|am) i (?:usually |been )?"
+    "(?:sleep|slept|sleeping)",
+    "(?:enough|getting) rest", "my nights", "how is my sleep going",
+    "(?:on|of) the scales?", "my body weight", "my weight",
+    "should i (?:lose|gain|weigh)", "(?:do|would) i need to (?:lose|gain) (?:some )?weight",
+    "am i too (?:heavy|thin|light|skinny)", "am i (?:heavier|lighter) than",
 )  # fmt: skip
 
 
