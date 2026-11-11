@@ -76,7 +76,11 @@ form.row input, form.row select, .row input, .row select { width: auto; flex: 1 
 input.grow { flex: 1 1 260px; width: auto; }
 .row input[type="checkbox"], .row input[type="radio"] { flex: none; }
 input[type="file"] { padding: 8px; }
-@media (pointer: coarse) { button, input, select { min-height: 44px; } }
+@media (pointer: coarse) {
+  button, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 22px; height: 22px; }
+  .checks label, label.row { min-height: 44px; }  /* the tap target is the whole label */
+}
 
 /* ---- tables, tags, lists */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }

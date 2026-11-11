@@ -65,6 +65,27 @@ ol.steps.done li.last::before { background: var(--ok); animation: none; }
 #history details[open] summary::before { transform: rotate(90deg); }
 #history .answer { margin-top: 10px; }
 
+/* the pipeline: a question travelling through the real stages as their events arrive */
+.flow { list-style: none; margin: 18px 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); }
+.flow li { position: relative; text-align: center; font-size: 12px; line-height: 1.25; color: var(--muted); padding: 24px 2px 0; }
+.flow li::before { content: ""; position: absolute; top: 3px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--card); border: 2px solid var(--line-2); z-index: 1; transition: background .3s, border-color .3s; }
+.flow li::after { content: ""; position: absolute; top: 9px; left: -50%; width: 100%; height: 2px; background: var(--line-2); transition: background .3s; }
+.flow li:first-child::after { display: none; }
+.flow li.on { color: var(--fg); }
+.flow li.on::before { background: var(--accent); border-color: var(--accent); }
+.flow li.on::after { background: var(--accent); }
+.flow li.now::before { animation: pulse 1.6s ease-out infinite; }
+.flow li.unseen { opacity: .6; }
+.flow.done li.on:last-child::before { background: var(--ok); border-color: var(--ok); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--accent-soft), 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 9px transparent, 0 0 0 3px transparent; } }
+
+/* chart tooltip (pointer, touch and keyboard) */
+.tip { position: absolute; transform: translate(-50%, -100%); background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 560; padding: 5px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: var(--shadow); }
+.probe { fill: var(--card); stroke: var(--fg); stroke-width: 2; }
+svg[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+.ring-fg { animation: ring-in .9s cubic-bezier(.2, .7, .2, 1); }
+@keyframes ring-in { from { stroke-dasharray: 0 400; } }
+
 /* ---- goals, charts, meals */
 .rings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .ring { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 16px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--bg); }
@@ -167,6 +188,9 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
               <button id="ask-btn" type="submit">Ask</button>
             </form>
             <div class="chips" id="chips"></div>
+        <ol class="flow" id="flow" aria-hidden="true" hidden>
+          <li>Question</li><li>Helpers</li><li>Combine</li><li>Safety rules</li><li>Second check</li><li>Released</li>
+        </ol>
             <ol class="steps" id="steps" aria-live="polite"></ol>
             <div id="answer" class="answer" hidden aria-live="polite"></div>
           </section>
@@ -398,6 +422,45 @@ function legend(host, items) {
   host.appendChild(d);
 }
 
+// Show the value under the pointer, finger or arrow keys; the chart itself stays a labelled image.
+function probe(host, svg, pts) {
+  if (!pts.length) return;
+  host.style.position = "relative";
+  const tip = document.createElement("div");
+  tip.className = "tip"; tip.hidden = true; tip.setAttribute("aria-hidden", "true"); host.appendChild(tip);
+  const mark = el("circle", { r: 4.5, class: "probe", visibility: "hidden" });
+  svg.appendChild(mark);
+  let at = -1, timer = 0;
+  const show = (i) => {
+    at = i; const p = pts[i];
+    mark.setAttribute("cx", p.x); mark.setAttribute("cy", p.y); mark.setAttribute("visibility", "visible");
+    tip.textContent = p.text; tip.hidden = false;
+    const r = svg.getBoundingClientRect(), h = host.getBoundingClientRect(), k = r.width / svg.viewBox.baseVal.width;
+    tip.style.left = Math.min(Math.max(r.left - h.left + p.x * k, 48), h.width - 48) + "px";
+    tip.style.top = r.top - h.top + p.y * k - 12 + "px";
+  };
+  const hide = () => { tip.hidden = true; mark.setAttribute("visibility", "hidden"); at = -1; };
+  const nearest = (ev) => {
+    const r = svg.getBoundingClientRect(), x = (ev.clientX - r.left) / (r.width / svg.viewBox.baseVal.width);
+    let best = 0, d = Infinity;
+    pts.forEach((p, i) => { const dd = Math.abs(p.x - x); if (dd < d) { d = dd; best = i; } });
+    return best;
+  };
+  svg.addEventListener("pointermove", (ev) => { clearTimeout(timer); show(nearest(ev)); });
+  svg.addEventListener("pointerdown", (ev) => { clearTimeout(timer); show(nearest(ev)); });
+  svg.addEventListener("pointerup", (ev) => { if (ev.pointerType === "touch") timer = setTimeout(hide, 2500); });
+  svg.addEventListener("pointerleave", (ev) => { if (ev.pointerType !== "touch") hide(); });
+  svg.tabIndex = 0;
+  svg.addEventListener("focus", () => { if (at < 0) show(pts.length - 1); });
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowRight") { ev.preventDefault(); show(Math.min(pts.length - 1, at + 1)); }
+    else if (ev.key === "ArrowLeft") { ev.preventDefault(); show(Math.max(0, at < 0 ? pts.length - 1 : at - 1)); }
+    else if (ev.key === "Escape") hide();
+  });
+  svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}. Use the left and right arrow keys to read each value.`);
+}
+
 function lineChart(host, s, unit) {
   if (!s || !s.points.length) { host.innerHTML = '<div class="empty">No data yet.</div>'; return; }
   const W = 480, H = 220, x0 = 38, x1 = W - 8, y0 = 10, y1 = H - 24;
@@ -413,6 +476,7 @@ function lineChart(host, s, unit) {
   s.points.forEach((p) => svg.appendChild(el("circle", { cx: x(+new Date(p.t)), cy: y(p.v), r: 2.2, fill: css("--c-weight"), opacity: 0.8 })));
   if (s.average.length) svg.appendChild(el("path", { d: path(s.average), fill: "none", stroke: css("--avg"), "stroke-width": 2.4 }));
   svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${last(s.points).v} ${unit} on ${fmtDay(last(s.points).t)}, ${s.points.length} days shown`);
+  probe(host, svg, s.points.map((q) => ({ x: x(+new Date(q.t)), y: y(q.v), text: `${fmtDay(q.t)}: ${q.v} ${unit}` })));
   legend(host, [[css("--c-weight"), `Daily (${unit})`], ...(s.average.length ? [[css("--avg"), "7-day average"]] : [])]);
 }
 
@@ -436,6 +500,7 @@ function barChart(host, bars, opts) {
     svg.appendChild(el("line", { x1: x0, x2: x1, y1: y(opts.line), y2: y(opts.line), stroke: css("--warn"), "stroke-width": 1.6, "stroke-dasharray": "5 4" }));
   }
   svg.setAttribute("aria-label", `${svg.getAttribute("aria-label")}: latest ${Math.round(last(bars).v * 10) / 10} on ${last(bars).label}${opts.line ? `, target ${Math.round(opts.line * 10) / 10}` : ""}`);
+  probe(host, svg, bars.map((b, i) => ({ x: x0 + i * bw + bw / 2, y: y(b.v), text: `${b.label}: ${Math.round(b.v * 10) / 10}${opts.unit ? " " + opts.unit : ""}` })));
   legend(host, [[css(opts.color || "--accent"), opts.label], ...(opts.line ? [[css("--warn"), opts.lineLabel]] : [])]);
 }
 
@@ -445,7 +510,7 @@ function ring(host, value, goal, label, unit, color) {
   wrap.className = "ring";
   const svg = el("svg", { viewBox: "0 0 100 100", width: 104, height: 104, role: "img", "aria-label": `${label}: ${Math.round(frac * 100)} percent of your goal` });
   svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css("--grid"), "stroke-width": 9 }));
-  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", stroke: css(color || "--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
+  svg.appendChild(el("circle", { cx: 50, cy: 50, r, fill: "none", class: "ring-fg", stroke: css(color || "--accent"), "stroke-width": 9, "stroke-linecap": "round", "stroke-dasharray": `${c * frac} ${c}`, transform: "rotate(-90 50 50)" }));
   svg.appendChild(el("text", { x: 50, y: 55, "text-anchor": "middle", style: `font-size:18px;font-weight:650;fill:${css("--fg")}` }, `${Math.round(frac * 100)}%`));
   wrap.appendChild(svg);
   wrap.insertAdjacentHTML("beforeend", `<div class="big">${Math.round(value)} <span class="lab">/ ${Math.round(goal)} ${unit}</span></div><div class="lab">${label}</div>`);
@@ -468,9 +533,9 @@ async function main() {
   ]);
 
   lineChart($("weight"), weight, "kg");
-  barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target", color: "--c-sleep" });
-  barChart($("active"), (active?.weekly || []).slice(-12).map((w) => ({ label: fmtDay(w.week_start), v: w.total })), { label: "Minutes per week", line: active?.weekly_goal, lineLabel: "150 min goal", color: "--c-active" });
-  barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target", color: "--c-energy" });
+  barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target", color: "--c-sleep", unit: "h" });
+  barChart($("active"), (active?.weekly || []).slice(-12).map((w) => ({ label: fmtDay(w.week_start), v: w.total })), { label: "Minutes per week", line: active?.weekly_goal, lineLabel: "150 min goal", color: "--c-active", unit: "min" });
+  barChart($("energy"), (energy?.points || []).slice(-14).map(day), { label: "Calories eaten", line: energy?.target, lineLabel: "Your target", color: "--c-energy", unit: "kcal" });
 
   const rings = $("rings");
   if (sleep?.points.length && sleep.target) ring(rings, last(sleep.points).v, sleep.target, "Last night's sleep", "h", "--c-sleep");
@@ -509,7 +574,28 @@ SAMPLES.forEach((s) => {
   $("chips").appendChild(b);
 });
 
+// The pipeline follows the real step events by their wording; the timeline below it is the full record.
+const FLOW_RULES = [[/Safety check passed/i, 3], [/independent check/i, 4], [/^Done\b/, 5], [/Putting the answer together|Draft ready/i, 2],
+  [/Asking the right helpers|: done\./i, 1], [/Sending|Got your question/i, 0]];
+let flowAt = -1; const flowSeen = new Set();
+function flowPaint(finished) {
+  [...$("flow").children].forEach((li, i) => {
+    li.classList.toggle("on", flowSeen.has(i) || (!finished && i < flowAt));
+    li.classList.toggle("now", !finished && i === flowAt);
+    li.classList.toggle("unseen", finished && !flowSeen.has(i));  // not shown as an event on this run (no claim either way)
+  });
+  $("flow").classList.toggle("done", finished);
+}
+function flowReset() { flowAt = -1; flowSeen.clear(); $("flow").hidden = false; flowPaint(false); }
+function flowAdvance(text) {
+  const hit = FLOW_RULES.find(([re]) => re.test(text));
+  if (!hit || hit[1] < flowAt) return;
+  flowAt = hit[1]; flowSeen.add(flowAt); flowPaint(false);
+}
+function flowFinish() { flowPaint(true); }
+
 function addStep(text) {
+  flowAdvance(text);
   const ol = $("steps");
   ol.querySelectorAll("li.last").forEach((li) => li.classList.remove("last"));
   const li = document.createElement("li");
@@ -572,7 +658,7 @@ $("ask-form").addEventListener("submit", async (ev) => {
   const q = $("q").value.trim();
   if (!q) return;
   if (stream) { stream.close(); stream = null; }
-  $("steps").innerHTML = ""; $("steps").classList.remove("done"); $("answer").hidden = true; $("ask-btn").disabled = true;
+  flowReset(); $("steps").innerHTML = ""; $("steps").classList.remove("done"); $("answer").hidden = true; $("ask-btn").disabled = true;
   let live = false;  // while a stream is open the button stays disabled
   try {
     const r = await fetch(`/v1/users/${encodeURIComponent(uid)}/questions`, {
@@ -585,8 +671,8 @@ $("ask-form").addEventListener("submit", async (ev) => {
     live = true;
     stream = new EventSource(`/v1/users/${encodeURIComponent(uid)}/runs/${out.correlation_id}/stream`);
     stream.addEventListener("step", (e) => addStep(JSON.parse(e.data).text));
-    stream.addEventListener("done", (e) => { $("steps").classList.add("done"); showAnswer(JSON.parse(e.data)); stream.close(); stream = null; $("ask-btn").disabled = false; });
-    stream.addEventListener("timeout", () => { $("steps").classList.add("done"); addStep("This is taking longer than expected. Please try again in a minute."); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.addEventListener("done", (e) => { flowFinish(); $("steps").classList.add("done"); showAnswer(JSON.parse(e.data)); stream.close(); stream = null; $("ask-btn").disabled = false; });
+    stream.addEventListener("timeout", () => { flowFinish(); $("steps").classList.add("done"); addStep("This is taking longer than expected. Please try again in a minute."); stream.close(); stream = null; $("ask-btn").disabled = false; });
     stream.onerror = () => { if (stream) { addStep("Lost the connection to the live updates."); stream.close(); stream = null; $("ask-btn").disabled = false; } };
   } catch (err) {
     addStep("Couldn't reach the service. Please try again.");

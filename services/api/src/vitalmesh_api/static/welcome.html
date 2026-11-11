@@ -50,7 +50,17 @@ legend { font-size: 13px; color: var(--muted); padding: 0 6px; }
 .checks { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .checks label { display: flex; align-items: center; gap: 7px; margin: 5px 0; font-size: 14px; color: var(--fg); }
 .notice { background: var(--accent-soft); border: 1px solid var(--line-2); border-radius: var(--r-s); padding: 12px 14px; font-size: 14px; margin-top: 16px; }
-.pulse-mark { margin-bottom: 4px; }
+.progress ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 18px 0 6px; padding: 0; }
+.progress li { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 3px solid var(--line-2); color: var(--muted); font-size: 13px; min-width: 0; }
+.progress li span { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 650; border: 1px solid var(--line-2); background: var(--card); }
+.progress li b { font-weight: 560; overflow-wrap: anywhere; }
+.progress li.on { border-top-color: var(--accent); color: var(--fg); }
+.progress li.on span { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.step { margin-top: 6px; }
+.actions { display: flex; gap: 10px; margin-top: 18px; }
+.actions button { min-width: 7em; }
+.actions button.primary, .actions #next-btn { flex: 1; margin-top: 0; width: auto; }
+@media (max-width: 560px) { .progress li:not(.now) b { display: none; } }
 
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr; }
@@ -110,27 +120,50 @@ legend { font-size: 13px; color: var(--muted); padding: 0 6px; }
       <p class="sub">Your answers shape your food, training and safety guidance. You can change them later.</p>
       <p class="notice">We sent a link to your email. Open it to confirm your address; until then you can fill this in, but not ask questions.</p>
       <form id="onboarding-form" novalidate>
-        <div class="grid2">
-          <div><label for="sex">Sex</label><select id="sex"></select></div>
-          <div><label for="age">Age</label><input id="age" type="number" min="18" max="100" required></div>
-          <div><label for="weight">Weight (kg)</label><input id="weight" type="number" min="30" max="300" step="0.1" required></div>
-          <div><label for="height">Height (cm)</label><input id="height" type="number" min="120" max="230" step="0.1" required></div>
-          <div><label for="rhr">Resting heart rate (bpm)</label><input id="rhr" type="number" min="35" max="120" required></div>
-          <div><label for="activity">Activity level</label><select id="activity"></select></div>
-          <div><label for="goal">Goal</label><select id="goal"></select></div>
-          <div><label for="diet">Diet</label><select id="diet"></select></div>
+        <nav class="progress" aria-label="Progress">
+          <ol>
+            <li id="p1" class="on now" aria-current="step"><span>1</span><b>About you</b></li>
+            <li id="p2"><span>2</span><b>Goals and food</b></li>
+            <li id="p3"><span>3</span><b>Health and consent</b></li>
+          </ol>
+        </nav>
+
+        <div class="step" id="step1">
+          <div class="grid2">
+            <div><label for="sex">Sex</label><select id="sex"></select></div>
+            <div><label for="age">Age</label><input id="age" type="number" min="18" max="100" required></div>
+            <div><label for="weight">Weight (kg)</label><input id="weight" type="number" min="30" max="300" step="0.1" required></div>
+            <div><label for="height">Height (cm)</label><input id="height" type="number" min="120" max="230" step="0.1" required></div>
+            <div><label for="rhr">Resting heart rate (bpm)</label><input id="rhr" type="number" min="35" max="120" required></div>
+          </div>
         </div>
-        <fieldset><legend>Allergies</legend><div class="checks" id="allergens"></div></fieldset>
-        <fieldset><legend>Health conditions</legend><div class="checks" id="conditions"></div></fieldset>
-        <fieldset><legend>Medication you take (kinds only, never names or doses)</legend><div class="checks" id="medications"></div></fieldset>
-        <p class="sub" style="margin-top:12px">Only the conditions and medication kinds we have safety rules for are listed. For anything else, please ask a doctor.</p>
-        <div class="notice">
-          <label style="display:flex;gap:8px;align-items:flex-start;margin:0;color:var(--fg)">
-            <input id="consent" type="checkbox" style="margin-top:4px" required>
-            <span>I understand this is not medical advice and does not replace a doctor. I agree to VitalMesh storing the answers above to give me guidance, and I can download or delete my data at any time.</span>
-          </label>
+
+        <div class="step" id="step2" hidden>
+          <div class="grid2">
+            <div><label for="activity">Activity level</label><select id="activity"></select></div>
+            <div><label for="goal">Goal</label><select id="goal"></select></div>
+            <div><label for="diet">Diet</label><select id="diet"></select></div>
+          </div>
+          <fieldset><legend>Allergies</legend><div class="checks" id="allergens"></div></fieldset>
         </div>
-        <button class="primary" id="onboarding-btn" type="submit">Save and continue</button>
+
+        <div class="step" id="step3" hidden>
+          <fieldset><legend>Health conditions</legend><div class="checks" id="conditions"></div></fieldset>
+          <fieldset><legend>Medication you take (kinds only, never names or doses)</legend><div class="checks" id="medications"></div></fieldset>
+          <p class="sub" style="margin-top:12px">Only the conditions and medication kinds we have safety rules for are listed. For anything else, please ask a doctor.</p>
+          <div class="notice">
+            <label style="display:flex;gap:8px;align-items:flex-start;margin:0;color:var(--fg)">
+              <input id="consent" type="checkbox" style="margin-top:4px" required>
+              <span>I understand this is not medical advice and does not replace a doctor. I agree to VitalMesh storing the answers above to give me guidance, and I can download or delete my data at any time.</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="ghost" id="back-btn" hidden>Back</button>
+          <button type="button" id="next-btn">Next</button>
+          <button class="primary" id="onboarding-btn" type="submit" hidden>Save and continue</button>
+        </div>
         <div class="err" id="onboarding-err" role="alert"></div>
       </form>
     </section>
@@ -187,8 +220,39 @@ async function loadChoices() {
 function showOnboarding() {
   $("auth-card").hidden = true;
   $("onboarding-card").hidden = false;
+  showStep(1);
   $("onboarding-card").scrollIntoView();
 }
+
+// ---- three steps with a progress indicator; the last step saves (the checks stay on the server too)
+let step = 1;
+const STEPS = 3;
+function showStep(n) {
+  step = n;
+  for (let i = 1; i <= STEPS; i++) {
+    $(`step${i}`).hidden = i !== n;
+    const li = $(`p${i}`);
+    li.classList.toggle("on", i <= n);
+    li.classList.toggle("now", i === n);
+    if (i === n) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  }
+  $("back-btn").hidden = n === 1;
+  $("next-btn").hidden = n === STEPS;
+  $("onboarding-btn").hidden = n !== STEPS;
+  $("onboarding-err").textContent = "";
+  if (n > 1 || document.activeElement === $("next-btn")) $(`step${n}`).querySelector("input, select")?.focus();
+}
+function stepValid(n) {
+  for (const f of $(`step${n}`).querySelectorAll("input, select")) {
+    if (f.required && !f.checkValidity()) {
+      if ($(`step${n}`).hidden) showStep(n);  // a hidden field cannot show its message
+      f.reportValidity(); f.focus(); return false;
+    }
+  }
+  return true;
+}
+$("next-btn").addEventListener("click", () => { if (stepValid(step)) showStep(step + 1); });
+$("back-btn").addEventListener("click", () => showStep(step - 1));
 
 $("auth-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -210,6 +274,8 @@ const picked = (name) => [...document.querySelectorAll(`input[name="${name}"]:ch
 
 $("onboarding-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  if (step < STEPS) { if (stepValid(step)) showStep(step + 1); return; }  // Enter on an early step means Next
+  if (!stepValid(1) || !stepValid(2) || !stepValid(3)) return;
   $("onboarding-err").textContent = ""; $("onboarding-btn").disabled = true;
   const profile = {
     sex: $("sex").value, age_years: Number($("age").value), weight_kg: Number($("weight").value),
