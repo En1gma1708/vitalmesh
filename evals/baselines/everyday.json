@@ -1,0 +1,5 @@
+{
+  "note": "Everyday questions end to end with every model down (D108). tuning: the cases the routing phrases and wording were developed on, must stay 100 percent. heldout: written once and never used to tune; 5 of 10 on 2026-11-11 (all five misses are routing: 'where do I stand health-wise', 'how well have I been sleeping', 'what number should I be on the scales', 'am I getting enough rest at night', 'should I weigh less'). The held-out figure may only be raised by a change made without looking at those ten questions.",
+  "tuning": {"cases": 59, "passed": 59},
+  "heldout": {"cases": 10, "passed": 5}
+}

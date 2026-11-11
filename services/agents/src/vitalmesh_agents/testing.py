@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from vitalmesh_accounts import QaHistory, ReviewQueue
 from vitalmesh_common.run import Specialist
@@ -108,7 +109,11 @@ def world(
     runlog: RunLog | None = None,
     qa: QaHistory | None = None,
     reviews: ReviewQueue | None = None,
+    body: dict[str, Any] | None = None,
+    history: InMemoryHistoryStore | None = None,
 ) -> tuple[Bus, ScriptedRouter, Clock]:
+    """``body`` overrides fields of the first user's profile (age, weight, height, goal, ...) and
+    ``history`` is the store the helpers read their logged weights and nights from (D108)."""
     profiles = InMemoryProfileStore()
     profiles.put(
         ProfileRecord(
@@ -122,6 +127,7 @@ def world(
                     "activity": "moderate",
                     "resting_hr_bpm": 60,
                     "conditions": conditions or [],
+                    **(body or {}),
                 }
             ),
             recent_sleep_hours=tuple([8.0] * 14),
@@ -183,7 +189,7 @@ def world(
         evidence=NoEvidence(),
         profiles=profiles,
         labs=lab_store,
-        history=InMemoryHistoryStore(),
+        history=history if history is not None else InMemoryHistoryStore(),
         sleep=lambda _s: None,
     )
     bus = build_graph(

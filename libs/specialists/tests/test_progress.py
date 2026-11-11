@@ -212,8 +212,8 @@ def test_the_overview_with_no_data_is_honest() -> None:
         ("how am i doing", ["get_status_overview"]),
         ("how was my sleep this week", ["get_sleep_review"]),
         ("how is my weight", ["get_weight_review", "get_body_metrics"]),
-        ("what should my target weight be", ["get_weight_review", "get_body_metrics"]),
-        ("what is my bmi", ["get_weight_review", "get_body_metrics"]),
+        ("what should my target weight be", ["get_body_metrics", "get_weight_review"]),
+        ("what is my bmi", ["get_body_metrics", "get_weight_review"]),
         (
             "how is my sleep and my weight",
             ["get_sleep_review", "get_weight_review", "get_body_metrics"],
@@ -314,3 +314,30 @@ def test_the_scope_note_a_handler_appends_does_not_change_which_tools_run() -> N
     helper = ProgressSpecialist(DownRouter(), attempts=1, sleep=no_sleep)
     advice = helper.advise_or_degrade(scoped, tools())
     assert set(advice.tools_used) == {"get_weight_review", "get_body_metrics"}
+
+
+# ------------------------------- notes must survive the answer's "no stray number" scrub
+def test_no_note_contains_a_figure_because_a_note_with_one_would_be_dropped() -> None:
+    """The assembled answer drops any sentence stating a number that no claim backs (D107). A safety
+    note with a number in it ("at 65 and over ...") would vanish from the answer without a trace."""
+    people: list[dict[str, Any]] = [
+        {}, {"goal": "maintain"}, {"goal": "gain"}, {"weight_kg": 50}, {"age_years": 70},
+        {"weight_kg": 70}, {"weight_kg": 140}, {"weight_kg": 45}, {"conditions": ["hypertension"]},
+    ]  # fmt: skip
+    for extra in people:
+        t = tools(**extra)
+        for name in (
+            "get_status_overview",
+            "get_weight_review",
+            "get_sleep_review",
+            "get_body_metrics",
+        ):
+            for note in t.call(name, "{}").payload["notes"]:
+                assert not re.search(r"\d", note), (extra, name, note)
+
+
+def test_a_target_question_leads_with_body_metrics_and_a_weight_question_with_readings() -> None:
+    t = tools()
+    first_target = next(n for n, _ in t.default_calls("what should my target weight be"))
+    first_weight = next(n for n, _ in t.default_calls("how is my weight"))
+    assert first_target == "get_body_metrics" and first_weight == "get_weight_review"

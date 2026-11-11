@@ -122,6 +122,15 @@ SPECS: tuple[ToolSpec, ...] = (
 )
 TOOL_NAMES = frozenset(s.name for s in SPECS)
 
+# A question about a TARGET or the BMI is answered by the body-metrics tool first (the range, the
+# milestone, the caveat); a question about the weight itself or its trend leads with the readings.
+_TARGET_Q = re.compile(
+    r"\b(?:bmi|body mass|target|ideal|goal weight|healthy weight|aim for|should i weigh|"
+    r"overweight|underweight|obese|obesity|weight (?:should i|to lose)|"
+    r"how much (?:weight )?should i (?:weigh|lose)|what weight)\b",
+    re.I,
+)
+
 _SLEEP_Q = re.compile(r"\b(?:sleep|sleeping|slept|asleep|rest(?:ed)?|bedtime|insomnia)\b", re.I)
 _WEIGHT_Q = re.compile(
     r"\b(?:weigh|weight|weights|weighing|bmi|body mass|overweight|underweight|obese|obesity|"
@@ -169,7 +178,8 @@ class ProgressTools:
         if _SLEEP_Q.search(question):
             calls.append(("get_sleep_review", "{}"))
         if _WEIGHT_Q.search(question):
-            calls += [("get_weight_review", "{}"), ("get_body_metrics", "{}")]
+            both = [("get_weight_review", "{}"), ("get_body_metrics", "{}")]
+            calls += both[::-1] if _TARGET_Q.search(question) else both
         if not calls:
             calls.append(("get_status_overview", "{}"))
         return tuple(calls)
@@ -316,7 +326,7 @@ class ProgressTools:
             )
         elif a.kind is bs.TargetKind.OLDER_ADULT:
             notes.append(
-                "At 65 and over, BMI is an even rougher guide, so I give the range but no "
+                "For older adults BMI is an even rougher guide, so I give the range but no "
                 "weight-loss target. Talk to your doctor about what weight is right for you."
             )
         elif a.kind is bs.TargetKind.GAIN_GOAL:
@@ -581,8 +591,10 @@ def fallback_text(results: Sequence[ToolResult]) -> str:
             if c["metric"] in (METRIC_HEALTHY_HIGH, METRIC_LOSS_RATE_PCT):
                 continue
             parts.append(c["text"])
-        parts += list(r.payload.get("references", []))
+        # the notes (the BMI caveat, "talk to a doctor") come before the long reference sentences:
+        # the answer is capped in length and a safety note must never be the part that is cut
         parts += list(r.payload.get("notes", []))
+        parts += list(r.payload.get("references", []))
     if not parts:
         return "I could not find checked information to answer that. A doctor or coach can help."
     return " ".join(dict.fromkeys(parts))

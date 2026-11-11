@@ -77,7 +77,11 @@ _PROGRESS = _words(
     "healthy weight", "my weight", "how much should i weigh", "how much do i weigh",
     "am i overweight", "am i underweight", "am i a healthy weight", "my sleep",
     "how was my sleep", "how did i sleep", "how have i been sleeping", "sleeping enough",
-    "sleep enough", "enough sleep", "how is my sleep",
+    "sleep enough", "enough sleep", "how is my sleep", "my average sleep", "average sleep",
+    "am i losing weight", "am i gaining weight", "have i gained weight", "have i lost weight",
+    "what do i weigh", "my current weight", "current weight", "what weight should i",
+    "how much weight should i", "how much weight do i need to", "weight to lose",
+    "summary of my health", "overview of my health",
 )  # fmt: skip
 
 
