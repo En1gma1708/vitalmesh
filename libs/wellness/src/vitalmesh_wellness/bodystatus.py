@@ -11,8 +11,10 @@ answers state comes from here, and every threshold is a named constant below (ne
   Underweight, in-range, older adults and the goal "gain" get NO loss target.
 * A trend needs at least 3 readings spanning at least 7 days; otherwise it says so. Nothing is
   extrapolated past the data, and a last reading older than 14 days is marked stale.
-* Sleep: the reference range for adults is 7 to 9 hours a night (a cited public-health figure,
-  ingested into the corpus so the answer can quote it); a trend needs 3 or more nights.
+* Sleep: adults need "at least 7-8 hours" a night (NHLBI, Your Guide to Healthy Sleep, 2011,
+  ingested into the corpus so the answer can cite it). The line used here is 7 hours: a week
+  averaging under 7 needs attention; there is no upper limit because no ingested source gives
+  one. A trend needs 3 or more nights.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ TREND_WINDOW_DAYS = 30
 STALE_AFTER_DAYS = 14.0
 SAFE_LOSS_FRACTION_PER_WEEK = 0.01
 
-SLEEP_RANGE_HOURS = (7.0, 9.0)
+SLEEP_MIN_HOURS = 7.0  # the low end of the cited 7-8 hours for adults
 SLEEP_MIN_NIGHTS = 3
 WEEKLY_ACTIVE_MINUTES_GOAL = 150.0
 
@@ -221,8 +223,7 @@ class SleepSummary:
     nights_7d: int
     avg_7d: float | None
     avg_30d: float | None
-    nights_below_range_7d: int
-    nights_above_range_7d: int
+    nights_below_min_7d: int
     spread_7d: float | None  # population standard deviation of the last 7 nights
     change_vs_previous_week: float | None  # average of the last 7 days minus the 7 before
     enough_data: bool
@@ -240,7 +241,6 @@ def sleep_summary(nights: Sequence[tuple[date, float]], today: date) -> SleepSum
     last7 = [h for d, h in by_day.items() if today - timedelta(days=7) < d <= today]
     prev7 = [h for d, h in by_day.items() if today - timedelta(days=14) < d <= today - timedelta(7)]
     last30 = [h for d, h in by_day.items() if today - timedelta(days=30) < d <= today]
-    lo, hi = SLEEP_RANGE_HOURS
     enough = len(last7) >= SLEEP_MIN_NIGHTS
 
     def mean(xs: list[float]) -> float | None:
@@ -254,8 +254,7 @@ def sleep_summary(nights: Sequence[tuple[date, float]], today: date) -> SleepSum
         nights_7d=len(last7),
         avg_7d=mean(last7) if enough else None,
         avg_30d=mean(last30) if len(last30) >= SLEEP_MIN_NIGHTS else None,
-        nights_below_range_7d=sum(1 for h in last7 if h < lo),
-        nights_above_range_7d=sum(1 for h in last7 if h > hi),
+        nights_below_min_7d=sum(1 for h in last7 if h < SLEEP_MIN_HOURS),
         spread_7d=round(statistics.pstdev(last7), 1) if enough else None,
         change_vs_previous_week=change,
         enough_data=enough,
@@ -265,8 +264,7 @@ def sleep_summary(nights: Sequence[tuple[date, float]], today: date) -> SleepSum
 def sleep_status(s: SleepSummary) -> Status:
     if not s.enough_data or s.avg_7d is None:
         return Status.NOT_ENOUGH_DATA
-    lo, hi = SLEEP_RANGE_HOURS
-    return Status.ON_TRACK if lo <= s.avg_7d <= hi else Status.NEEDS_ATTENTION
+    return Status.ON_TRACK if s.avg_7d >= SLEEP_MIN_HOURS else Status.NEEDS_ATTENTION
 
 
 def activity_status(active_minutes_last_7d: float | None) -> Status:

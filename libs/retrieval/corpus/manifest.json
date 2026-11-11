@@ -19,6 +19,24 @@
       "licence": "public domain (stated by dietaryguidelines.gov for the text, tables and figures; photographs and illustrations are excluded and not ingested)",
       "licence_evidence": "dietaryguidelines.gov policy page and the 2020-2025 presentation decks (found by search 2026-10-21); the PDF itself states no licence. This edition has been superseded by 2025-2030",
       "first_page": 1
+    },
+    {
+      "doc_id": "nhlbi-sleep-2011",
+      "title": "Your Guide to Healthy Sleep (NIH Publication No. 11-5271, revised August 2011)",
+      "publisher": "National Heart, Lung, and Blood Institute, National Institutes of Health",
+      "source_url": "https://www.nhlbi.nih.gov/files/docs/public/sleep/healthy_sleep.pdf",
+      "licence": "US federal government work (17 U.S.C. 105): no US copyright. The PDF itself states no licence, so this is inferred from its authorship, not quoted; any third-party images are not ingested",
+      "licence_evidence": "searched the PDF text for 'public domain', 'copyright' and 'reproduc': no match; the one 'permission' match is about consent to clinical research (2026-11-11). Scripted download returned HTTP 200 on the first request, no workaround used",
+      "first_page": 1
+    },
+    {
+      "doc_id": "nhlbi-obesity-1998",
+      "title": "Clinical Guidelines on the Identification, Evaluation, and Treatment of Overweight and Obesity in Adults: The Evidence Report (NIH Publication No. 98-4083, 1998)",
+      "publisher": "National Heart, Lung, and Blood Institute, National Institutes of Health, with the NIDDK",
+      "source_url": "https://www.nhlbi.nih.gov/files/docs/guidelines/ob_gdlns.pdf",
+      "licence": "US federal government work (17 U.S.C. 105): no US copyright. The PDF itself states no licence, so this is inferred from its authorship, not quoted. It is a 1998 report: its BMI bands match the WHO bands the product uses and its 1 to 2 lb a week loss rate is the figure the product cites, but newer guidance may differ",
+      "licence_evidence": "searched the PDF text for 'public domain', 'copyright', 'may be reproduced' and 'freely': no match (2026-11-11). Scripted download returned HTTP 200 on the first request, no workaround used",
+      "first_page": 1
     }
   ],
   "not_ingested": [

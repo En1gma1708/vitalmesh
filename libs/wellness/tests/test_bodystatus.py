@@ -177,8 +177,8 @@ def nights(values: list[float], end_days_ago: int = 0) -> list[tuple[date, float
 
 def test_sleep_summary_known_week() -> None:
     s = sleep_summary(nights([8, 7.5, 6, 7, 9.5, 8, 7]), TODAY)
-    assert s.nights_7d == 7 and s.avg_7d == 7.6 and s.nights_below_range_7d == 1
-    assert s.nights_above_range_7d == 1 and s.enough_data
+    assert s.nights_7d == 7 and s.avg_7d == 7.6 and s.nights_below_min_7d == 1
+    assert s.enough_data
     assert sleep_status(s) is Status.ON_TRACK
 
 
