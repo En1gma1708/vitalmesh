@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VitalMesh</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230a0e14'/%3E%3Cpath d='M4 17h6l3-8 4 15 3-7h8' fill='none' stroke='%234dd0e1' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Your dashboard | VitalMesh</title>
+<meta name="description" content="Your health at a glance: goals, trends, lab results and meals, and a question box answered by specialist helpers.">
+<meta name="theme-color" content="#f7f3e8">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231b3a72'/%3E%3Cpath d='M4 17h6l3-8 4 15 3-7h8' fill='none' stroke='%23f7f3e8' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 /*@vm.css*/
 /* ---- app shell */
@@ -25,7 +28,7 @@
 .menu summary:hover { background: var(--card-2); }
 .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 13px; font-weight: 650; flex: none; }
 .menu summary .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
-.menu-body { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); padding: 8px; display: grid; gap: 6px; min-width: 210px; box-shadow: 0 14px 34px rgba(0, 0, 0, .38); }
+.menu-body { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r); padding: 8px; display: grid; gap: 6px; min-width: 210px; box-shadow: var(--shadow); }
 .menu-body button { text-align: left; }
 
 /* ---- the question panel is the hero of the page */
@@ -88,6 +91,13 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
   #labup-table input[type=text], #labup-table input[type=number] { width: 100%; }
 }
 
+/* ---- messages that are not tied to one form */
+.toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 50; max-width: min(380px, calc(100vw - 32px)); }
+.toast { background: var(--fg); color: var(--bg); padding: 11px 14px; border-radius: var(--r-s); box-shadow: var(--shadow); font-size: 14px; }
+.toast.err { background: var(--warn); color: var(--on-warn); }
+#start-card h2 { font-size: 17px; }
+.start-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 6px; }
+
 /* ---- phone: the rail becomes a bottom bar */
 @media (max-width: 880px) {
   .shell { grid-template-columns: 1fr; }
@@ -96,6 +106,7 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
   .nav { grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; gap: 0; }
   .nav a { flex-direction: column; gap: 3px; font-size: 11px; padding: 7px 2px; text-align: center; }
   .content { padding-bottom: 100px; }
+  .toasts { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; max-width: none; }
   .menu-body { right: auto; left: 0; }
 }
 @media (max-width: 560px) {
@@ -152,13 +163,23 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
             <h2>Ask about your health</h2>
             <form class="row" id="ask-form">
               <input class="grow" id="q" maxlength="500" required autocomplete="off"
-                     aria-label="Your question" placeholder="e.g. How many calories should I eat?">
+                     aria-label="Your question" placeholder="Ask about food, training or recovery">
               <button id="ask-btn" type="submit">Ask</button>
             </form>
             <div class="chips" id="chips"></div>
             <ol class="steps" id="steps" aria-live="polite"></ol>
             <div id="answer" class="answer" hidden aria-live="polite"></div>
           </section>
+      <section class="card wide" id="start-card" hidden>
+        <h2>Your dashboard is empty, and that is fine</h2>
+        <p class="sub">Goals and charts appear as soon as there is something to show. Start whichever way suits you:</p>
+        <div class="start-actions">
+          <a class="btn" href="#log-card">Log a first reading</a>
+          <a class="btn ghost" href="#import-card">Import a health export</a>
+          <a class="btn ghost" href="#labup-card">Upload a blood report</a>
+        </div>
+        <p class="sub">Or ask a question above: general questions such as a calorie target only need the profile you already filled in.</p>
+      </section>
       <section class="card wide" id="history-card" hidden>
             <h2>Recent questions</h2>
             <div id="history"></div>
@@ -197,7 +218,7 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
               <h2>Log something</h2>
               <form class="row" id="log-form">
                 <select id="metric" aria-label="What to log"></select>
-                <input id="value" type="number" step="any" required aria-label="Value" placeholder="Value">
+                <input id="value" type="number" step="any" required aria-label="Value">
                 <span class="sub" id="unit" style="align-self:center"></span>
                 <button id="log-btn" type="submit">Save</button>
               </form>
@@ -266,6 +287,7 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
             </section>
       </div>
     </div>
+    <div class="toasts" id="toasts"></div>
     <footer>General wellness information, not medical advice. Demo data.</footer>
   </main>
 </div>
@@ -306,7 +328,17 @@ async function boot() {
 }
 const NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
-const get = async (path) => { const r = await fetch(path); return r.ok ? r.json() : null; };
+let loadErrors = 0;  // a missing series (404) is just "no data yet"; anything else is a failure to tell the person about
+const get = async (path) => {
+  try { const r = await fetch(path); if (r.ok) return r.json(); if (r.status !== 404) loadErrors++; return null; }
+  catch (e) { loadErrors++; return null; }
+};
+function toast(text, bad = false) {
+  const t = document.createElement("div");
+  t.className = bad ? "toast err" : "toast"; t.setAttribute("role", bad ? "alert" : "status"); t.textContent = text;
+  $("toasts").appendChild(t);
+  setTimeout(() => t.remove(), bad ? 9000 : 5000);
+}
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
@@ -424,6 +456,7 @@ const last = (a) => a[a.length - 1];
 const day = (p) => ({ label: fmtDay(p.t), v: p.v });
 
 async function main() {
+  loadErrors = 0;
   const [weight, sleep, active, energy, rec, labs, plan] = await Promise.all([
     get(`/v1/users/${uid}/series/body_weight?days=90`),
     get(`/v1/users/${uid}/series/sleep_duration?days=30`),
@@ -453,9 +486,13 @@ async function main() {
     ? `<table><caption class="sub">Latest result of each test</caption><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Range</th><th scope="col">Status</th></tr>${latestLabs.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.value ?? l.text ?? "")} ${esc(l.unit ?? "")}</td><td>${esc(l.reference_range || "-")}</td><td><span class="tag ${esc(l.status.replace(" ", ""))}">${esc(l.status)}</span></td></tr>`).join("")}</table>`
     : '<div class="empty">No lab results yet.</div>';
 
+  const hasData = [weight, sleep, active, energy].some((s) => s && s.points && s.points.length) || latestLabs.length > 0;
+  $("start-card").hidden = hasData || loadErrors > 0;  // never say "empty" when the real problem is a failed load
+
   $("meals").innerHTML = plan && plan.days.length
     ? `<div class="meals">${plan.days[0].meals.map((m) => `<div class="meal"><b>${esc(m.meal)}</b>${esc(m.title)}<div class="sub">${esc(m.kcal)} kcal &middot; ${esc(m.protein_g)} g protein &middot; portion ${esc(m.portion)}</div></div>`).join("")}</div>`
     : '<div class="empty">No meal plan is available right now.</div>';
+  if (loadErrors) toast("Some of your data could not be loaded. Check your connection and reload the page.", true);
 }
 boot().then((ok) => { if (ok) { main(); loadHistory(); } });
 
@@ -793,20 +830,26 @@ $("signout-btn").addEventListener("click", async () => {
   location.href = "/";
 });
 $("export-btn").addEventListener("click", async () => {
-  const r = await fetch("/v1/me/export");
-  if (!r.ok) return;
+  const r = await fetch("/v1/me/export").catch(() => null);
+  if (!r || !r.ok) { toast("Your data could not be downloaded. Please try again.", true); return; }
   const url = URL.createObjectURL(new Blob([JSON.stringify(await r.json(), null, 2)], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url; a.download = "my-vitalmesh-data.json"; a.click();
   URL.revokeObjectURL(url);
+  toast("Your data was downloaded as my-vitalmesh-data.json.");
 });
 $("delete-btn").addEventListener("click", () => { $("delete-form").hidden = false; });
 $("delete-cancel").addEventListener("click", () => { $("delete-form").hidden = true; });
 $("delete-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const r = await fetch("/v1/me", { method: "DELETE", headers: jsonHeaders(), body: JSON.stringify({ password: $("delete-password").value }) });
+  let r;
+  try { r = await fetch("/v1/me", { method: "DELETE", headers: jsonHeaders(), body: JSON.stringify({ password: $("delete-password").value }) }); }
+  catch (e) { $("delete-msg").textContent = "Could not reach the service. Please try again."; return; }
   if (r.ok) { location.href = "/"; return; }
-  $("delete-msg").textContent = "That password is not right.";
+  $("delete-msg").textContent = r.status === 403 ? "That password is not right."
+    : r.status === 429 ? "Too many attempts. Please wait a few minutes and try again."
+    : r.status === 401 ? "Your session ended. Please sign in again."
+    : "That did not work. Please try again.";
 });
 
 // ---- left rail / bottom bar: highlight the section in view

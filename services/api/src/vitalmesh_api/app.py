@@ -31,9 +31,11 @@ from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from vitalmesh.events.v1 import payloads_pb2
 from vitalmesh_accounts import KEEP, QaHistory, ReviewQueue
 from vitalmesh_common.envelope import EventMeta, utcnow
@@ -767,6 +769,21 @@ def create_app(
             )
             html = html.replace("<body>", "<body>" + banner, 1)
         return HTMLResponse(html)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        """A browser that asks for a page that does not exist gets a designed 404 page (D106);
+        the API (/v1/...) and anything that does not ask for HTML keep the JSON error."""
+        asks_for_page = (
+            exc.status_code == 404
+            and not request.url.path.startswith("/v1")
+            and "text/html" in request.headers.get("accept", "")
+        )
+        if asks_for_page:
+            response = page(request, "notfound.html")
+            response.status_code = 404
+            return response
+        return await default_http_exception_handler(request, exc)
 
     if reviews is not None:
         install_clinician(app, reviews, serde, publisher, clock, auth)

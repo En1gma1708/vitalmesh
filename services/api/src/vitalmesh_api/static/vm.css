@@ -1,41 +1,32 @@
 /* VitalMesh design system (D106). Injected by the server into each page's nonce-tagged style block (the
-   security policy allows no external stylesheet; do not write angle-bracket tags in this file). Dark by default; light follows the system or data-theme.
-   Each body signal has its own hue, like the channels of a patient monitor: sleep violet, activity
-   green, calories amber, weight steel. One accent (cyan) is reserved for actions and the brand. */
+   security policy allows no external stylesheet; do not write angle-bracket tags in this file).
+   LIGHT ONLY, on purpose: people with health problems (low vision, migraine, tired eyes) read a light
+   page better than a black one. Contrast was measured, not guessed (WCAG AA or better on every text and
+   chart pair: services/api/tests/test_design_contrast.py). Each body signal has its own hue, like the channels of a patient
+   monitor: sleep violet, activity green, calories amber, weight slate. One accent is reserved for actions
+   and the brand. */
 :root {
-  color-scheme: dark;
-  --bg: #0a0e14; --rail: #0d1219; --card: #111822; --card-2: #172230; --line: #1e2a3a; --line-2: #2b3b50;
-  --fg: #e8eef6; --muted: #8c9cb0; --faint: #5d6c80;
-  --accent: #4dd0e1; --on-accent: #04161a; --accent-soft: #122e38;
-  --warn: #ff7a6b; --warn-soft: #3a1d1d; --on-warn: #2a0d0a; --ok: #5fd6a0;
-  --t0: #8c9cb0; --t1: #6ea8ff; --t2: #f0c05a; --t3: #4dd0e1;
-  --c-sleep: #a99bff; --c-active: #8fdc6a; --c-energy: #f0c05a; --c-weight: #b7c4d6;
-  --avg: #4dd0e1; --grid: #1b2736;
+  color-scheme: light;
+  /* navy and cream */
+  --bg: #f7f3e8; --rail: #fbf8f0; --card: #ffffff; --card-2: #f1ecdd; --field: #ffffff; --line: #e3dccb; --line-2: #cfc6b0;
+  --fg: #16213e; --muted: #505a70; --faint: #505a70;
+  --accent: #1b3a72; --on-accent: #ffffff; --accent-soft: #e3e9f5;
+  --warn: #b3261e; --warn-soft: #fbe7e4; --on-warn: #ffffff; --ok: #1e7a4e;
+  --t0: #505a70; --t1: #2f5fb3; --t2: #9a6700; --t3: #1b3a72;
+  --c-sleep: #5b4bc4; --c-active: #2e7d32; --c-energy: #a35f00; --c-weight: #475569;
+  --avg: #1b3a72; --grid: #ebe5d6;
+  --shadow: 0 10px 28px rgba(22, 33, 62, .14);
   --r: 14px; --r-s: 9px;
   --font: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg: #f2f5f9; --rail: #ffffff; --card: #ffffff; --card-2: #f3f6fa; --line: #dce4ee; --line-2: #c5d1df;
-    --fg: #0f1a27; --muted: #526377; --faint: #8a98aa;
-    --accent: #0b7f91; --on-accent: #ffffff; --accent-soft: #dbf0f4;
-    --warn: #c0392b; --warn-soft: #fbe4e1; --on-warn: #ffffff; --ok: #1d8a5a;
-    --t0: #526377; --t1: #1b5fa8; --t2: #8a5a00; --t3: #0b7f91;
-    --c-sleep: #6a58e0; --c-active: #3f8f1f; --c-energy: #a8730a; --c-weight: #44556b;
-    --avg: #0b7f91; --grid: #e4eaf2;
-  }
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f2f5f9; --rail: #ffffff; --card: #ffffff; --card-2: #f3f6fa; --line: #dce4ee; --line-2: #c5d1df;
-  --fg: #0f1a27; --muted: #526377; --faint: #8a98aa;
-  --accent: #0b7f91; --on-accent: #ffffff; --accent-soft: #dbf0f4;
-  --warn: #c0392b; --warn-soft: #fbe4e1; --on-warn: #ffffff; --ok: #1d8a5a;
-  --t0: #526377; --t1: #1b5fa8; --t2: #8a5a00; --t3: #0b7f91;
-  --c-sleep: #6a58e0; --c-active: #3f8f1f; --c-energy: #a8730a; --c-weight: #44556b;
-  --avg: #0b7f91; --grid: #e4eaf2;
+/* beige and forest green (comparison only: one of the two palettes will be deleted) */
+:root[data-palette="forest"] {
+  --bg: #f3ecdd; --rail: #f8f3e7; --card: #fffdf8; --card-2: #ede5d2; --line: #ddd2ba; --line-2: #c7ba9d;
+  --fg: #1c2b22; --muted: #4f5e56; --faint: #4f5e56;
+  --accent: #1f5f46; --accent-soft: #ddebdd;
+  --t0: #4f5e56; --t3: #1f5f46; --avg: #1f5f46; --grid: #e6dcc6;
+  --shadow: 0 10px 28px rgba(28, 43, 34, .14);
 }
 
 * { box-sizing: border-box; }
@@ -63,17 +54,20 @@ svg { display: block; max-width: 100%; }
 .msg { font-size: 14px; margin-top: 8px; min-height: 1.2em; }
 .msg:empty { margin: 0; min-height: 0; }  /* stays in the page for screen readers, takes no space */
 .msg.err, .err { color: var(--warn); font-size: 14px; }
-footer { margin-top: 40px; color: var(--faint); font-size: 12px; }
+footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
 
 /* ---- controls */
 input, select, button, textarea { font: inherit; color: var(--fg); border-radius: var(--r-s); min-width: 0; }
-input, select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--line-2); padding: 10px 12px; }
+input, select, textarea { width: 100%; background: var(--field); border: 1px solid var(--line-2); padding: 10px 12px; }
 input[type="checkbox"], input[type="radio"] { width: auto; flex: none; accent-color: var(--accent); }
 input:focus-visible, select:focus-visible { border-color: var(--accent); outline-offset: 0; }
-input::placeholder { color: var(--faint); }
+input::placeholder { color: var(--muted); opacity: .8; }
 button { cursor: pointer; background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); font-weight: 620; padding: 10px 18px; transition: filter .15s, background .15s; }
 button:hover:not(:disabled) { filter: brightness(1.08); }
 button:disabled { opacity: .55; cursor: progress; }
+a.btn { display: inline-block; background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: var(--r-s); padding: 10px 18px; font-weight: 620; text-decoration: none; }
+a.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line-2); font-weight: 520; font-size: 14px; }
+a.btn.ghost:hover { background: var(--card-2); }
 button.ghost { background: transparent; color: var(--fg); border-color: var(--line-2); font-weight: 520; font-size: 13px; padding: 7px 12px; }
 button.ghost:hover:not(:disabled) { background: var(--card-2); filter: none; }
 label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }

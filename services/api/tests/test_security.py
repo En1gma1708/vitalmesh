@@ -419,6 +419,84 @@ def test_pages_get_the_shared_design_system_inside_the_nonce_tagged_style_block(
         assert html.index("--accent:") > html.index("<style nonce=")  # inside the style block
 
 
+PAGE_PATHS = ("/", "/app", "/reset", "/verify", "/clinician", "/ops")
+
+
+def test_every_page_has_its_own_title_a_description_and_an_icon(w: World) -> None:
+    """D106: unique titles, sensible meta descriptions, a favicon; private pages are noindex."""
+    import re
+
+    c = w.client()
+    titles: dict[str, str] = {}
+    for path in ("/", "/app", "/reset", "/clinician", "/ops"):
+        html = c.get(path).text
+        title = re.search(r"<title>(.*?)</title>", html, flags=re.S)
+        assert title and 10 <= len(title.group(1)) <= 70, (path, title)
+        assert title.group(1) not in titles.values(), f"{path} repeats a title"
+        titles[path] = title.group(1)
+        desc = re.search(r'<meta name="description" content="([^"]*)"', html)
+        assert desc and 50 <= len(desc.group(1)) <= 170, (path, desc)
+        assert 'rel="icon"' in html
+        assert 'name="viewport"' in html
+        if path != "/":  # the landing page is the only public one
+            assert 'name="robots" content="noindex' in html, path
+
+
+def test_no_page_links_to_somewhere_that_does_not_exist(w: World) -> None:
+    """D106: every internal link answers, and every #anchor points at an id on the same page."""
+    import re
+
+    c = w.client()
+    for path in PAGE_PATHS:
+        html = c.get(path).text
+        ids = set(re.findall(r'\bid="([^"]+)"', html))
+        for href in re.findall(r'<a\b[^>]*\bhref="([^"]+)"', html):
+            if (
+                "${" in href
+            ):  # a runtime template in the page's script (source links are checked there)
+                continue
+            if href.startswith("#"):
+                assert href[1:] in ids, f"{path}: anchor {href} has no target"
+            elif href.startswith("/"):
+                r = c.get(href, follow_redirects=False)
+                assert r.status_code in (200, 303), f"{path}: {href} answered {r.status_code}"
+            else:
+                assert href.startswith("https://"), f"{path}: unexpected link {href}"
+
+
+def test_a_browser_gets_a_designed_404_page_and_the_api_keeps_its_json(w: World) -> None:
+    c = w.client()
+    r = c.get("/no-such-page", headers={"accept": "text/html,application/xhtml+xml"})
+    assert r.status_code == 404 and "text/html" in r.headers["content-type"]
+    nonce = r.headers["content-security-policy"].split("'nonce-")[1].split("'")[0]
+    assert f'<style nonce="{nonce}">' in r.text and "<style>" not in r.text
+    assert "This page does not exist" in r.text and 'href="/app"' in r.text
+    assert "Traceback" not in r.text and "detail" not in r.text.lower().split("<main")[0]
+    assert 'name="robots" content="noindex' in r.text
+    # the API and non-browser clients still get JSON (signed out: refused first, 401, by design)
+    assert c.get("/v1/no-such-route", headers={"accept": "text/html"}).status_code == 401
+    w.signup(c)
+    j = c.get("/v1/no-such-route", headers={"accept": "text/html"})
+    assert j.status_code == 404 and "application/json" in j.headers["content-type"]
+    k = c.get("/no-such-page", headers={"accept": "application/json"})
+    assert k.status_code == 404 and "application/json" in k.headers["content-type"]
+
+
+def test_the_design_is_light_only_and_the_dashboard_has_its_empty_state_and_messages(
+    w: World,
+) -> None:
+    """D106: no dark theme (a light page reads better for people with health problems)."""
+    from vitalmesh_api.app import STATIC
+
+    css = (STATIC / "vm.css").read_text(encoding="utf-8")
+    assert "prefers-color-scheme: dark" not in css and "color-scheme: dark" not in css
+    assert "color-scheme: light" in css
+    app = (STATIC / "app.html").read_text(encoding="utf-8")
+    for needed in ('id="start-card"', 'id="toasts"', "function toast(", 'role="status"'):
+        assert needed in app, needed
+    assert "lorem" not in app.lower() and "e.g." not in app
+
+
 def test_the_old_id_in_the_url_form_redirects_to_the_session_based_page(w: World) -> None:
     r = w.client().get("/app/demo-1", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/app"
