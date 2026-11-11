@@ -333,6 +333,22 @@ def test_declined_question_never_reaches_kafka() -> None:
     assert pub.sent == []
 
 
+def test_unsafe_weight_requests_are_declined_before_kafka_using_the_persons_height() -> None:
+    client, pub, user = make()
+    for question in (
+        "i want to weigh 38 kg, how do i get there?",
+        "how low can i go",
+        "lose 10 kg in a week",
+        "i want to lose 3 kg in 2 days",
+    ):
+        r = client.post(f"/v1/users/{user}/questions", json={"question": question})
+        assert r.status_code == 200 and r.json()["status"] == "declined", question
+        assert "doctor" in r.json()["message"] and r.json()["correlation_id"] is None
+    assert pub.sent == []
+    ok = client.post(f"/v1/users/{user}/questions", json={"question": "how is my weight"})
+    assert ok.status_code == 202 and len(pub.sent) == 1
+
+
 @pytest.mark.parametrize("question", ["", "x" * 501])
 def test_question_length_is_bounded(question: str) -> None:
     client, pub, user = make()

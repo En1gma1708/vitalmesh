@@ -64,6 +64,7 @@ from vitalmesh_wellness.labs import LabError, LabResult, interpret
 from vitalmesh_wellness.mealplan import PlanError
 from vitalmesh_wellness.recipes import BY_ID
 from vitalmesh_wellness.trends import WEEKLY_ACTIVE_MINUTES_GOAL, trailing_average, weekly_totals
+from vitalmesh_wellness.weightgoal import SUPPORTIVE_REFUSAL, unsafe_weight_request
 
 from vitalmesh_api.clinician import install_clinician
 from vitalmesh_api.googlecal import GoogleClient, TokenBox
@@ -870,7 +871,8 @@ def create_app(
     def post_question(user_id: str, q: QuestionIn, response: Response) -> QuestionOut:
         if not USER_ID.match(user_id):
             raise HTTPException(status_code=422, detail="invalid user id")
-        if profiles.get(user_id) is None:
+        profile = profiles.get(user_id)
+        if profile is None:
             raise HTTPException(status_code=404, detail="no profile for this user")
         if auth is not None and not auth.verified(user_id):
             raise HTTPException(status_code=403, detail="confirm your email address first")
@@ -881,6 +883,13 @@ def create_app(
         if category is not None:
             response.status_code = 200  # answered, not accepted for processing
             return QuestionOut(status="declined", message=REFUSALS[category])
+        # D108: an unsafe target weight or pace is declined in code, using the person's own
+        # height and weight, before any agent or model sees it
+        if unsafe_weight_request(
+            q.question, height_cm=profile.profile.height_cm, weight_kg=profile.profile.weight_kg
+        ):
+            response.status_code = 200
+            return QuestionOut(status="declined", message=SUPPORTIVE_REFUSAL)
         correlation_id = str(uuid.uuid4())
         meta = EventMeta(
             correlation_id=correlation_id,
