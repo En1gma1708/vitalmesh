@@ -152,7 +152,8 @@ def _first_draft(
             if fallback:
                 log.info("synthesis used the checked notes: %s", result.reason)
         except AgentUnavailable:
-            text, fallback = assemble(usable), True  # checked notes, no model needed
+            # checked notes, no model needed; a sentence with an unbacked number is dropped (D107)
+            text, fallback = assemble(usable, allowed=inp.allowed_numbers), True
     return _draft(
         meta,
         bundle.question,

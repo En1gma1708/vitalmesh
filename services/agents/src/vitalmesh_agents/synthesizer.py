@@ -134,12 +134,35 @@ def fair_shares(sizes: Sequence[int], budget: int) -> list[int]:
     return shares
 
 
-def assemble(parts: Sequence[PartView], max_words: int = FALLBACK_MAX_WORDS) -> str:
+def _scrub(text: str, allowed: frozenset[float] | None) -> str:
+    """Whole sentences whose numbers are not all in ``allowed`` are DROPPED, never reworded (D107).
+
+    A specialist's note passed that specialist's own, weaker check, so it can still carry a number
+    no claim backs (a model recalling "7-9 hours" from memory). The Guardian gate rightly refuses
+    such a text; without this step a good, personalised answer was thrown away and the person was
+    refused. Dropping the offending sentence keeps the gate exactly as strict and keeps the rest.
+    """
+    if allowed is None:
+        return text
+    keep = [
+        s
+        for s in re.split(r"(?<=[.!?])\s+", text.strip())
+        if all(any(close(v, a) for a in allowed) for v in numbers(s))
+    ]
+    return " ".join(keep)
+
+
+def assemble(
+    parts: Sequence[PartView],
+    max_words: int = FALLBACK_MAX_WORDS,
+    allowed: frozenset[float] | None = None,
+) -> str:
     """The specialists' own checked notes, joined in order, without repeats and within the word
-    limit. Grounded parts come first; parts that rest on no claim are used only if nothing else
-    exists. Every part gets a fair share of the word limit and is cut at a sentence end, so a long
-    meal plan can no longer push the workout out of a combined answer (D105); a part that cannot
-    fit even its first sentence is dropped rather than cut mid-way."""
+    limit. Given ``allowed``, a sentence that states a number outside it is dropped first (D107).
+    Grounded parts come first; parts that rest on no claim are used only if nothing else exists.
+    Every part gets a fair share of the word limit and is cut at a sentence end, so a long meal
+    plan can no longer push the workout out of a combined answer (D105); a part that cannot fit
+    even its first sentence is dropped rather than cut mid-way."""
     ordered = [p for p in parts if p.grounded and p.status != "declined"]
     ordered += [p for p in parts if p.status == "declined"]
     if not ordered:
@@ -147,7 +170,7 @@ def assemble(parts: Sequence[PartView], max_words: int = FALLBACK_MAX_WORDS) -> 
     seen: set[str] = set()
     texts: list[str] = []
     for p in ordered:
-        t = p.text.strip()
+        t = _scrub(p.text.strip(), allowed)
         if t and t not in seen:
             seen.add(t)
             texts.append(t)
@@ -282,7 +305,7 @@ class Synthesizer:
         }
         if state["problems"]:
             result = SynthResult(
-                text=assemble(self._inp.parts),
+                text=assemble(self._inp.parts, allowed=self._inp.allowed_numbers),
                 used_fallback=True,
                 reason="; ".join(state["problems"])[:300],
                 **common,

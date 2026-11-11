@@ -430,6 +430,48 @@ def test_a_long_meal_plan_does_not_push_the_workout_out_of_a_combined_answer() -
     assert len(out.split()) <= 150
 
 
+# The real case of 2026-11-11 (D107): a good, personalised sleep answer carried "7-9 hour" from the
+# model's memory; no claim had the 9, the Guardian gate refused it and the person got a refusal.
+SLEEP_NOTE = (
+    "Your average sleep over the last 7 nights is **8.1 hours**. That\u2019s above the typical "
+    "7\u20119 hour recommendation, so you\u2019re getting plenty of rest. "
+    "Keep the bedroom cool, dark, and quiet."
+)
+
+
+def test_the_fallback_drops_a_sentence_with_a_number_no_claim_backs() -> None:
+    allowed = frozenset({8.1, 7.0})  # the claims carry the 8.1 average and the 7 nights
+    out = assemble((PartView("movement_recovery", "answered", SLEEP_NOTE),), allowed=allowed)
+    assert "8.1 hours" in out and "bedroom" in out  # the personal facts and the advice stay
+    assert "7\u20119" not in out and "recommendation" not in out  # the ungrounded sentence is gone
+    assert check_summary(out, allowed) == []  # and what remains passes the same number check
+
+
+def test_without_a_number_list_the_fallback_is_unchanged() -> None:
+    out = assemble((PartView("movement_recovery", "answered", SLEEP_NOTE),))
+    assert "recommendation" in out  # callers that pass no list get the old behaviour
+
+
+def test_a_note_that_is_all_ungrounded_numbers_gives_no_answer_not_a_wrong_one() -> None:
+    out = assemble(
+        (PartView("movement_recovery", "answered", "Aim for 9 hours. Try 11 minutes."),),
+        allowed=frozenset({8.0}),
+    )
+    assert out == NO_ANSWER
+
+
+def test_when_both_drafts_state_a_stray_number_the_answer_is_the_cleaned_notes() -> None:
+    """End to end through the agent: the model keeps adding the number, the fallback is clean."""
+    allowed = frozenset({8.1, 7.0})
+    router = FakeRouter(resp("Sleep 8.1 hours, the usual range is 7\u20119 hours."))
+    result = synth(router).synthesize(
+        inp(parts=(PartView("movement_recovery", "answered", SLEEP_NOTE),), allowed_numbers=allowed)
+    )
+    assert result.used_fallback and result.model_calls == 2
+    assert check_summary(result.text, allowed) == []  # the Guardian gate would clear it
+    assert "8.1 hours" in result.text
+
+
 def test_the_shortening_is_at_sentence_ends() -> None:
     long = " ".join(f"Sentence {i} is complete." for i in range(60))
     out = assemble(
