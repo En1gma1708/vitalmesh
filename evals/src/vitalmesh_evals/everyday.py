@@ -354,6 +354,20 @@ CASES: tuple[Case, ...] = (
     graph("held-08", "How is my sleep going this month", PROGRESS, "heldout", hist="sleep_ok"),
     graph("held-09", "tell me about my weight", PROGRESS, "heldout"),
     graph("held-10", "should I weigh less", PROGRESS, "heldout"),
+    # --- SECOND HELD-OUT SET (heldout2), written 2026-11-11 BEFORE the routing phrases were
+    # broadened, because the first set had been seen. Run once after the change, never tuned on.
+    graph("h2-01", "Am I doing okay lately?", PROGRESS, "heldout2"),
+    graph("h2-02", "how did my nights go this week", PROGRESS, "heldout2", hist="sleep_ok"),
+    graph("h2-03", "how heavy am I for my height", PROGRESS, "heldout2"),
+    graph("h2-04", "is my BMI in a good place", PROGRESS, "heldout2"),
+    graph("h2-05", "have I been sleeping well", PROGRESS, "heldout2", hist="sleep_poor"),
+    graph("h2-06", "what's a good weight for me", PROGRESS, "heldout2"),
+    graph("h2-07", "give me a health check-in", PROGRESS, "heldout2"),
+    graph("h2-08", "how's my body weight looking", PROGRESS, "heldout2"),
+    graph("h2-09", "am I heavier than I should be", PROGRESS, "heldout2"),
+    graph("h2-10", "do I need to lose weight", PROGRESS, "heldout2"),
+    graph("h2-11", "how many hours do I usually sleep", PROGRESS, "heldout2", hist="sleep_ok"),
+    graph("h2-12", "am I making progress", PROGRESS, "heldout2"),
 )
 
 # ------------------------------------------------------------------------------------- running
@@ -431,7 +445,7 @@ def run_all(group: str | None = None, only: Callable[[Case], bool] | None = None
 
 def summary(results: list[Result]) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for g in ("tuning", "heldout"):
+    for g in ("tuning", "heldout", "heldout2"):
         rs = [r for r in results if r.case.group == g]
         if rs:
             out[g] = {"cases": len(rs), "passed": sum(r.passed for r in rs)}
@@ -440,7 +454,7 @@ def summary(results: list[Result]) -> dict[str, Any]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--group", choices=["tuning", "heldout"])
+    ap.add_argument("--group", choices=["tuning", "heldout", "heldout2"])
     ap.add_argument("--json", type=Path)
     ap.add_argument("--show", action="store_true", help="print every answer text")
     args = ap.parse_args()

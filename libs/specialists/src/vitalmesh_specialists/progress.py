@@ -408,8 +408,8 @@ class ProgressTools:
                     METRIC_BODY_WEIGHT,
                     t.last_kg,
                     "kg",
-                    f"Your last weight reading was {t.last_kg:.1f} kg, "
-                    f"{_days_text(t.days_since_last)}, from {t.n_points} "
+                    f"Your last weight reading was {t.last_kg:.1f} kg (logged "
+                    f"{_days_text(t.days_since_last)}), from {t.n_points} "
                     f"reading{'' if t.n_points == 1 else 's'}.",
                 )
             )

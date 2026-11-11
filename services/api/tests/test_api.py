@@ -400,3 +400,12 @@ def test_the_status_route_returns_the_four_areas_and_validates_the_id() -> None:
     assert all(a["label"] for a in r.json()["areas"])
     assert client.get("/v1/users/bad%20id/status").status_code == 422
     assert client.get("/v1/users/nobody/status").status_code == 404
+
+
+def test_a_too_fast_loss_gets_the_supportive_weight_message_not_the_generic_screen() -> None:
+    from vitalmesh_wellness.weightgoal import SUPPORTIVE_REFUSAL
+
+    client, pub, user = make()
+    r = client.post(f"/v1/users/{user}/questions", json={"question": "lose 8 kg in a week"})
+    assert r.json()["status"] == "declined" and r.json()["message"] == SUPPORTIVE_REFUSAL
+    assert pub.sent == []

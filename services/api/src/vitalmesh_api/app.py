@@ -899,17 +899,18 @@ def create_app(
         if auth is not None and not auth.limiter.hit(f"ask:{user_id}", 20, 3600):
             # each question can spend model quota: the scarcest thing in the system
             raise HTTPException(status_code=429, detail="you have asked a lot this hour; try later")
-        category = screen_question(q.question)
-        if category is not None:
-            response.status_code = 200  # answered, not accepted for processing
-            return QuestionOut(status="declined", message=REFUSALS[category])
-        # D108: an unsafe target weight or pace is declined in code, using the person's own
-        # height and weight, before any agent or model sees it
+        # D108: an unsafe target weight or pace is declined in code with the person's own height
+        # and weight, before any agent or model sees it. Checked BEFORE the generic screen, whose
+        # refusal wording ("symptoms, medication") does not fit.
         if unsafe_weight_request(
             q.question, height_cm=profile.profile.height_cm, weight_kg=profile.profile.weight_kg
         ):
             response.status_code = 200
             return QuestionOut(status="declined", message=SUPPORTIVE_REFUSAL)
+        category = screen_question(q.question)
+        if category is not None:
+            response.status_code = 200  # answered, not accepted for processing
+            return QuestionOut(status="declined", message=REFUSALS[category])
         correlation_id = str(uuid.uuid4())
         meta = EventMeta(
             correlation_id=correlation_id,

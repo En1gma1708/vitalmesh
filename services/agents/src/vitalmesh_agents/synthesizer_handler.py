@@ -29,6 +29,7 @@ from vitalmesh_common.topics import RECOMMENDATIONS_DRAFTED
 
 from vitalmesh_agents.advice import claim_numbers
 from vitalmesh_agents.events import POST_BUNDLE_BUDGET_S, derived_id, emit, next_meta
+from vitalmesh_agents.required_notes import with_required_sentences
 from vitalmesh_agents.synthesizer import (
     NO_ANSWER,
     AgentUnavailable,
@@ -217,7 +218,7 @@ def _draft(
     *,
     revision: int,
 ) -> payloads_pb2.RecommendationDrafted:
-    final = text
+    final = with_required_sentences(text, claims)  # BMI caveat and doctor lines, by code (D108)
     if partial and "partial" not in text.lower():
         final = (
             f"{text} {partial_note(missing)}"  # appended by code: the disclosure is not optional
