@@ -134,6 +134,7 @@ def build_app() -> FastAPI:
             base_url=os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000"),
             # on by default: a person must confirm their email before questions spend model quota
             require_verified=os.environ.get("VITALMESH_REQUIRE_VERIFIED", "1") != "0",
+            history=RedisHistoryStore(client),
         )
         log.warning("email links are written to this log (dev mailer); no mail service is set up")
     base_url = os.environ.get("VITALMESH_BASE_URL", "http://127.0.0.1:8000")

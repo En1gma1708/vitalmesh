@@ -16,6 +16,7 @@ What this module guarantees, each with a test:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import secrets
@@ -49,9 +50,15 @@ from vitalmesh_accounts import (
     verify_password,
 )
 from vitalmesh_accounts.tokens import hash_refresh
-from vitalmesh_stores import ProfileStore
+from vitalmesh_stores import HistoryStore, ProfileStore
 
-from vitalmesh_api.onboarding import CHOICES, CONSENT_VERSION, ProfileIn, stored_form
+from vitalmesh_api.onboarding import (
+    CHOICES,
+    CONSENT_VERSION,
+    ProfileIn,
+    seed_first_weight,
+    stored_form,
+)
 
 log = logging.getLogger("vitalmesh.security")
 
@@ -124,7 +131,9 @@ class Auth:
         mailer: Mailer | None = None,
         base_url: str = "http://127.0.0.1:8000",
         require_verified: bool = False,
+        history: HistoryStore | None = None,
     ) -> None:
+        self.history = history  # where the onboarding weight becomes a first reading (D108)
         self.store, self.issuer, self.limiter = store, issuer, limiter
         self.profile_cache, self.purge, self.export_extra = profile_cache, purge, export_extra
         self.secure, self.clock = secure_cookies, clock
@@ -406,6 +415,9 @@ def install(app: FastAPI, auth: Auth) -> None:
         auth.store.put_profile(c.user_id, stored_form(body))
         auth.store.put_consent(c.user_id, body.consent_version, auth.clock())
         auth.profile_cache.put(record)  # the cache the agents read; the database is the truth
+        if auth.history is not None:
+            with contextlib.suppress(Exception):  # a history outage must not fail the save
+                seed_first_weight(auth.history, c.user_id, body.weight_kg, auth.clock())
         auth.audit(request, c.user_id, "profile_saved")
         return {"status": "saved"}
 

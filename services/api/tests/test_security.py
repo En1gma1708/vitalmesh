@@ -22,7 +22,13 @@ from vitalmesh_api.googlecal import TokenBox
 from vitalmesh_api.onboarding import CONSENT_VERSION
 from vitalmesh_api.security import CSRF_COOKIE, Auth
 from vitalmesh_common.testing import PlainSerde, RecordingPublisher
-from vitalmesh_stores import InMemoryNudgeStore, InMemoryPendingImports, InMemoryRunLog
+from vitalmesh_stores import (
+    InMemoryHistoryStore,
+    InMemoryNudgeStore,
+    InMemoryPendingImports,
+    InMemoryRunLog,
+    Point,
+)
 from vitalmesh_t0.profiles import InMemoryProfileStore
 
 SECRET = b"s" * 32
@@ -57,6 +63,7 @@ class World:
         self.cache = InMemoryProfileStore()
         self.limiter = InMemoryRateLimiter()
         self.purged: list[str] = []
+        self.history = InMemoryHistoryStore()
         self.runs = InMemoryRunLog()
         self.publisher = RecordingPublisher()
         self.auth = Auth(
@@ -69,6 +76,7 @@ class World:
             clock=lambda: self.now,
             mailer=self.mailer,
             require_verified=require_verified,
+            history=self.history,
         )
         self.app = create_app(
             self.cache, PlainSerde(), self.publisher, auth=self.auth, runs=self.runs,
@@ -697,3 +705,49 @@ def test_the_link_pages_are_served_and_hold_no_token_server_side(w: World) -> No
         r = c.get(f"{path}#token=abc")
         assert r.status_code == 200 and "text/html" in r.headers["content-type"]
         assert "default-src 'none'" in r.headers["content-security-policy"]
+
+
+# ---------------------------------- D108: the onboarding weight is a first reading
+def test_onboarding_weight_becomes_the_first_weight_reading(w: World) -> None:
+    c = w.client()
+    uid = w.signup(c)
+    assert w.history.series(uid, "body_weight") == []
+    assert c.put("/v1/me/profile", json=PROFILE, headers=csrf(c)).status_code == 200
+    points = w.history.series(uid, "body_weight")
+    assert [(p.value, p.unit) for p in points] == [(68.0, "kg")]
+
+
+def test_saving_the_profile_again_never_adds_a_stale_reading_over_the_persons_own(
+    w: World,
+) -> None:
+    c = w.client()
+    uid = w.signup(c)
+    c.put("/v1/me/profile", json=PROFILE, headers=csrf(c))
+    w.history.add(uid, "body_weight", Point(t=w.now + timedelta(days=3), value=66.5, unit="kg"))
+    changed = {**PROFILE, "allergens": []}  # the profile still says 68 kg
+    assert c.put("/v1/me/profile", json=changed, headers=csrf(c)).status_code == 200
+    assert [p.value for p in w.history.series(uid, "body_weight")] == [68.0, 66.5]
+
+
+def test_a_second_profile_save_does_not_make_a_second_reading(
+    w: World,
+) -> None:
+    c = w.client()
+    uid = w.signup(c)
+    c.put("/v1/me/profile", json=PROFILE, headers=csrf(c))
+    c.put("/v1/me/profile", json={**PROFILE, "goal": "lose"}, headers=csrf(c))
+    assert len(w.history.series(uid, "body_weight")) == 1
+
+
+def test_a_history_outage_does_not_fail_the_profile_save(w: World) -> None:
+    class Broken:
+        def add(self, *a: Any) -> None:
+            raise ConnectionError("down")
+
+        def series(self, *a: Any, **k: Any) -> list[Point]:
+            raise ConnectionError("down")
+
+    w.auth.history = Broken()
+    c = w.client()
+    w.signup(c)
+    assert c.put("/v1/me/profile", json=PROFILE, headers=csrf(c)).status_code == 200

@@ -13,10 +13,11 @@ that one is taken so the conditions review always runs.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from vitalmesh_stores import ProfileRecord
+from vitalmesh_stores import HistoryStore, Point, ProfileRecord
 from vitalmesh_wellness.engine import Profile
 
 CONSENT_VERSION = "2026-10-v1"
@@ -104,6 +105,18 @@ class ProfileIn(BaseModel):
         )
         # no sleep history yet: the neutral 7 hours until the person logs real nights
         return ProfileRecord(profile=profile, recent_sleep_hours=tuple([7.0] * 14))
+
+
+def seed_first_weight(history: HistoryStore, user_id: str, weight_kg: float, now: datetime) -> bool:
+    """Record the onboarding weight as the person's first weight reading (D108), so a trend and a
+    BMI can start from a real point. Only when they have NO weight reading yet: saving the profile
+    again later must never add a stale reading on top of what they logged themselves. Returns
+    whether a reading was written. The reading is an ordinary history point: it is in the person's
+    export and is erased with the account."""
+    if history.series(user_id, "body_weight"):
+        return False
+    history.add(user_id, "body_weight", Point(t=now, value=float(weight_kg), unit="kg"))
+    return True
 
 
 def stored_form(p: ProfileIn) -> dict[str, object]:
