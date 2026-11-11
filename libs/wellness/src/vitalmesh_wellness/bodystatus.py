@@ -277,6 +277,18 @@ def activity_status(active_minutes_last_7d: float | None) -> Status:
     )
 
 
+INTAKE_TOLERANCE = 0.15  # the same tolerance the meal-plan rule uses for a planned day
+INTAKE_MIN_DAYS = 3
+
+
+def intake_status(avg_kcal: float | None, target_kcal: float | None, days_logged: int) -> Status:
+    """Average daily intake within 15 percent of the person's own target is on track."""
+    if avg_kcal is None or target_kcal is None or target_kcal <= 0 or days_logged < INTAKE_MIN_DAYS:
+        return Status.NOT_ENOUGH_DATA
+    within = abs(avg_kcal - target_kcal) <= INTAKE_TOLERANCE * target_kcal
+    return Status.ON_TRACK if within else Status.NEEDS_ATTENTION
+
+
 def weight_status(advice: TargetAdvice, trend: WeightTrend, goal: str) -> Status:
     """Healthy BMI and not changing unsafely is on track; above the band with the goal to lose is
     on track only while the trend is downwards; below the band always needs attention."""

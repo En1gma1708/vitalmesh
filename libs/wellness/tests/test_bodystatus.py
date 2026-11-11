@@ -18,6 +18,7 @@ from vitalmesh_wellness.bodystatus import (
     bmi,
     bmi_category,
     healthy_weight_range,
+    intake_status,
     sleep_status,
     sleep_summary,
     target_advice,
@@ -237,3 +238,23 @@ def test_a_fast_loss_needs_attention_even_in_the_healthy_range() -> None:
     healthy = target_advice(70, 175, "maintain", 30)
     fast = weight_trend(series([70 - 0.2 * i for i in range(15)]), NOW)  # -1.4 kg a week
     assert weight_status(healthy, fast, "maintain") is Status.NEEDS_ATTENTION
+
+
+@pytest.mark.parametrize(
+    ("avg", "target", "days", "expected"),
+    [
+        (2000, 2000, 7, Status.ON_TRACK),
+        (2300, 2000, 7, Status.ON_TRACK),  # exactly +15 percent
+        (2301, 2000, 7, Status.NEEDS_ATTENTION),
+        (1700, 2000, 7, Status.ON_TRACK),  # exactly -15 percent
+        (1699, 2000, 7, Status.NEEDS_ATTENTION),
+        (2000, 2000, 2, Status.NOT_ENOUGH_DATA),
+        (None, 2000, 7, Status.NOT_ENOUGH_DATA),
+        (2000, None, 7, Status.NOT_ENOUGH_DATA),
+        (2000, 0, 7, Status.NOT_ENOUGH_DATA),
+    ],
+)
+def test_intake_status_tolerance_is_exactly_fifteen_percent(
+    avg: float | None, target: float | None, days: int, expected: Status
+) -> None:
+    assert intake_status(avg, target, days) is expected

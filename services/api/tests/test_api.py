@@ -390,3 +390,13 @@ def test_ops_tiers_reports_the_mix_and_shares() -> None:
 def test_ops_tiers_is_off_unless_enabled() -> None:
     client, _, _ = make()
     assert client.get("/v1/ops/tiers").status_code == 404
+
+
+def test_the_status_route_returns_the_four_areas_and_validates_the_id() -> None:
+    client, _pub, user = make()
+    r = client.get(f"/v1/users/{user}/status")
+    assert r.status_code == 200
+    assert [a["key"] for a in r.json()["areas"]] == ["sleep", "weight", "activity", "intake"]
+    assert all(a["label"] for a in r.json()["areas"])
+    assert client.get("/v1/users/bad%20id/status").status_code == 422
+    assert client.get("/v1/users/nobody/status").status_code == 404

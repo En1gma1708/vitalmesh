@@ -92,6 +92,7 @@ from vitalmesh_api.opsview import (
 )
 from vitalmesh_api.runview import Answer, RunView, answer_of, view_of
 from vitalmesh_api.security import Auth, install, require_self
+from vitalmesh_api.status import StatusOut, build_status
 
 STATIC = Path(__file__).parent / "static"
 IMPORT_ID = re.compile(r"^[A-Za-z0-9_-]{8,32}$")
@@ -752,6 +753,25 @@ def create_app(
             target=target,
             weekly_goal=WEEKLY_ACTIVE_MINUTES_GOAL if metric == "active_minutes" else None,
         )
+
+    @app.get("/v1/users/{user_id}/status", response_model=StatusOut)
+    def get_status(user_id: str) -> StatusOut:
+        """The "How you're doing" scorecard: sleep, weight, activity and food, each with a status
+        from the same calculators the progress helper uses (D108)."""
+        if not USER_ID.match(user_id):
+            raise HTTPException(status_code=422, detail="invalid user id")
+        record = profiles.get(user_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="no profile for this user")
+        target: float | None = None
+        try:
+            rec = decide(record, "status", gate).recommendation
+        except EnvelopeError:
+            rec = None
+        for c in rec.claims if rec else ():
+            if c.quantity and c.quantity.metric == "daily_energy_target":
+                target = c.quantity.value
+        return build_status(record.profile, history, clock(), target)
 
     def page(request: Request, name: str) -> HTMLResponse:
         """A static page with this response's script and style nonce filled in (the security

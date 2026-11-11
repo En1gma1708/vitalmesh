@@ -90,6 +90,13 @@ ol.steps.done li.last::before { background: var(--ok); animation: none; }
 .kpi { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: -2px 0 10px; }
 .kpi b { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
 .kpi span { color: var(--muted); font-size: 13px; }
+/* D108: the scorecard. A status is words (and a dot) as well as a colour. */
+.scoregrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.score { background: var(--card-2); border: 1px solid var(--line); border-radius: var(--r-s); padding: 14px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.score h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.score .big { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
+.score .tag { align-self: flex-start; }
+.score .why { font-size: 13px; color: var(--muted); }
 
 /* chart tooltip (pointer, touch and keyboard) */
 .tip { position: absolute; transform: translate(-50%, -100%); background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 560; padding: 5px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: var(--shadow); }
@@ -199,7 +206,7 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
             <h2>Ask about your health</h2>
             <form class="row" id="ask-form">
               <input class="grow" id="q" maxlength="500" required autocomplete="off"
-                     aria-label="Your question" placeholder="Ask about food, training or recovery">
+                     aria-label="Your question" placeholder="Ask about sleep, weight or training">
               <button id="ask-btn" type="submit">Ask</button>
             </form>
             <div class="chips" id="chips"></div>
@@ -209,6 +216,11 @@ ul.nums li::before { content: ""; position: absolute; left: 0; top: 10px; width:
             <ol class="steps" id="steps" aria-live="polite"></ol>
             <div id="answer" class="answer" hidden aria-live="polite"></div>
           </section>
+      <section class="card wide" id="status-card" hidden aria-labelledby="status-title">
+        <h2 id="status-title">How you're doing</h2>
+        <div class="scoregrid" id="scorecard"></div>
+        <p class="sub" id="score-caveat"></p>
+      </section>
       <section class="card wide" id="start-card" hidden>
         <h2>Your dashboard is empty, and that is fine</h2>
         <p class="sub">Goals and charts appear as soon as there is something to show. Start whichever way suits you:</p>
@@ -580,9 +592,28 @@ function kpis(weight, sleep, active, energy) {
   else kpi("energy", null);
 }
 
+// The scorecard: four areas from the same calculators the typed answers use, so the page and an answer never disagree.
+const STATUS_TAG = { on_track: "", needs_attention: " high", not_enough_data: " not" };
+function scorecard(status) {
+  const card = $("status-card"), box = $("scorecard");
+  box.replaceChildren();
+  if (!status || !status.areas) { card.hidden = true; return; }
+  status.areas.forEach((a) => {
+    const el = document.createElement("div"), h = document.createElement("h3"), big = document.createElement("div"),
+      tag = document.createElement("span"), why = document.createElement("div");
+    el.className = "score"; h.textContent = a.title;
+    big.className = "big"; big.textContent = a.headline;
+    tag.className = "tag" + (STATUS_TAG[a.status] ?? " not"); tag.textContent = a.label;
+    why.className = "why"; why.textContent = a.detail;
+    el.append(h, big, tag, why); box.appendChild(el);
+  });
+  $("score-caveat").textContent = status.caveat || "";
+  card.hidden = false;
+}
+
 async function main() {
   loadErrors = 0;
-  const [weight, sleep, active, energy, rec, labs, plan] = await Promise.all([
+  const [weight, sleep, active, energy, rec, labs, plan, status] = await Promise.all([
     get(`/v1/users/${uid}/series/body_weight?days=90`),
     get(`/v1/users/${uid}/series/sleep_duration?days=30`),
     get(`/v1/users/${uid}/series/active_minutes?days=90`),
@@ -590,7 +621,9 @@ async function main() {
     get(`/v1/users/${uid}/recommendation`),
     get(`/v1/users/${uid}/labs`),
     get(`/v1/users/${uid}/mealplan?days=1`),
+    get(`/v1/users/${uid}/status`),
   ]);
+  scorecard(status);
 
   lineChart($("weight"), weight, "kg");
   barChart($("sleep"), (sleep?.points || []).slice(-14).map(day), { label: "Hours slept", line: sleep?.target, lineLabel: "Your target", color: "--c-sleep", unit: "h" });
@@ -624,7 +657,7 @@ async function main() {
 boot().then((ok) => { if (ok) { main(); loadHistory(); } });
 
 // ---- Ask: the question is sent for an answer; each step arrives live over server-sent events.
-const SAMPLES = ["How many calories should I eat?", "What workout should I do today?", "What should I eat today and what workout should I do?"];
+const SAMPLES = ["How am I doing?", "How was my sleep?", "What should my target weight be?", "What workout should I do today?"];
 const BLOCKED = "I can't give an answer to this one. A doctor or dietitian can help.";
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let stream = null;
