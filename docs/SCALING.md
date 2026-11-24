@@ -32,6 +32,9 @@ discarded and the benchmark broker moved to 4.2.2.
 
 ### The multi-agent graph (triage, three specialists, aggregator, synthesizer, Guardian, checker, release gate)
 
+Measured when the graph had three specialists. A fourth, Progress (D108), was added afterwards and
+this load test was not re-run with it.
+
 Method: `scripts/load_agents.py`, with a **simulated model** that answers with fixed text after a
 latency you choose. It measures the graph, not answer quality, and spends no model quota.
 

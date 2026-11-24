@@ -1,6 +1,6 @@
 # PRD — VitalMesh: Event-Driven Multi-Agent Health Recommendation Platform
 
-Status: DRAFT v0.1. Requirements are stable; implementation status is in the README (Phases 0-4 done; Phase 5b adds accounts, onboarding, authorization and security: built and exercised end to end; Google Calendar is next).
+Status: DRAFT v0.1. Requirements are stable; implementation status is in the README (Phases 0-6 built and measured, Phase 7 in progress). Where a requirement below was not built as written (F6's knowledge-graph contraindication check inside the Guardian; Guardian checks at every boundary), the as-built behaviour is in EVENT_BACKBONE.md section 10.
 
 ## 1. Problem
 Health recommendation apps are either (a) static rule engines that ignore a user's live signals, or (b) a chatbot that calls an LLM per request. (b) is unsafe (hallucinated medical claims) and cannot scale: 1M users x LLM-per-event is economically and operationally impossible.
@@ -73,5 +73,5 @@ LLM quota/cost (mitigate: tiers, cache, mock LLM for load tests); claiming 1M wi
 
 ## 10. Related work
 - **Google Personal Health Agent / Fitbit Gemini coach** (research.google blog "The anatomy of a personal health agent"; arXiv 2508.20148): an orchestrator routes queries to three sub-agents (data science, domain expert, health coach). It established the quality layer (multi-agent beats single agent in their expert evaluations, per secondary reports; not verified here).
-- **What VitalMesh adds:** a scale layer (tiered compute so most events never need an LLM, Kafka choreography between agents), a safety layer (deterministic Guardian at every boundary, knowledge-graph contraindications, human review) and explicit measurement discipline (claims carry provenance; numbers are never LLM-produced).
+- **What VitalMesh adds:** a scale layer (tiered compute so most events never need an LLM, Kafka choreography between agents), a safety layer (a deterministic Guardian at drafting and again at release, an input screen at the API, human review; knowledge-graph contraindication rules were designed but are not part of the gate) and explicit measurement discipline (claims carry provenance; numbers are never LLM-produced).
 - **What we borrow:** the three roles map to deterministic analytics + calculators (data science), Evidence agent + specialists (domain expert) and the Concierge with a coaching style (health coach).

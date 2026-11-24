@@ -34,14 +34,18 @@ flowchart TD
     triage -->|run.planned| nut[Nutrition specialist]
     triage -->|run.planned| mov[Movement specialist]
     triage -->|run.planned| cond[Condition specialist]
+    triage -->|run.planned| prog[Progress specialist<br/>sleep, weight, BMI]
     nut -->|advice.completed| agg[Aggregator<br/>code: waits for all parts<br/>or the deadline]
     mov -->|advice.completed| agg
     cond -->|advice.completed| agg
+    prog -->|advice.completed| agg
     agg -->|advice.bundle.ready<br/>partial on deadline| syn[Synthesizer<br/>writes prose from tool results]
     syn -->|recommendation.drafted| g1{Safety Guardian<br/>pure code}
-    g1 -->|safety.blocked, one repair| syn
-    g1 -->|safety.cleared| chk[Checker<br/>one bounded retry]
-    chk -->|review.completed| rel[Release<br/>code: Guardian again,<br/>checkpoint per id]
+    g1 -->|safety.blocked: final,<br/>user told generically| stop[(Stop)]
+    g1 -->|safety.cleared, low risk| rel[Release<br/>code: Guardian again,<br/>checkpoint per id]
+    g1 -->|safety.cleared, medium or high risk| chk[Checker<br/>independent review]
+    chk -->|review.completed: approved| rel
+    chk -->|review.completed: revise, once| syn
     rel -->|needs a person| human[(Human review<br/>clinician console)]
     human -->|review.decided| rel
     rel -->|recommendation.released| out[Delivery: SSE to the person]

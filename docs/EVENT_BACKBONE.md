@@ -38,7 +38,7 @@ Example from the brief, in our domain: `nutrition.advice.completed` is consumed 
 | `evidence.attached` | Evidence | Aggregator |
 | `advice.bundle.ready` (all expected parts, or partial on deadline) | Aggregator | Synthesizer |
 | `recommendation.drafted` | Synthesizer | Safety Guardian |
-| `safety.cleared` / `safety.blocked` | Guardian | Checker (if risk high) or Release; Synthesizer repair (blocked, max 1) |
+| `safety.cleared` / `safety.blocked` | Guardian | low risk: Release; medium and high risk: Checker. A blocked draft is final (`safety.blocked`, no repair loop; D68). The one rewrite is the Checker's `review.completed` (REVISE) read by the Synthesizer |
 | `review.completed` | Checker | Release / Escalation Briefer |
 | `review.requested` / `review.decided` | Briefer / Human console | Human console / Release |
 | `recommendation.released` | Release (code) | Engagement, Delivery (SSE), Audit, Eval sampler |
@@ -87,13 +87,15 @@ One final gate is not enough: unsafe output would burn tokens through Evidence/S
 | Ingress (`user.event.received`, `question.asked`) | schema, PII redaction, prompt-injection screening, rate limits | reject / DLQ |
 | On consume (every agent) | envelope + schema + version + deadline; do not trust upstream flags (zero-trust) | `*.failed` / DLQ |
 | On publish (every agent) | output schema; KG contraindication pre-check; claim needs citation or computed source | `safety.blocked`, no downstream spend |
-| Final gate (Guardian) | full rules + KG on the merged recommendation; Checker agent (LLM) only above risk threshold | repair x1 or drop; high risk -> human review |
+| Final gate (Guardian) | full rules + KG on the merged recommendation; Checker agent (LLM) only above risk threshold | a block is final (no repair, D68); the Checker may ask for ONE rewrite, which passes the Guardian again; high risk, a rejection or a second change request -> human review |
+
+**As built (read this before the table):** the table above is the design. What the code does today: the Guardian gate runs the rules in `libs/wellness/.../guardian.py` (rules version 5, stamped on every event) at drafting and again at release; the knowledge-graph contraindication rules are a later slice and are NOT part of the gate (`guardian.py` says so); the T0 path reads the precompiled constraint lookup from Redis and Neo4j is never queried on the hot path; the per-hop "publish" checks are the claim, citation and number checks inside each specialist and the Synthesizer, not a separate gate at every publish; PII redaction and prompt-injection screening are the input screen in the API (it is the first layer only, see the red-team numbers in the README).
 
 Rules:
 - **Cheap checks everywhere, expensive checks by risk.** LLM checks never run on every hop.
 - **One shared, versioned rules library** imported by every agent; rule version is stamped in the event envelope so events checked under old rules can be detected and reprocessed.
 - **Fail closed.** A check that errors or cannot run blocks the event; it never passes through.
-- **Release is exclusive.** Only the Guardian/Release path may publish `recommendation.released` (topic ACLs + producer identity on each event).
+- **Release is exclusive.** Only the Guardian/Release path publishes `recommendation.released`: that is how the code is wired (the Release gate is the only publisher). Broker-level topic ACLs were designed but are NOT configured.
 - The final gate stays authoritative because composition risk (e.g. nutrition + activity + medication) only appears on the merged bundle.
 
 ## 11. Failure contract (structured, retry-aware)
